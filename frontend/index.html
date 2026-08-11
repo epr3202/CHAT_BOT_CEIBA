@@ -16,14 +16,14 @@
         </div>
       </div>
       <nav class="nav">
-        <button class="navItem active" data-view="overview" title="Resumen">
-          <span class="icon">⌂</span><span>Resumen</span>
-        </button>
-        <button class="navItem" data-view="simulator" title="Simulador">
-          <span class="icon">✉</span><span>Simulador</span>
+        <button class="navItem active" data-view="admin" title="Clientes">
+          <span class="icon">▦</span><span>Clientes</span>
         </button>
         <button class="navItem" data-view="handoffs" title="Handoffs">
           <span class="icon">↔</span><span>Handoffs</span>
+        </button>
+        <button class="navItem" data-view="simulator" title="Simulador">
+          <span class="icon">✉</span><span>Simulador</span>
         </button>
         <button class="navItem" data-view="coverage" title="Cobertura">
           <span class="icon">✓</span><span>Cobertura</span>
@@ -34,8 +34,8 @@
     <main class="shell">
       <header class="topbar">
         <div>
-          <h1>Panel operativo</h1>
-          <p>Control local para las capacidades disponibles del MVP.</p>
+          <h1>Seguimiento administrativo</h1>
+          <p>Clientes, estado, asignaciones y casos humanos con lo disponible hoy.</p>
         </div>
         <div class="statusStrip">
           <span id="apiState" class="pill neutral">API sin verificar</span>
@@ -43,7 +43,7 @@
         </div>
       </header>
 
-      <section class="view active" id="overview">
+      <section class="view active" id="admin">
         <div class="metrics">
           <article>
             <span>API</span>
@@ -58,14 +58,14 @@
             <strong id="metricTaken">--</strong>
           </article>
           <article>
-            <span>Último webhook</span>
-            <strong id="metricWebhook">--</strong>
+            <span>Devueltos al bot</span>
+            <strong id="metricReturned">--</strong>
           </article>
         </div>
 
         <section class="panel">
           <div class="panelHeader">
-            <h2>Configuración local</h2>
+            <h2>Acceso del asesor</h2>
             <span>Se guarda solo en este navegador</span>
           </div>
           <div class="formGrid">
@@ -74,8 +74,8 @@
               <input id="adminToken" type="password" autocomplete="off" placeholder="ADMIN_API_TOKEN" />
             </label>
             <label>
-              Secreto Meta para simulación
-              <input id="metaSecret" type="password" autocomplete="off" placeholder="META_APP_SECRET" />
+              Filtro de clientes
+              <input id="caseSearch" type="search" autocomplete="off" placeholder="Nombre, teléfono, motivo o conversación" />
             </label>
             <label>
               Agente
@@ -85,6 +85,30 @@
           <div class="actions">
             <button id="saveConfig" class="primary">Guardar</button>
             <button id="checkHealth">Verificar API</button>
+            <button id="refreshCases">Actualizar casos</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Clientes y asignaciones</h2>
+            <div class="segmented caseFilters">
+              <button class="caseFilter active" data-case-status="ALL">Todos</button>
+              <button class="caseFilter" data-case-status="PENDING">Pendientes</button>
+              <button class="caseFilter" data-case-status="TAKEN">Asignados</button>
+              <button class="caseFilter" data-case-status="RETURNED">Devueltos</button>
+            </div>
+          </div>
+          <div class="caseTable" role="table" aria-label="Seguimiento de clientes">
+            <div class="caseRow caseHead" role="row">
+              <span>Cliente</span>
+              <span>Estado</span>
+              <span>Asignación</span>
+              <span>Motivo</span>
+              <span>Última acción</span>
+              <span></span>
+            </div>
+            <div id="caseList"></div>
           </div>
         </section>
       </section>
@@ -97,6 +121,10 @@
           </div>
           <div class="simulatorLayout">
             <form id="messageForm" class="composer">
+              <label>
+                Secreto Meta para simulación
+                <input id="metaSecret" type="password" autocomplete="off" placeholder="META_APP_SECRET" />
+              </label>
               <label>
                 Teléfono cliente
                 <input id="phone" type="tel" value="+573001112233" />
@@ -171,6 +199,20 @@
         </div>
         <pre class="summary"></pre>
         <div class="handoffActions"></div>
+      </article>
+    </template>
+
+    <template id="caseTemplate">
+      <article class="caseRow" role="row">
+        <div class="clientCell">
+          <strong class="caseClient"></strong>
+          <span class="casePhone"></span>
+        </div>
+        <div><span class="caseStatus pill"></span></div>
+        <div class="caseAssignment"></div>
+        <div class="caseReason"></div>
+        <div class="caseActivity"></div>
+        <div class="caseActions"></div>
       </article>
     </template>
 

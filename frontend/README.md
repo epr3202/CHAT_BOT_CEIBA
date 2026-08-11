@@ -28,7 +28,19 @@ Variables opcionales:
 - `FRONTEND_PORT`: puerto del frontend, default `5173`.
 - `API_BASE_URL`: URL del backend, default `http://127.0.0.1:8000`.
 
-El panel cubre las superficies actuales del backend:
+La pantalla principal es seguimiento administrativo de clientes/casos. Usa solo
+los datos disponibles hoy en `GET /admin/handoffs`:
+
+- cliente y teléfono extraídos del resumen determinístico;
+- conversación;
+- estado del handoff;
+- asesor asignado;
+- prioridad;
+- motivo;
+- fechas de creación, toma o devolución;
+- acciones disponibles según estado.
+
+El panel también cubre estas superficies actuales del backend:
 
 - salud de API;
 - simulación de webhook WhatsApp firmado;
@@ -37,4 +49,3 @@ El panel cubre las superficies actuales del backend:
 - tomar handoff;
 - enviar respuesta humana vía outbox;
 - devolver conversación al bot.
-

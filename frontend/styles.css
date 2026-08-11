@@ -312,12 +312,14 @@ textarea {
 }
 
 .quickMessages button,
-.segment {
+.segment,
+.caseFilter {
   min-height: 34px;
   font-size: 13px;
 }
 
-.segment.active {
+.segment.active,
+.caseFilter.active {
   background: var(--accent-strong);
   color: white;
   border-color: var(--accent-strong);
@@ -352,6 +354,72 @@ textarea {
 .handoffList {
   display: grid;
   gap: 12px;
+}
+
+.caseTable {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#caseList {
+  display: grid;
+}
+
+.caseRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.35fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr) minmax(150px, 1fr) minmax(170px, 1fr) minmax(190px, 0.9fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfb;
+}
+
+.caseRow:last-child {
+  border-bottom: 0;
+}
+
+.caseHead {
+  min-height: 42px;
+  background: #eef3ef;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.clientCell strong,
+.clientCell span {
+  display: block;
+}
+
+.clientCell span,
+.caseAssignment,
+.caseReason,
+.caseActivity {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.caseReason,
+.caseActivity {
+  color: #314138;
+}
+
+.caseActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.caseActions button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
 }
 
 .emptyState {
@@ -477,5 +545,25 @@ textarea {
   .handoffActions {
     grid-template-columns: 1fr;
   }
-}
 
+  .caseTable {
+    border: 0;
+    overflow: visible;
+  }
+
+  .caseHead {
+    display: none;
+  }
+
+  .caseRow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+
+  .caseActions {
+    justify-content: flex-start;
+  }
+}
