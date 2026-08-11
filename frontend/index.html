@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>La Ceiba Club House | Operación del chat</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brandMark">LC</div>
+        <div>
+          <strong>La Ceiba Club House</strong>
+          <span>Operación del chat</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="navItem active" data-view="overview" title="Resumen">
+          <span class="icon">⌂</span><span>Resumen</span>
+        </button>
+        <button class="navItem" data-view="simulator" title="Simulador">
+          <span class="icon">✉</span><span>Simulador</span>
+        </button>
+        <button class="navItem" data-view="handoffs" title="Handoffs">
+          <span class="icon">↔</span><span>Handoffs</span>
+        </button>
+        <button class="navItem" data-view="coverage" title="Cobertura">
+          <span class="icon">✓</span><span>Cobertura</span>
+        </button>
+      </nav>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Panel operativo</h1>
+          <p>Control local para las capacidades disponibles del MVP.</p>
+        </div>
+        <div class="statusStrip">
+          <span id="apiState" class="pill neutral">API sin verificar</span>
+          <button id="refreshAll" class="iconButton" title="Actualizar">↻</button>
+        </div>
+      </header>
+
+      <section class="view active" id="overview">
+        <div class="metrics">
+          <article>
+            <span>API</span>
+            <strong id="metricApi">--</strong>
+          </article>
+          <article>
+            <span>Handoffs pendientes</span>
+            <strong id="metricPending">--</strong>
+          </article>
+          <article>
+            <span>En atención humana</span>
+            <strong id="metricTaken">--</strong>
+          </article>
+          <article>
+            <span>Último webhook</span>
+            <strong id="metricWebhook">--</strong>
+          </article>
+        </div>
+
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Configuración local</h2>
+            <span>Se guarda solo en este navegador</span>
+          </div>
+          <div class="formGrid">
+            <label>
+              Token admin
+              <input id="adminToken" type="password" autocomplete="off" placeholder="ADMIN_API_TOKEN" />
+            </label>
+            <label>
+              Secreto Meta para simulación
+              <input id="metaSecret" type="password" autocomplete="off" placeholder="META_APP_SECRET" />
+            </label>
+            <label>
+              Agente
+              <input id="agentName" type="text" autocomplete="off" placeholder="Nombre del asesor" />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="saveConfig" class="primary">Guardar</button>
+            <button id="checkHealth">Verificar API</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="simulator">
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Simulador de WhatsApp</h2>
+            <span>Webhook firmado contra el backend local</span>
+          </div>
+          <div class="simulatorLayout">
+            <form id="messageForm" class="composer">
+              <label>
+                Teléfono cliente
+                <input id="phone" type="tel" value="+573001112233" />
+              </label>
+              <label>
+                Mensaje
+                <textarea id="messageText" rows="5">Hola, quiero información de La Ceiba</textarea>
+              </label>
+              <div class="quickMessages">
+                <button type="button" data-message="Hola">Saludo</button>
+                <button type="button" data-message="¿Dónde están ubicados? pásame el mapa">Ubicación</button>
+                <button type="button" data-message="Quiero hablar con un asesor">Asesor</button>
+                <button type="button" data-message="Ya hice el pago">Pago</button>
+                <button type="button" data-message="Tengo una emergencia con mi evento">Emergencia</button>
+              </div>
+              <div class="actions">
+                <button class="primary" type="submit">Enviar webhook</button>
+                <button id="duplicateLast" type="button">Reenviar duplicado</button>
+              </div>
+            </form>
+            <div class="logPanel">
+              <div class="panelHeader compact">
+                <h2>Registro</h2>
+                <button id="clearLog" class="iconButton" title="Limpiar">×</button>
+              </div>
+              <ol id="eventLog" class="eventLog"></ol>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="handoffs">
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Bandeja humana</h2>
+            <div class="segmented">
+              <button class="segment active" data-status="PENDING">Pendientes</button>
+              <button class="segment" data-status="TAKEN">Tomados</button>
+              <button class="segment" data-status="RETURNED">Devueltos</button>
+            </div>
+          </div>
+          <div id="handoffList" class="handoffList"></div>
+        </section>
+      </section>
+
+      <section class="view" id="coverage">
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Cobertura actual</h2>
+            <span>Basado en las rutas implementadas hoy</span>
+          </div>
+          <div class="coverageGrid">
+            <article><strong>Webhook WhatsApp</strong><span>Recepción firmada, deduplicación y fase background.</span></article>
+            <article><strong>FAQ informativa</strong><span>Respuestas aprobadas para categorías soportadas.</span></article>
+            <article><strong>Fallback</strong><span>Baja confianza, confirmación y escalamiento por repetición.</span></article>
+            <article><strong>Handoff</strong><span>Solicitudes humanas, quejas, pagos, cancelaciones y emergencias.</span></article>
+            <article><strong>Outbox</strong><span>Mensajes salientes quedan en cola para el worker.</span></article>
+            <article><strong>Admin mínimo</strong><span>Tomar caso, responder como asesor y devolver al bot.</span></article>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <template id="handoffTemplate">
+      <article class="handoffCard">
+        <div class="handoffTop">
+          <div>
+            <strong class="handoffTitle"></strong>
+            <span class="handoffMeta"></span>
+          </div>
+          <span class="priority"></span>
+        </div>
+        <pre class="summary"></pre>
+        <div class="handoffActions"></div>
+      </article>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
