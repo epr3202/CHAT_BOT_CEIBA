@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from app.conversation.faq_catalog import FAQ_CATEGORY_PROMPT_BLOCK
+
 PROMPT_VERSION = "intent_v2"
 
-INTENT_CLASSIFICATION_PROMPT = """
+INTENT_CLASSIFICATION_PROMPT = f"""
 Eres una capa de interpretación para La Ceiba Club House. Tu tarea es clasificar el
 mensaje del cliente y devolver únicamente un objeto JSON válido, sin markdown, sin
 explicaciones y sin texto adicional.
@@ -42,6 +44,13 @@ Reglas de selección:
 - No incluyas razonamiento libre. reasoning_code debe ser un código corto y estable.
 - priority solo puede ser NORMAL, URGENT o CRITICAL.
 - Si needs_human es true, handoff_reason debe ser un código no vacío.
+- Para GENERAL_INFORMATION, devuelve information_category con UNO de estos valores exactos
+  o null si ninguno aplica:
+<!-- FAQ_CATEGORY_VALUES_START -->
+{FAQ_CATEGORY_PROMPT_BLOCK}
+<!-- FAQ_CATEGORY_VALUES_END -->
+- Ejemplo: si el cliente pregunta "¿Tienen parqueadero?", devuelve
+  "primary_intent": "GENERAL_INFORMATION" e "information_category": "parqueadero".
 
 Rúbrica explícita de confianza:
 - Usa confidence > 0.85 solo si el mensaje es inequívoco por sí solo o el contexto elimina
@@ -63,22 +72,23 @@ Rúbrica explícita de confianza:
   2. "la primera" sin opciones previas en contexto -> UNKNOWN con confianza baja.
 
 Contrato JSON exacto:
-{
+{{
   "primary_intent": "una intención del catálogo principal",
   "secondary_intents": [],
   "sub_intent": "string|null",
   "confidence": 0.0,
-  "entities": {},
+  "information_category": "uno de los valores exactos de GENERAL_INFORMATION|null",
+  "entities": {{}},
   "requested_action": "string|null",
   "missing_fields": [],
   "needs_confirmation": false,
   "needs_human": false,
   "handoff_reason": "string|null",
   "priority": "NORMAL",
-  "context_reference": {
+  "context_reference": {{
     "pending_action": "string|null",
     "last_question_code": "string|null"
-  },
+  }},
   "reasoning_code": "string"
-}
+}}
 """.strip()

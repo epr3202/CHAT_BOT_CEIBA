@@ -68,6 +68,7 @@ def classification(
     intent: str,
     confidence: float = 0.91,
     entities: dict[str, object] | None = None,
+    information_category: str | None = None,
     needs_human: bool = False,
     handoff_reason: str | None = None,
     priority: str = "NORMAL",
@@ -77,6 +78,7 @@ def classification(
         secondary_intents=[],
         sub_intent=None,
         confidence=confidence,
+        information_category=information_category,
         entities=entities or {},
         requested_action=None,
         missing_fields=[],
@@ -220,16 +222,44 @@ async def test_waiting_for_human_generates_no_auto_response(
 
 
 @pytest.mark.asyncio
-async def test_general_information_without_approved_category_escalates(
+async def test_general_information_without_category_asks_clarification_without_handoff(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
+    conversation_id = await run_orchestrator(
+        sessionmaker_fixture,
+        settings,
+        StaticClassifier(classification("GENERAL_INFORMATION", information_category=None)),
+    )
+
+    async with sessionmaker_fixture() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        handoff = await session.scalar(select(Handoff))
+        outbox = await session.scalar(select(Outbox))
+
+    assert conversation is not None
+    assert conversation.state == "BOT_ACTIVE"
+    assert conversation.failed_understanding_count == 1
+    assert conversation.last_question_code == "RESP-FALLBACK-001"
+    assert handoff is None
+    assert outbox is not None
+    assert "¿Buscas información" in outbox.payload["text"]["body"]
+
+
+@pytest.mark.asyncio
+async def test_general_information_valid_category_without_answer_escalates(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.orchestrator.service.response_code_for_category",
+        lambda category: "NO_APPROVED_ANSWER" if category == "seguridad" else "RESP-TEST",
+    )
     await run_orchestrator(
         sessionmaker_fixture,
         settings,
-        StaticClassifier(
-            classification("GENERAL_INFORMATION", entities={"category": "tema sin aprobar"})
-        ),
+        StaticClassifier(classification("GENERAL_INFORMATION", information_category="seguridad")),
     )
 
     async with sessionmaker_fixture() as session:
@@ -240,7 +270,7 @@ async def test_general_information_without_approved_category_escalates(
     assert conversation.state == "WAITING_FOR_HUMAN"
     assert handoff is not None
     assert handoff.reason == "OTHER"
-    assert "tema sin aprobar" in handoff.summary
+    assert "seguridad" in handoff.summary
 
     async with sessionmaker_fixture() as session:
         audit = await session.scalar(
@@ -248,7 +278,7 @@ async def test_general_information_without_approved_category_escalates(
         )
 
     assert audit is not None
-    assert audit.new_value["detail"] == "NO_APPROVED_ANSWER category=tema sin aprobar"
+    assert audit.new_value["detail"] == "NO_APPROVED_ANSWER category=seguridad"
 
 
 @pytest.mark.asyncio
@@ -315,7 +345,7 @@ async def test_affirmative_message_uses_pending_confirmation(
             tentative = classification(
                 "GENERAL_INFORMATION",
                 confidence=0.72,
-                entities={"category": "parqueadero"},
+                information_category="parqueadero",
             )
             conversation.pending_confirmation = {
                 "classification": tentative.model_dump(mode="json"),

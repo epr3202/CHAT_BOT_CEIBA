@@ -49,6 +49,7 @@ def classification_payload(
     *,
     confidence: float = 0.91,
     entities: dict[str, object] | None = None,
+    information_category: str | None = None,
     requested_action: str | None = None,
     needs_human: bool = False,
     handoff_reason: str | None = None,
@@ -59,6 +60,7 @@ def classification_payload(
         "secondary_intents": [],
         "sub_intent": None,
         "confidence": confidence,
+        "information_category": information_category,
         "entities": entities or {},
         "requested_action": requested_action,
         "missing_fields": [],
@@ -224,7 +226,12 @@ async def test_slice1_greeting_faq_and_farewell_follow_documented_templates(
             classification_payload("GREETING", requested_action="ANSWER_GREETING"),
             classification_payload(
                 "GENERAL_INFORMATION",
-                entities={"category": "ubicación"},
+                information_category="ubicación",
+                requested_action="START_INFORMATION_FLOW",
+            ),
+            classification_payload(
+                "GENERAL_INFORMATION",
+                information_category="ubicacion",
                 requested_action="START_INFORMATION_FLOW",
             ),
             classification_payload("FAREWELL", requested_action="MARK_RESOLVED"),
@@ -249,6 +256,21 @@ async def test_slice1_greeting_faq_and_farewell_follow_documented_templates(
     assert "https://maps.app.goo.gl/hvxQH8UFN7upKMwU8?g_st=iw" in faq_outbox.payload["text"][
         "body"
     ]
+    assert await handoffs_for_conversation(faq_conversation.id) == []
+
+    phone_location = "573101001012"
+    await post_whatsapp(
+        client,
+        "wamid.s1.faq.location",
+        "¿Dónde quedan ubicados?",
+        phone=phone_location,
+    )
+    location_conversation = await latest_conversation(phone_location)
+    location_outbox = await latest_outbox(phone_location)
+    assert location_conversation.last_question_code == "RESP-LOCATION-001"
+    assert location_conversation.state == "BOT_ACTIVE"
+    assert location_outbox is not None
+    assert await handoffs_for_conversation(location_conversation.id) == []
 
     phone_farewell = "573101001003"
     await post_whatsapp(
@@ -398,7 +420,7 @@ async def test_slice1_pending_action_survives_general_information_interruption(
         [
             classification_payload(
                 "GENERAL_INFORMATION",
-                entities={"category": "parqueadero"},
+                information_category="parqueadero",
                 requested_action="START_INFORMATION_FLOW",
             )
         ],
@@ -416,6 +438,36 @@ async def test_slice1_pending_action_survives_general_information_interruption(
     assert conversation.last_question_code == "RESP-PARKING-001"
     assert conversation.state == "COLLECTING_EVENT_DATA"
     assert conversation.pending_action == "COLLECT_EVENT_TYPE"
+    assert await handoffs_for_conversation(conversation.id) == []
+
+
+@pytest.mark.asyncio
+async def test_slice1_general_information_without_category_asks_clarification(
+    client: AsyncClient,
+    respx_mock: respx.MockRouter,
+) -> None:
+    mock_openrouter(
+        respx_mock,
+        [
+            classification_payload(
+                "GENERAL_INFORMATION",
+                information_category=None,
+                requested_action="START_INFORMATION_FLOW",
+            )
+        ],
+    )
+    phone = "573101001013"
+
+    await post_whatsapp(client, "wamid.s1.faq.no.category", "Cuéntame más.", phone=phone)
+
+    conversation = await latest_conversation(phone)
+    outbox = await latest_outbox(phone)
+    assert conversation.last_question_code == "RESP-FALLBACK-001"
+    assert conversation.failed_understanding_count == 1
+    assert conversation.state == "BOT_ACTIVE"
+    assert outbox is not None
+    assert "¿Buscas información" in outbox.payload["text"]["body"]
+    assert await handoffs_for_conversation(conversation.id) == []
 
 
 @pytest.mark.asyncio

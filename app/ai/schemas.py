@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.conversation.faq_catalog import FAQ_CATEGORY_VALUES
+
+logger = logging.getLogger(__name__)
 
 Intent = Literal[
     "GREETING",
@@ -24,6 +29,7 @@ Intent = Literal[
 ]
 
 Priority = Literal["NORMAL", "URGENT", "CRITICAL"]
+FAQCategory = Literal[*FAQ_CATEGORY_VALUES]
 
 
 class IntentClassification(BaseModel):
@@ -33,6 +39,7 @@ class IntentClassification(BaseModel):
     secondary_intents: list[Intent] = Field(default_factory=list)
     sub_intent: str | None
     confidence: float = Field(ge=0, le=1)
+    information_category: FAQCategory | None = None
     entities: dict[str, Any] = Field(default_factory=dict)
     requested_action: str | None
     missing_fields: list[str] = Field(default_factory=list)
@@ -42,6 +49,16 @@ class IntentClassification(BaseModel):
     priority: Priority
     context_reference: dict[str, Any] = Field(default_factory=dict)
     reasoning_code: str
+
+    @field_validator("information_category", mode="before")
+    @classmethod
+    def unknown_information_category_becomes_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and value in FAQ_CATEGORY_VALUES:
+            return value
+        logger.info("ai_invalid_information_category", extra={"information_category": value})
+        return None
 
     @model_validator(mode="after")
     def require_handoff_reason_when_needed(self) -> IntentClassification:

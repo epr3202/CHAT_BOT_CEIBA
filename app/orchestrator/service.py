@@ -397,7 +397,37 @@ async def handle_general_information(
             reason="General information detected",
         )
 
-    category = str(classification.entities.get("category", ""))
+    category = classification.information_category
+    if category is None:
+        conversation.failed_understanding_count += 1
+        persist_classification_context(conversation, classification)
+        set_pending_action(conversation, "CLASSIFY_MESSAGE")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-FALLBACK-001",
+            {},
+        )
+        target_state = (
+            previous_state
+            if previous_state != ConversationState.ANSWERING_INFORMATION
+            and previous_state in ALLOWED_TRANSITIONS[ConversationState.ANSWERING_INFORMATION]
+            else ConversationState.BOT_ACTIVE
+        )
+        if conversation.state != target_state.value:
+            await transition_conversation(
+                session,
+                conversation,
+                target_state,
+                actor=SYSTEM_ACTOR,
+                reason="General information category unclear",
+            )
+        conversation.pending_action = previous_pending_action
+        return
+
     response_code = response_code_for_category(category)
     if response_code == "RESP-LOCATION-001" and wants_location_link(
         orchestration_input.message_text

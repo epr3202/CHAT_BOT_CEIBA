@@ -47,6 +47,10 @@ CATEGORY_RESPONSE_CODES: dict[str, str] = {
     "seguridad": "RESP-SECURITY-001",
 }
 
+FAQ_CATEGORY_VALUES = tuple(CATEGORY_RESPONSE_CODES.keys())
+
+FAQ_CATEGORY_PROMPT_BLOCK = "\n".join(f"- {category}" for category in FAQ_CATEGORY_VALUES)
+
 
 def response_code_for_category(category: str) -> str:
     normalized = " ".join(category.strip().lower().split())
