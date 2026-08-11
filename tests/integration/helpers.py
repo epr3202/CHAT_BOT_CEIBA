@@ -38,6 +38,7 @@ async def configure_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("META_PHONE_NUMBER_ID", PHONE_NUMBER_ID)
     monkeypatch.setenv("ADMIN_API_TOKEN", ADMIN_API_TOKEN)
     monkeypatch.setenv("META_GRAPH_API_VERSION", "v20.0")
+    monkeypatch.setenv("WHATSAPP_API_BASE_URL", "https://graph.facebook.com")
     monkeypatch.setenv("WEBHOOK_MAX_BODY_BYTES", "1048576")
     monkeypatch.setenv("OUTBOX_POLL_INTERVAL_SECONDS", "0.01")
     monkeypatch.setenv("OUTBOX_BATCH_SIZE", "10")

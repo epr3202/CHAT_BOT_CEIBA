@@ -6,8 +6,6 @@ import httpx
 
 from app.config.settings import Settings, get_settings
 
-WHATSAPP_API_BASE_URL = "https://graph.facebook.com"
-
 
 class WhatsAppSendError(RuntimeError):
     pass
@@ -66,7 +64,8 @@ class WhatsAppOutboundClient:
 
     def _messages_url(self) -> str:
         return (
-            f"{WHATSAPP_API_BASE_URL}/{self._settings.meta_graph_api_version}/"
+            f"{self._settings.whatsapp_api_base_url.rstrip('/')}/"
+            f"{self._settings.meta_graph_api_version}/"
             f"{self._settings.meta_phone_number_id}/messages"
         )
 

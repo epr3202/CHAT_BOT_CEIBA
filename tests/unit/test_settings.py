@@ -18,6 +18,7 @@ def test_settings_loads_technical_defaults_for_testing() -> None:
     assert settings.db_pool_size == 5
     assert settings.db_max_overflow == 5
     assert settings.meta_graph_api_version == "v20.0"
+    assert settings.whatsapp_api_base_url == "https://graph.facebook.com"
     assert settings.webhook_max_body_bytes == 1_048_576
     assert settings.outbox_batch_size == 10
     assert settings.outbox_sending_timeout_seconds == 120

@@ -65,6 +65,65 @@ El script genera un payload realista de mensaje entrante de WhatsApp Cloud API,
 lo firma con `X-Hub-Signature-256` usando HMAC-SHA256 y lo envía a
 `http://localhost:8000/webhook`.
 
+## Pruebas locales sin Meta
+
+Esta receta prueba el flujo completo webhook → orquestador → outbox → worker sin enviar
+mensajes reales por Meta. La clasificación de intención sigue usando OpenRouter, así que
+`OPENROUTER_API_KEY` debe ser una llave real.
+
+1. Levantar la base de datos:
+
+```bash
+docker compose up -d db
+```
+
+2. Aplicar migraciones y cargar la base de conocimiento:
+
+```bash
+make migrate
+.venv/bin/python scripts/load_knowledge.py
+```
+
+3. Terminal 1: levantar la API local:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+4. Terminal 2: levantar el doble de Meta:
+
+```bash
+.venv/bin/python scripts/fake_meta_server.py --port 8081
+```
+
+Para ejercitar reintentos y backoff del worker en vivo:
+
+```bash
+.venv/bin/python scripts/fake_meta_server.py --port 8081 --fail-rate 0.3
+```
+
+5. Terminal 3: levantar el worker apuntando al doble de Meta:
+
+```bash
+WHATSAPP_API_BASE_URL=http://localhost:8081 .venv/bin/python -m app.channel.worker
+```
+
+6. Terminal 4: abrir el WhatsApp de terminal:
+
+```bash
+.venv/bin/python scripts/chat_simulator.py --phone +573001112233
+```
+
+Comandos útiles dentro del simulador:
+
+- `/state`: muestra estado conversacional, acción pendiente, confirmación pendiente,
+  contador de entendimiento fallido y si el bot está habilitado.
+- `/handoffs`: muestra los handoffs de la conversación.
+- `/dup`: reenvía el último webhook con el mismo id de mensaje; no debe producir una
+  segunda respuesta.
+- `/new`: rota a un teléfono aleatorio para iniciar una conversación fresca.
+- `/quit`: sale del simulador.
+
 ## Variables de entorno
 
 | Variable | Obligatoria | Default | Uso |
@@ -80,6 +139,7 @@ lo firma con `X-Hub-Signature-256` usando HMAC-SHA256 y lo envía a
 | `META_PHONE_NUMBER_ID` | No | `""` | Slice 0: endpoint de envio WhatsApp |
 | `META_WABA_ID` | No | No leido por `Settings` | Futuro: gestion de plantillas Meta |
 | `META_GRAPH_API_VERSION` | No | `v20.0` | Slice 0: URL de Graph API |
+| `WHATSAPP_API_BASE_URL` | No | `https://graph.facebook.com` | Local sim: base URL para envio WhatsApp |
 | `WEBHOOK_MAX_BODY_BYTES` | No | `1048576` | Slice 0: limite de body del webhook |
 | `OUTBOX_POLL_INTERVAL_SECONDS` | No | `1` | Slice 0: frecuencia del worker |
 | `OUTBOX_BATCH_SIZE` | No | `10` | Slice 0: tamano de lote del worker |

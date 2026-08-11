@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # Verificar la versión vigente en el dashboard de Meta antes de desplegar;
     # las versiones de Graph API caducan (~2 años).
     meta_graph_api_version: str = Field(default="v20.0", alias="META_GRAPH_API_VERSION")
+    whatsapp_api_base_url: str = Field(
+        default="https://graph.facebook.com",
+        alias="WHATSAPP_API_BASE_URL",
+    )
 
     webhook_max_body_bytes: int = Field(default=1_048_576, alias="WEBHOOK_MAX_BODY_BYTES")
 
