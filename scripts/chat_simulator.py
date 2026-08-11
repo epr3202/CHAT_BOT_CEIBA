@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import random
 import sys
 import uuid
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from pydantic import ValidationError
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -20,11 +20,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app.models_registry  # noqa: F401
 from app.channel.models import Message
 from app.config.database import create_engine, create_sessionmaker
-from app.config.settings import get_settings
+from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.handoff.models import Handoff
 from scripts import simulate_webhook as webhook_helper
+
+REQUIRED_SETTING_ALIASES = {
+    "DATABASE_URL": "database_url",
+    "META_APP_SECRET": "meta_app_secret",
+}
 
 
 @dataclass
@@ -45,6 +50,29 @@ def prepare_signed_webhook_request(
         "Content-Type": "application/json",
         "X-Hub-Signature-256": webhook_helper.sign_body(body, app_secret),
     }
+
+
+def load_chat_simulator_settings() -> Settings:
+    try:
+        settings = get_settings()
+    except ValidationError as error:
+        missing = sorted(
+            str(issue["loc"][0])
+            for issue in error.errors()
+            if issue.get("type") == "missing" and issue.get("loc")
+        )
+        detail = ", ".join(missing) if missing else str(error)
+        raise SystemExit(f"Missing required settings for chat_simulator: {detail}") from error
+
+    blank = sorted(
+        alias
+        for alias, attribute in REQUIRED_SETTING_ALIASES.items()
+        if not str(getattr(settings, attribute)).strip()
+    )
+    if blank:
+        raise SystemExit(f"Missing required settings for chat_simulator: {', '.join(blank)}")
+
+    return settings
 
 
 async def post_webhook(
@@ -183,7 +211,7 @@ def random_phone() -> str:
 
 
 async def run_repl(args: argparse.Namespace) -> None:
-    settings = get_settings()
+    settings = load_chat_simulator_settings()
     engine = create_engine(
         settings.database_url,
         pool_size=settings.db_pool_size,
@@ -241,7 +269,7 @@ async def run_repl(args: argparse.Namespace) -> None:
                     phone,
                     line,
                     message_id,
-                    os.environ["META_APP_SECRET"],
+                    settings.meta_app_secret,
                 )
                 last_payload = LastPayload(body=body, headers=headers)
                 await post_webhook(client, args.webhook_url, body, headers)
