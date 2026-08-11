@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+from typing import Literal
+
+PendingAction = Literal[
+    "NONE",
+    "CLASSIFY_MESSAGE",
+    "ANSWER_INFORMATION",
+    "COLLECT_EVENT_TYPE",
+    "COLLECT_GUEST_COUNT",
+    "COLLECT_EVENT_DATE",
+    "COLLECT_CUSTOMER_NAME",
+    "COLLECT_BUDGET",
+    "COLLECT_SERVICES",
+    "CONFIRM_QUOTE_REQUEST",
+    "SELECT_VISIT_DATE",
+    "CONFIRM_VISIT_DATE",
+    "SELECT_VISIT_TIME",
+    "COLLECT_VISIT_ATTENDEES",
+    "COLLECT_VISIT_REASON",
+    "CONFIRM_APPOINTMENT",
+    "CONFIRM_RESCHEDULE",
+    "CONFIRM_VISIT_CANCELLATION",
+    "CONFIRM_EVENT_CANCELLATION",
+    "WAIT_FOR_HUMAN",
+    "WAIT_FOR_PAYMENT_REVIEW",
+    "WAIT_FOR_RESERVATION_CONFIRMATION",
+]
+
+PENDING_ACTIONS: tuple[str, ...] = (
+    "NONE",
+    "CLASSIFY_MESSAGE",
+    "ANSWER_INFORMATION",
+    "COLLECT_EVENT_TYPE",
+    "COLLECT_GUEST_COUNT",
+    "COLLECT_EVENT_DATE",
+    "COLLECT_CUSTOMER_NAME",
+    "COLLECT_BUDGET",
+    "COLLECT_SERVICES",
+    "CONFIRM_QUOTE_REQUEST",
+    "SELECT_VISIT_DATE",
+    "CONFIRM_VISIT_DATE",
+    "SELECT_VISIT_TIME",
+    "COLLECT_VISIT_ATTENDEES",
+    "COLLECT_VISIT_REASON",
+    "CONFIRM_APPOINTMENT",
+    "CONFIRM_RESCHEDULE",
+    "CONFIRM_VISIT_CANCELLATION",
+    "CONFIRM_EVENT_CANCELLATION",
+    "WAIT_FOR_HUMAN",
+    "WAIT_FOR_PAYMENT_REVIEW",
+    "WAIT_FOR_RESERVATION_CONFIRMATION",
+)
+
+
+def validate_pending_action(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if value not in PENDING_ACTIONS:
+        raise ValueError(f"Invalid pending_action: {value}")
+    return value
