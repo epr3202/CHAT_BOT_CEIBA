@@ -225,3 +225,30 @@ async def test_failure_records_ai_execution(
     assert execution.input_character_count == 3
     assert execution.latency_ms >= 0
     assert time.monotonic() - started < 5
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_prompt_version_setting_selects_v2_and_records_execution(
+    settings: Settings,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    settings.ai_prompt_version = "intent_v2"
+    route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=completion_payload(valid_classification()))
+    )
+
+    async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
+        await client.classify_intent("Hola", context={})
+
+    request_payload = json.loads(route.calls.last.request.content)
+    assert request_payload["messages"][0]["content"].startswith(
+        "Eres una capa de interpretación"
+    )
+    assert "Rúbrica explícita de confianza" in request_payload["messages"][0]["content"]
+
+    async with sessionmaker_fixture() as session:
+        execution = await session.scalar(select(AIExecution))
+
+    assert execution is not None
+    assert execution.prompt_version == "intent_v2"

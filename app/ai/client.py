@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.models import AIExecution
-from app.ai.prompts.intent_v1 import INTENT_CLASSIFICATION_PROMPT, PROMPT_VERSION
+from app.ai.prompts import get_intent_prompt
 from app.ai.schemas import IntentClassification
 from app.config.settings import Settings
 
@@ -29,6 +29,7 @@ class OpenRouterIntentClient:
         self._settings = settings
         self._sessionmaker = sessionmaker
         self._model = model or settings.openrouter_model_intent or DEFAULT_INTENT_MODEL
+        self._prompt = get_intent_prompt(settings.ai_prompt_version)
         self._http_client = http_client
         self._owns_http_client = http_client is None
 
@@ -95,7 +96,7 @@ class OpenRouterIntentClient:
         return {
             "model": self._model,
             "messages": [
-                {"role": "system", "content": INTENT_CLASSIFICATION_PROMPT},
+                {"role": "system", "content": self._prompt.content},
                 {
                     "role": "user",
                     "content": (
@@ -160,7 +161,7 @@ class OpenRouterIntentClient:
                         latency_ms=latency_ms,
                         success=success,
                         error_reason=error_reason.value if error_reason is not None else None,
-                        prompt_version=PROMPT_VERSION,
+                        prompt_version=self._prompt.version,
                         conversation_id=conversation_id,
                         input_character_count=input_character_count,
                     )
