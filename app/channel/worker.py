@@ -9,6 +9,7 @@ import structlog
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import app.models_registry  # noqa: F401
 from app.audit.models import AuditEvent
 from app.channel.models import Message, Outbox
 from app.channel.outbound import WhatsAppOutboundClient

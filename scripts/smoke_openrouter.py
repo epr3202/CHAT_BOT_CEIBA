@@ -10,6 +10,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import app.models_registry  # noqa: F401
 from app.ai.client import OpenRouterIntentClient
 from app.ai.errors import AIUnavailable
 from app.config.database import create_engine, create_sessionmaker

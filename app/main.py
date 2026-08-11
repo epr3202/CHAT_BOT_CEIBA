@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+import app.models_registry  # noqa: F401
 from app.admin.routes import router as admin_router
 from app.channel.webhook import router as whatsapp_webhook_router
 from app.config.database import create_engine, create_sessionmaker

@@ -64,5 +64,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_conversation_pending_action", "conversation", type_="check")
+    op.execute("ALTER TABLE conversation DROP CONSTRAINT IF EXISTS ck_conversation_pending_action")
     op.drop_column("conversation", "pending_confirmation")

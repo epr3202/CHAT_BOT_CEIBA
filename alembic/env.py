@@ -5,15 +5,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.models_registry  # noqa: F401
 from alembic import context
-from app.ai import models as ai_models  # noqa: F401
-from app.audit import models as audit_models  # noqa: F401
-from app.channel import models as channel_models  # noqa: F401
 from app.config.database import Base
 from app.config.settings import get_settings
-from app.conversation import models as conversation_models  # noqa: F401
-from app.customer import models as customer_models  # noqa: F401
-from app.handoff import models as handoff_models  # noqa: F401
 
 config = context.config
 

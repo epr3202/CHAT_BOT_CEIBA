@@ -10,12 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.audit import models as audit_models  # noqa: F401
-from app.channel import models as channel_models  # noqa: F401
+import app.models_registry  # noqa: F401
 from app.config.database import create_engine, create_sessionmaker
 from app.config.settings import get_settings
 from app.conversation.models import KnowledgeEntry
-from app.customer import models as customer_models  # noqa: F401
 from data.knowledge_seed import KnowledgeSeedEntry, iter_seed_entries
 
 

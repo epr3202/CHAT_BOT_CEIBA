@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import app.models_registry  # noqa: F401
 from app.channel.inbound import process_webhook_event
 from app.channel.models import WebhookEvent
 from app.config.database import create_engine, create_sessionmaker

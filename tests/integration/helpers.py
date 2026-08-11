@@ -10,16 +10,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.ai import models as ai_models  # noqa: F401
+import app.models_registry  # noqa: F401
 from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import IntentClassification
-from app.audit import models as audit_models  # noqa: F401
-from app.channel import models as channel_models  # noqa: F401
 from app.config.database import Base
 from app.config.settings import get_settings
-from app.conversation import models as conversation_models  # noqa: F401
-from app.customer import models as customer_models  # noqa: F401
-from app.handoff import models as handoff_models  # noqa: F401
 from app.main import app
 from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries

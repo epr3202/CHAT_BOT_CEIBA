@@ -82,6 +82,8 @@ Las tareas específicas llegan por prompt; estas reglas aplican SIEMPRE.
 - Cola y scheduler sobre Postgres (tabla `jobs` con `SELECT ... FOR UPDATE SKIP LOCKED`).
   No introducir Redis, Celery ni Kafka.
 - Todo cambio de esquema pasa por migración Alembic. Nunca `create_all` en producción.
+- Todo módulo de modelos nuevo se registra en `app/models_registry.py`; los entrypoints y
+  scripts importan el registry, nunca modelos sueltos.
 - Toda llamada externa (Meta, OpenRouter) con timeout explícito y manejo de error.
   La caída de OpenRouter no puede tumbar el webhook: guardar mensaje, registrar error,
   responder con fallback determinista o escalar.
@@ -115,3 +117,18 @@ uvicorn app.main:app --reload    # servidor dev
 pytest -x -q                     # suite completa
 pytest tests/integration -x -q   # solo integración
 ```
+## 7. Control de versiones
+
+- Al finalizar cada tarea, SOLO si pytest y ruff pasan: `git add -A` y
+  commit con mensaje convencional (`feat:` | `fix:` | `test:` | `chore:`
+  | `docs:`), título de una línea resumiendo la tarea y cuerpo con la
+  lista breve de cambios y migraciones incluidas.
+- Si la suite falla, NO commitear: reportar el estado y dejar el árbol
+  para revisión humana.
+- NUNCA hacer push: el push lo ejecuta el humano tras revisar el commit.
+- NUNCA amend, rebase ni force sobre commits existentes salvo
+  instrucción explícita del humano.
+- Antes de cada commit, verificar en `git status` que no entre .env ni
+  ningún archivo con credenciales; ante duda, abortar el commit y
+  preguntar.
+- Cierres de slice se marcan con tag (`slice-N`) — solo el humano.

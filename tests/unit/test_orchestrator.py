@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.ai import models as ai_models  # noqa: F401
+import app.models_registry  # noqa: F401
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.schemas import IntentClassification
 from app.audit.models import AuditEvent
