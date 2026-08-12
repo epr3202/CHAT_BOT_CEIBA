@@ -93,6 +93,16 @@ async def count_outbox() -> int:
         return await session.scalar(select(func.count()).select_from(Outbox)) or 0
 
 
+async def create_agent(client: AsyncClient, name: str = "Alexandra") -> dict[str, object]:
+    response = await client.post(
+        "/admin/agents",
+        headers=admin_headers(),
+        json={"name": name},
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
 @pytest.mark.asyncio
 async def test_list_handoffs_rejects_invalid_status(client: AsyncClient) -> None:
     response = await client.get("/admin/handoffs?status=RESOLVED", headers=admin_headers())
@@ -245,10 +255,11 @@ async def test_concurrent_take_allows_only_one_agent(
 
 
 @pytest.mark.asyncio
-async def test_admin_can_take_any_bot_active_conversation(
+async def test_agent_can_take_any_bot_active_conversation(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    agent = await create_agent(client)
     mock_classifier(monkeypatch, fake_classification("GREETING"))
     await post_whatsapp(client, "wamid.manual.take.1", "Hola")
 
@@ -261,13 +272,14 @@ async def test_admin_can_take_any_bot_active_conversation(
 
     taken = await client.post(
         f"/admin/conversations/{conversation_id}/take",
-        headers=admin_headers(),
-        json={"agent": "Alexandra"},
+        headers={"Authorization": f"Bearer {agent['token']}"},
     )
     assert taken.status_code == 200
     handoff = taken.json()
     assert handoff["status"] == "TAKEN"
     assert handoff["assigned_to"] == "Alexandra"
+    assert handoff["reason"] == "MANUAL_TAKEOVER"
+    assert handoff["assigned_agent"]["id"] == agent["id"]
 
     async with app.state.db_sessionmaker() as session:
         conversation = await session.get(Conversation, conversation_id)
@@ -279,6 +291,7 @@ async def test_admin_can_take_any_bot_active_conversation(
     assert conversation.state == "HUMAN_ACTIVE"
     assert conversation.bot_enabled is False
     assert conversation.pending_action == "WAIT_FOR_HUMAN"
+    assert conversation.assigned_agent_id == agent["id"]
     assert audit is not None
 
     agent_message = await client.post(

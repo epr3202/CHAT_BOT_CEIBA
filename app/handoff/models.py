@@ -21,7 +21,7 @@ class Handoff(Base):
             "'DISCOUNT_REQUEST', 'PAYMENT_REVIEW', 'RESERVATION_CONFIRMATION', "
             "'CANCELLATION', 'COMPLAINT', 'LOW_CONFIDENCE', 'UNSUPPORTED_REQUEST', "
             "'CAPACITY_REVIEW', 'SPECIAL_EVENT', 'SUPPLIER_CONFIRMATION', "
-            "'URGENT_EVENT', 'SYSTEM_ERROR', 'REPEATED_NO_SHOW', 'OTHER'"
+            "'URGENT_EVENT', 'SYSTEM_ERROR', 'REPEATED_NO_SHOW', 'MANUAL_TAKEOVER', 'OTHER'"
             ")",
             name="ck_handoff_reason",
         ),
@@ -42,6 +42,9 @@ class Handoff(Base):
     priority: Mapped[str] = mapped_column(String(32), nullable=False, default="NORMAL")
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     assigned_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    assigned_agent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent.id"), index=True, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

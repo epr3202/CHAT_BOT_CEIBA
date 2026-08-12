@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import hmac
+import secrets
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.auth import hash_agent_token, require_agent_from_session
+from app.agent.models import Agent
 from app.audit.models import AuditEvent
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
@@ -22,9 +25,20 @@ from app.handoff.models import Handoff
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+DIRECT_TAKE_ELIGIBLE_STATES = {
+    ConversationState.BOT_ACTIVE.value,
+    ConversationState.ANSWERING_INFORMATION.value,
+    ConversationState.COLLECTING_EVENT_DATA.value,
+    ConversationState.WAITING_FOR_APPOINTMENT_DATE.value,
+    ConversationState.WAITING_FOR_APPOINTMENT_SELECTION.value,
+    ConversationState.APPOINTMENT_PENDING_CONFIRMATION.value,
+    ConversationState.APPOINTMENT_CONFIRMED.value,
+    ConversationState.RESOLVED.value,
+}
+
 
 class TakeHandoffRequest(BaseModel):
-    agent: str = Field(min_length=1, max_length=128)
+    agent: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class ReturnHandoffRequest(BaseModel):
@@ -33,6 +47,26 @@ class ReturnHandoffRequest(BaseModel):
 
 class AgentMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4096)
+
+
+class CreateAgentRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+
+
+class AgentPayload(BaseModel):
+    id: int
+    name: str
+    active: bool
+    created_at: datetime
+
+
+class CreatedAgentPayload(AgentPayload):
+    token: str
+
+
+class AgentIdentityPayload(BaseModel):
+    id: int
+    name: str
 
 
 class ConversationMessagePayload(BaseModel):
@@ -45,6 +79,7 @@ class ConversationMessagePayload(BaseModel):
 
 
 class ConversationPayload(BaseModel):
+    id: int
     conversation_id: int
     customer_name: str | None
     customer_phone: str | None
@@ -55,9 +90,11 @@ class ConversationPayload(BaseModel):
     handoff_id: int | None
     handoff_status: str | None
     assigned_to: str | None
+    assigned_agent: AgentIdentityPayload | None
     handoff_reason: str | None
     handoff_priority: str | None
     last_message_body: str | None
+    last_message_preview: str | None
     last_message_direction: str | None
     last_message_at: datetime | None
 
@@ -66,6 +103,12 @@ async def require_admin_token(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
 ) -> None:
+    if is_admin_authorized(request, authorization):
+        return
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+
+def is_admin_authorized(request: Request, authorization: str | None) -> bool:
     settings: Settings = request.app.state.settings
     expected = settings.admin_api_token.strip()
     if not expected:
@@ -74,8 +117,7 @@ async def require_admin_token(
             detail="Admin API token is not configured",
         )
     provided = (authorization or "").removeprefix("Bearer ")
-    if not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    return hmac.compare_digest(provided, expected)
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -89,12 +131,125 @@ DbSession = Annotated[AsyncSession, Depends(get_session)]
 HandoffListStatus = Literal["PENDING", "TAKEN", "RETURNED"]
 
 
-@router.get("/handoffs")
-async def list_handoffs(
+async def require_admin_or_agent(
+    request: Request,
+    session: AsyncSession,
+    authorization: str | None,
+) -> Agent | None:
+    settings: Settings = request.app.state.settings
+    expected = settings.admin_api_token.strip()
+    provided = (authorization or "").removeprefix("Bearer ")
+    if expected and hmac.compare_digest(provided, expected):
+        return None
+    return await require_agent_from_session(session, authorization)
+
+
+@router.post("/agents")
+async def create_agent(
+    body: CreateAgentRequest,
     _auth: AdminAuth,
     session: DbSession,
+) -> CreatedAgentPayload:
+    token = secrets.token_urlsafe(32)
+    token_hash = hash_agent_token(token)
+    async with session.begin():
+        agent = Agent(name=body.name, token_hash=token_hash, active=True)
+        session.add(agent)
+        await session.flush()
+        session.add(
+            AuditEvent(
+                actor="ADMIN",
+                action="AGENT_CREATED",
+                entity="agent",
+                old_value=None,
+                new_value={"agent_id": agent.id, "name": agent.name, "active": agent.active},
+                reason="Admin created agent token",
+                request_id=None,
+            )
+        )
+    return CreatedAgentPayload(
+        id=agent.id,
+        name=agent.name,
+        active=agent.active,
+        created_at=agent.created_at,
+        token=token,
+    )
+
+
+@router.get("/agents")
+async def list_agents(
+    _auth: AdminAuth,
+    session: DbSession,
+) -> list[AgentPayload]:
+    agents = await session.scalars(select(Agent).order_by(Agent.name.asc()))
+    return [
+        AgentPayload(id=agent.id, name=agent.name, active=agent.active, created_at=agent.created_at)
+        for agent in agents.all()
+    ]
+
+
+@router.post("/agents/{agent_id}/deactivate")
+async def deactivate_agent(
+    agent_id: int,
+    _auth: AdminAuth,
+    session: DbSession,
+) -> dict[str, object]:
+    async with session.begin():
+        agent = await session.get(Agent, agent_id, with_for_update=True)
+        if agent is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+        was_active = agent.active
+        agent.active = False
+        active_conversation_count = await session.scalar(
+            select(func.count())
+            .select_from(Conversation)
+            .where(
+                Conversation.assigned_agent_id == agent.id,
+                Conversation.state == ConversationState.HUMAN_ACTIVE.value,
+            )
+        )
+        session.add(
+            AuditEvent(
+                actor="ADMIN",
+                action="AGENT_DEACTIVATED",
+                entity="agent",
+                old_value={"agent_id": agent.id, "active": was_active},
+                new_value={
+                    "agent_id": agent.id,
+                    "active": agent.active,
+                    "active_conversation_count": active_conversation_count or 0,
+                },
+                reason="Admin deactivated agent",
+                request_id=None,
+            )
+        )
+    return {
+        "id": agent.id,
+        "name": agent.name,
+        "active": agent.active,
+        "active_conversation_count": active_conversation_count or 0,
+    }
+
+
+@router.get("/me")
+async def read_me(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> AgentIdentityPayload:
+    agent = await require_agent_from_session(session, authorization)
+    if not agent.active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent is inactive")
+    return AgentIdentityPayload(id=agent.id, name=agent.name)
+
+
+@router.get("/handoffs")
+async def list_handoffs(
+    request: Request,
+    session: DbSession,
     status: HandoffListStatus = "PENDING",
+    authorization: Annotated[str | None, Header()] = None,
 ) -> list[dict[str, object]]:
+    await require_admin_or_agent(request, session, authorization)
     result = await session.execute(
         select(Handoff, Customer)
         .join(Conversation, Handoff.conversation_id == Conversation.id)
@@ -107,21 +262,57 @@ async def list_handoffs(
 
 @router.get("/conversations")
 async def list_conversations(
-    _auth: AdminAuth,
+    request: Request,
     session: DbSession,
+    state: str | None = Query(default=None),
+    assigned_to_me: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    authorization: Annotated[str | None, Header()] = None,
 ) -> list[ConversationPayload]:
-    result = await session.execute(
-        select(Conversation, Customer)
+    agent = await require_admin_or_agent(request, session, authorization)
+    if state is not None:
+        try:
+            ConversationState(state)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid conversation state",
+            ) from exc
+    if assigned_to_me and agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="assigned_to_me requires agent authentication",
+        )
+
+    filters = []
+    if state is not None:
+        filters.append(Conversation.state == state)
+    if assigned_to_me and agent is not None:
+        filters.append(Conversation.assigned_agent_id == agent.id)
+
+    statement = (
+        select(Conversation, Customer, Agent)
         .join(Customer, Conversation.customer_id == Customer.id)
+        .outerjoin(Agent, Conversation.assigned_agent_id == Agent.id)
         .order_by(Conversation.last_message_at.desc().nullslast(), Conversation.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if filters:
+        statement = statement.where(*filters)
+    result = await session.execute(
+        statement
     )
     conversations = result.all()
     payloads: list[ConversationPayload] = []
-    for conversation, customer in conversations:
+    for conversation, customer, assigned_agent in conversations:
         handoff = await latest_handoff_for_conversation(session, conversation.id)
         latest_message = await latest_message_for_conversation(session, conversation.id)
+        latest_body = message_body(latest_message) if latest_message is not None else None
         payloads.append(
             ConversationPayload(
+                id=conversation.id,
                 conversation_id=conversation.id,
                 customer_name=customer.full_name,
                 customer_phone=customer.phone_number,
@@ -132,11 +323,11 @@ async def list_conversations(
                 handoff_id=handoff.id if handoff is not None else None,
                 handoff_status=handoff.status if handoff is not None else None,
                 assigned_to=handoff.assigned_to if handoff is not None else None,
+                assigned_agent=agent_identity_payload(assigned_agent),
                 handoff_reason=handoff.reason if handoff is not None else None,
                 handoff_priority=handoff.priority if handoff is not None else None,
-                last_message_body=message_body(latest_message)
-                if latest_message is not None
-                else None,
+                last_message_body=latest_body,
+                last_message_preview=truncate_preview(latest_body),
                 last_message_direction=latest_message.direction
                 if latest_message is not None
                 else None,
@@ -149,10 +340,25 @@ async def list_conversations(
 @router.post("/handoffs/{handoff_id}/take")
 async def take_handoff(
     handoff_id: int,
-    body: TakeHandoffRequest,
-    _auth: AdminAuth,
+    request: Request,
     session: DbSession,
+    body: TakeHandoffRequest | None = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
+    agent = await require_admin_or_agent(request, session, authorization)
+    if agent is not None:
+        actor = agent.name
+        assigned_agent_id = agent.id
+        await session.rollback()
+    else:
+        actor = body.agent if body is not None else None
+        assigned_agent_id = None
+        if actor is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="agent is required when using admin authentication",
+            )
+
     async with session.begin():
         handoff = await session.get(Handoff, handoff_id, with_for_update=True)
         if handoff is None:
@@ -182,19 +388,21 @@ async def take_handoff(
 
         now = datetime.now(UTC)
         handoff.status = "TAKEN"
-        handoff.assigned_to = body.agent
+        handoff.assigned_to = actor
+        handoff.assigned_agent_id = assigned_agent_id
         handoff.taken_at = now
         conversation.bot_enabled = False
+        conversation.assigned_agent_id = assigned_agent_id
         await transition_conversation(
             session,
             conversation,
             ConversationState.HUMAN_ACTIVE,
-            actor=body.agent,
+            actor=actor,
             reason="Handoff taken by human agent",
         )
         session.add(
             AuditEvent(
-                actor=body.agent,
+                actor=actor,
                 action="HANDOFF_TAKEN",
                 entity="handoff",
                 old_value={"status": "PENDING"},
@@ -202,7 +410,8 @@ async def take_handoff(
                     "handoff_id": handoff.id,
                     "conversation_id": conversation.id,
                     "status": "TAKEN",
-                    "assigned_to": body.agent,
+                    "assigned_to": actor,
+                    "assigned_agent_id": assigned_agent_id,
                 },
                 reason="Human agent took handoff",
                 request_id=None,
@@ -215,10 +424,14 @@ async def take_handoff(
 @router.post("/conversations/{conversation_id}/take")
 async def take_conversation(
     conversation_id: int,
-    body: TakeHandoffRequest,
-    _auth: AdminAuth,
     session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
+    agent = await require_agent_from_session(session, authorization)
+    agent_id = agent.id
+    agent_name = agent.name
+    await session.rollback()
+
     async with session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         if conversation is None:
@@ -233,48 +446,131 @@ async def take_conversation(
                 detail="Conversation has no customer",
             )
 
-        now = datetime.now(UTC)
-        handoff = await latest_handoff_for_conversation(session, conversation.id, locked=True)
-        old_value = takeover_old_value(conversation, handoff)
-        if handoff is None or handoff.status in {"RETURNED", "RESOLVED"}:
-            handoff = Handoff(
-                conversation_id=conversation.id,
-                reason="OTHER",
-                priority="NORMAL",
-                summary=await build_manual_takeover_summary(session, conversation, customer),
-                status="TAKEN",
-                assigned_to=body.agent,
-                taken_at=now,
+        if conversation.state == ConversationState.HUMAN_ACTIVE.value:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conversation already has an active human agent",
             )
-            session.add(handoff)
-        else:
-            handoff.status = "TAKEN"
-            handoff.assigned_to = body.agent
-            handoff.taken_at = handoff.taken_at or now
+        if conversation.state == ConversationState.CLOSED.value:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Closed conversations require explicit admin reopening",
+            )
+        if conversation.state == ConversationState.WAITING_FOR_HUMAN.value:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conversation has a handoff pendiente; take the existing handoff",
+            )
+        if conversation.state not in DIRECT_TAKE_ELIGIBLE_STATES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conversation state is not eligible for direct takeover",
+            )
 
-        conversation.bot_enabled = False
-        conversation.pending_action = "WAIT_FOR_HUMAN"
-        await move_conversation_to_human_active(
-            session,
-            conversation,
-            actor=body.agent,
-            reason="Manual admin takeover",
+        now = datetime.now(UTC)
+        previous_state = conversation.state
+        previous_bot_enabled = conversation.bot_enabled
+        previous_assigned_agent_id = conversation.assigned_agent_id
+
+        if conversation.state == ConversationState.RESOLVED.value:
+            session.add(
+                AuditEvent(
+                    actor=agent_name,
+                    action="CONVERSATION_REOPENED",
+                    entity="conversation",
+                    old_value={"conversation_id": conversation.id, "state": conversation.state},
+                    new_value={
+                        "conversation_id": conversation.id,
+                        "state": ConversationState.BOT_ACTIVE.value,
+                    },
+                    reason="Direct takeover reopened resolved conversation",
+                    request_id=None,
+                )
+            )
+            await transition_conversation(
+                session,
+                conversation,
+                ConversationState.BOT_ACTIVE,
+                actor=agent_name,
+                reason="Direct takeover reopening",
+            )
+
+        handoff = Handoff(
+            conversation_id=conversation.id,
+            reason="MANUAL_TAKEOVER",
+            priority="NORMAL",
+            summary=await build_manual_takeover_summary(session, conversation, customer),
+            status="TAKEN",
+            assigned_to=agent_name,
+            assigned_agent_id=agent_id,
+            taken_at=now,
         )
+        session.add(handoff)
         await session.flush()
         session.add(
             AuditEvent(
-                actor=body.agent,
+                actor=agent_name,
+                action="HANDOFF_CREATED",
+                entity="handoff",
+                old_value=None,
+                new_value={
+                    "handoff_id": handoff.id,
+                    "conversation_id": conversation.id,
+                    "reason": "MANUAL_TAKEOVER",
+                    "priority": "NORMAL",
+                    "status": "TAKEN",
+                },
+                reason="Manual direct takeover",
+                request_id=None,
+            )
+        )
+
+        conversation.bot_enabled = False
+        conversation.pending_action = "WAIT_FOR_HUMAN"
+        conversation.assigned_agent_id = agent_id
+        await move_conversation_to_human_active(
+            session,
+            conversation,
+            actor=agent_name,
+            reason="Manual direct takeover",
+        )
+        session.add(
+            AuditEvent(
+                actor=agent_name,
+                action="HANDOFF_TAKEN",
+                entity="handoff",
+                old_value={"status": "PENDING"},
+                new_value={
+                    "handoff_id": handoff.id,
+                    "conversation_id": conversation.id,
+                    "status": "TAKEN",
+                    "assigned_to": agent_name,
+                    "assigned_agent_id": agent_id,
+                },
+                reason="Manual direct takeover",
+                request_id=None,
+            )
+        )
+        session.add(
+            AuditEvent(
+                actor=agent_name,
                 action="CONVERSATION_MANUAL_TAKEOVER",
                 entity="conversation",
-                old_value=old_value,
+                old_value={
+                    "conversation_id": conversation.id,
+                    "state": previous_state,
+                    "bot_enabled": previous_bot_enabled,
+                    "assigned_agent_id": previous_assigned_agent_id,
+                },
                 new_value={
                     "conversation_id": conversation.id,
                     "handoff_id": handoff.id,
                     "state": ConversationState.HUMAN_ACTIVE.value,
                     "bot_enabled": False,
-                    "assigned_to": body.agent,
+                    "assigned_to": agent_name,
+                    "assigned_agent_id": agent_id,
                 },
-                reason="Admin manually took conversation",
+                reason="Manual direct takeover",
                 request_id=None,
             )
         )
@@ -286,9 +582,17 @@ async def take_conversation(
 async def return_handoff(
     handoff_id: int,
     body: ReturnHandoffRequest,
-    _auth: AdminAuth,
+    request: Request,
     session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
+    agent = await require_admin_or_agent(request, session, authorization)
+    if agent is not None:
+        actor = agent.name
+        await session.rollback()
+    else:
+        actor = "ADMIN"
+
     async with session.begin():
         handoff = await session.get(Handoff, handoff_id, with_for_update=True)
         if handoff is None:
@@ -318,25 +622,28 @@ async def return_handoff(
 
         handoff.status = "RETURNED"
         handoff.resolved_at = datetime.now(UTC)
+        handoff.assigned_agent_id = None
+        handoff.assigned_to = None
         conversation.bot_enabled = True
         conversation.pending_action = None
+        conversation.assigned_agent_id = None
         await transition_conversation(
             session,
             conversation,
             ConversationState.RETURNED_TO_BOT,
-            actor=handoff.assigned_to or "ADMIN",
+            actor=actor,
             reason=body.resolution,
         )
         await transition_conversation(
             session,
             conversation,
             ConversationState.BOT_ACTIVE,
-            actor=handoff.assigned_to or "ADMIN",
+            actor=actor,
             reason="Returned to bot after human handling",
         )
         session.add(
             AuditEvent(
-                actor=handoff.assigned_to or "ADMIN",
+                actor=actor,
                 action="HANDOFF_RETURNED",
                 entity="handoff",
                 old_value={"status": "TAKEN"},
@@ -357,9 +664,15 @@ async def return_handoff(
 async def create_agent_message(
     conversation_id: int,
     body: AgentMessageRequest,
-    _auth: AdminAuth,
+    request: Request,
     session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, int | str]:
+    agent = await require_admin_or_agent(request, session, authorization)
+    actor = agent.name if agent is not None else "ADMIN"
+    if agent is not None:
+        await session.rollback()
+
     async with session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         if conversation is None:
@@ -417,7 +730,7 @@ async def create_agent_message(
         await session.flush()
         session.add(
             AuditEvent(
-                actor="ADMIN",
+                actor=actor,
                 action="AGENT_MESSAGE_ENQUEUED",
                 entity="outbox",
                 old_value=None,
@@ -436,9 +749,11 @@ async def create_agent_message(
 @router.get("/conversations/{conversation_id}/messages")
 async def list_conversation_messages(
     conversation_id: int,
-    _auth: AdminAuth,
+    request: Request,
     session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> list[ConversationMessagePayload]:
+    await require_admin_or_agent(request, session, authorization)
     conversation = await session.get(Conversation, conversation_id)
     if conversation is None:
         raise HTTPException(
@@ -531,7 +846,7 @@ async def build_manual_takeover_summary(
         f"Cliente: {customer.full_name or 'Sin nombre confirmado'}",
         f"Telefono: {customer.phone_number}",
         f"Conversacion: {conversation.id}",
-        "Motivo: OTHER - MANUAL_TAKEOVER",
+        "Motivo: MANUAL_TAKEOVER",
         "Ultimos mensajes:",
     ]
     for message in messages:
@@ -565,15 +880,19 @@ async def move_conversation_to_human_active(
     )
 
 
-def takeover_old_value(conversation: Conversation, handoff: Handoff | None) -> dict[str, object]:
-    return {
-        "conversation_id": conversation.id,
-        "state": conversation.state,
-        "bot_enabled": conversation.bot_enabled,
-        "handoff_id": handoff.id if handoff is not None else None,
-        "handoff_status": handoff.status if handoff is not None else None,
-        "assigned_to": handoff.assigned_to if handoff is not None else None,
-    }
+def agent_identity_payload(agent: Agent | None) -> AgentIdentityPayload | None:
+    if agent is None:
+        return None
+    return AgentIdentityPayload(id=agent.id, name=agent.name)
+
+
+def truncate_preview(text: str | None, limit: int = 120) -> str | None:
+    if text is None:
+        return None
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= limit:
+        return collapsed
+    return collapsed[: limit - 3].rstrip() + "..."
 
 
 def append_handoff_summary_line(summary: str, direction: str, text: str) -> str:
@@ -617,6 +936,11 @@ def handoff_payload(handoff: Handoff, customer: Customer | None = None) -> dict[
         "summary": handoff.summary,
         "status": handoff.status,
         "assigned_to": handoff.assigned_to,
+        "assigned_agent": (
+            {"id": handoff.assigned_agent_id, "name": handoff.assigned_to}
+            if handoff.assigned_agent_id is not None
+            else None
+        ),
         "created_at": handoff.created_at,
         "taken_at": handoff.taken_at,
         "resolved_at": handoff.resolved_at,

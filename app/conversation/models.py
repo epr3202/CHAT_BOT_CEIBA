@@ -68,6 +68,9 @@ class Conversation(Base):
     last_question_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     failed_understanding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     bot_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    assigned_agent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent.id"), index=True, nullable=True
+    )
 
     customer: Mapped[Customer] = relationship(back_populates="conversations")
     messages: Mapped[list[Message]] = relationship(back_populates="conversation")

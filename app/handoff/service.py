@@ -33,6 +33,7 @@ HANDOFF_REASONS = (
     "URGENT_EVENT",
     "SYSTEM_ERROR",
     "REPEATED_NO_SHOW",
+    "MANUAL_TAKEOVER",
     "OTHER",
 )
 
@@ -53,6 +54,7 @@ HandoffReason = Literal[
     "URGENT_EVENT",
     "SYSTEM_ERROR",
     "REPEATED_NO_SHOW",
+    "MANUAL_TAKEOVER",
     "OTHER",
 ]
 

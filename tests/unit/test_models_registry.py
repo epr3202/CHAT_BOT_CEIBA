@@ -7,6 +7,7 @@ from app.config.database import Base
 def test_models_registry_loads_complete_metadata_table_set() -> None:
     expected_tables = {
         "ai_execution",
+        "agent",
         "audit_event",
         "conversation",
         "customer",
