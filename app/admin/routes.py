@@ -261,6 +261,21 @@ async def create_agent_message(
             status="PENDING",
         )
         session.add(outbox)
+        active_handoff = await session.scalar(
+            select(Handoff)
+            .where(
+                Handoff.conversation_id == conversation.id,
+                Handoff.status == "TAKEN",
+            )
+            .order_by(Handoff.id.desc())
+            .limit(1)
+        )
+        if active_handoff is not None:
+            active_handoff.summary = append_handoff_summary_line(
+                active_handoff.summary,
+                "OUTBOUND",
+                body.text,
+            )
         await session.flush()
         session.add(
             AuditEvent(
@@ -278,6 +293,13 @@ async def create_agent_message(
         )
 
     return {"outbox_id": outbox.id, "status": outbox.status}
+
+
+def append_handoff_summary_line(summary: str, direction: str, text: str) -> str:
+    clean_text = " ".join(text.split())
+    if not clean_text:
+        return summary
+    return f"{summary.rstrip()}\n- {direction}: {clean_text}"
 
 
 def handoff_payload(handoff: Handoff, customer: Customer | None = None) -> dict[str, object]:

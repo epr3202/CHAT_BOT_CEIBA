@@ -154,6 +154,14 @@ async def test_full_handoff_cycle_returns_control_to_bot(
     )
     assert agent_message.status_code == 200
     assert await count_outbox() == 2
+    taken_after_message = await client.get(
+        "/admin/handoffs?status=TAKEN",
+        headers=admin_headers(),
+    )
+    assert taken_after_message.status_code == 200
+    assert "OUTBOUND: Hola, soy Alexandra. Ya reviso tu solicitud." in taken_after_message.json()[
+        0
+    ]["summary"]
 
     returned = await client.post(
         f"/admin/handoffs/{handoff_id}/return",

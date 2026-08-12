@@ -78,3 +78,12 @@ def test_admin_token_uses_session_storage_with_legacy_migration() -> None:
     assert 'sessionStorage.setItem(adminTokenStorageKey, legacyToken)' in app_js
     assert 'localStorage.removeItem(adminTokenStorageKey)' in app_js
     assert 'localStorage.setItem("ceiba.adminToken"' not in app_js
+
+
+def test_agent_message_refreshes_handoff_view() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    function_start = app_js.index("async function sendAgentMessage")
+    function_end = app_js.index("async function returnHandoff", function_start)
+    function_body = app_js[function_start:function_end]
+
+    assert "await refreshAll();" in function_body

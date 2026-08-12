@@ -400,6 +400,7 @@ async function sendAgentMessage(conversationId, text) {
       body: JSON.stringify({ text }),
     });
     logEvent(`Respuesta encolada para conversación ${conversationId}.`);
+    await refreshAll();
   } catch (error) {
     logEvent(`No se pudo enviar la respuesta: ${error.message}`);
   }
