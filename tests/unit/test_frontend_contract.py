@@ -23,10 +23,12 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/health",
         "/api/admin/handoffs",
         "/api/admin/handoffs/",
+        "/api/admin/conversations",
         "/api/admin/conversations/",
         "/api/webhook/simulate",
         "/health",
         "/admin/handoffs",
+        "/admin/conversations",
         "/admin/conversations/",
         "/webhook",
     }
@@ -67,7 +69,7 @@ def test_admin_cases_require_token_before_fetching() -> None:
     function_body = app_js[function_start:function_end]
 
     assert "state.adminToken" in function_body
-    assert function_body.index("state.adminToken") < function_body.index("/api/admin/handoffs")
+    assert function_body.index("state.adminToken") < function_body.index("/api/admin/conversations")
     assert ".catch(() => [])" not in function_body
 
 
@@ -97,3 +99,13 @@ def test_handoff_chat_uses_ajax_polling() -> None:
     assert "/api/admin/conversations/${conversationId}/messages" in app_js
     assert "setInterval(refreshVisibleHandoffMessages, state.chatPollIntervalMs)" in app_js
     assert "function renderChatThread" in app_js
+
+
+def test_admin_cases_list_conversations_and_can_take_any_chat() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
+
+    assert 'requestJson("/api/admin/conversations"' in app_js
+    assert "function takeConversation" in app_js
+    assert "/api/admin/conversations/${conversationId}/take" in app_js
+    assert 'path === "/api/admin/conversations"' in server

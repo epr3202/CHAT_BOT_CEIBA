@@ -44,6 +44,24 @@ class ConversationMessagePayload(BaseModel):
     created_at: datetime
 
 
+class ConversationPayload(BaseModel):
+    conversation_id: int
+    customer_name: str | None
+    customer_phone: str | None
+    state: str
+    last_intent: str | None
+    pending_action: str | None
+    bot_enabled: bool
+    handoff_id: int | None
+    handoff_status: str | None
+    assigned_to: str | None
+    handoff_reason: str | None
+    handoff_priority: str | None
+    last_message_body: str | None
+    last_message_direction: str | None
+    last_message_at: datetime | None
+
+
 async def require_admin_token(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
@@ -85,6 +103,47 @@ async def list_handoffs(
         .order_by(Handoff.created_at.asc())
     )
     return [handoff_payload(handoff, customer) for handoff, customer in result.all()]
+
+
+@router.get("/conversations")
+async def list_conversations(
+    _auth: AdminAuth,
+    session: DbSession,
+) -> list[ConversationPayload]:
+    result = await session.execute(
+        select(Conversation, Customer)
+        .join(Customer, Conversation.customer_id == Customer.id)
+        .order_by(Conversation.last_message_at.desc().nullslast(), Conversation.id.desc())
+    )
+    conversations = result.all()
+    payloads: list[ConversationPayload] = []
+    for conversation, customer in conversations:
+        handoff = await latest_handoff_for_conversation(session, conversation.id)
+        latest_message = await latest_message_for_conversation(session, conversation.id)
+        payloads.append(
+            ConversationPayload(
+                conversation_id=conversation.id,
+                customer_name=customer.full_name,
+                customer_phone=customer.phone_number,
+                state=conversation.state,
+                last_intent=conversation.last_intent,
+                pending_action=conversation.pending_action,
+                bot_enabled=conversation.bot_enabled,
+                handoff_id=handoff.id if handoff is not None else None,
+                handoff_status=handoff.status if handoff is not None else None,
+                assigned_to=handoff.assigned_to if handoff is not None else None,
+                handoff_reason=handoff.reason if handoff is not None else None,
+                handoff_priority=handoff.priority if handoff is not None else None,
+                last_message_body=message_body(latest_message)
+                if latest_message is not None
+                else None,
+                last_message_direction=latest_message.direction
+                if latest_message is not None
+                else None,
+                last_message_at=conversation.last_message_at,
+            )
+        )
+    return payloads
 
 
 @router.post("/handoffs/{handoff_id}/take")
@@ -146,6 +205,76 @@ async def take_handoff(
                     "assigned_to": body.agent,
                 },
                 reason="Human agent took handoff",
+                request_id=None,
+            )
+        )
+
+    return handoff_payload(handoff, customer)
+
+
+@router.post("/conversations/{conversation_id}/take")
+async def take_conversation(
+    conversation_id: int,
+    body: TakeHandoffRequest,
+    _auth: AdminAuth,
+    session: DbSession,
+) -> dict[str, object]:
+    async with session.begin():
+        conversation = await session.get(Conversation, conversation_id, with_for_update=True)
+        if conversation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found",
+            )
+        customer = await session.get(Customer, conversation.customer_id)
+        if customer is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conversation has no customer",
+            )
+
+        now = datetime.now(UTC)
+        handoff = await latest_handoff_for_conversation(session, conversation.id, locked=True)
+        old_value = takeover_old_value(conversation, handoff)
+        if handoff is None or handoff.status in {"RETURNED", "RESOLVED"}:
+            handoff = Handoff(
+                conversation_id=conversation.id,
+                reason="OTHER",
+                priority="NORMAL",
+                summary=await build_manual_takeover_summary(session, conversation, customer),
+                status="TAKEN",
+                assigned_to=body.agent,
+                taken_at=now,
+            )
+            session.add(handoff)
+        else:
+            handoff.status = "TAKEN"
+            handoff.assigned_to = body.agent
+            handoff.taken_at = handoff.taken_at or now
+
+        conversation.bot_enabled = False
+        conversation.pending_action = "WAIT_FOR_HUMAN"
+        await move_conversation_to_human_active(
+            session,
+            conversation,
+            actor=body.agent,
+            reason="Manual admin takeover",
+        )
+        await session.flush()
+        session.add(
+            AuditEvent(
+                actor=body.agent,
+                action="CONVERSATION_MANUAL_TAKEOVER",
+                entity="conversation",
+                old_value=old_value,
+                new_value={
+                    "conversation_id": conversation.id,
+                    "handoff_id": handoff.id,
+                    "state": ConversationState.HUMAN_ACTIVE.value,
+                    "bot_enabled": False,
+                    "assigned_to": body.agent,
+                },
+                reason="Admin manually took conversation",
                 request_id=None,
             )
         )
@@ -354,6 +483,97 @@ async def list_conversation_messages(
         for outbox in pending_outbox_rows.all()
     )
     return sorted(messages, key=lambda message: (message.created_at, message.id))
+
+
+async def latest_handoff_for_conversation(
+    session: AsyncSession,
+    conversation_id: int,
+    *,
+    locked: bool = False,
+) -> Handoff | None:
+    statement = (
+        select(Handoff)
+        .where(Handoff.conversation_id == conversation_id)
+        .order_by(Handoff.id.desc())
+        .limit(1)
+    )
+    if locked:
+        statement = statement.with_for_update()
+    return await session.scalar(statement)
+
+
+async def latest_message_for_conversation(
+    session: AsyncSession,
+    conversation_id: int,
+) -> Message | None:
+    return await session.scalar(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.id.desc())
+        .limit(1)
+    )
+
+
+async def build_manual_takeover_summary(
+    session: AsyncSession,
+    conversation: Conversation,
+    customer: Customer,
+    last_messages_limit: int = 5,
+) -> str:
+    result = await session.scalars(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.id.desc())
+        .limit(last_messages_limit)
+    )
+    messages = list(reversed(result.all()))
+    lines = [
+        f"Cliente: {customer.full_name or 'Sin nombre confirmado'}",
+        f"Telefono: {customer.phone_number}",
+        f"Conversacion: {conversation.id}",
+        "Motivo: OTHER - MANUAL_TAKEOVER",
+        "Ultimos mensajes:",
+    ]
+    for message in messages:
+        lines.append(f"- {message.direction}: {message_body(message)}")
+    return "\n".join(lines)
+
+
+async def move_conversation_to_human_active(
+    session: AsyncSession,
+    conversation: Conversation,
+    actor: str,
+    reason: str,
+) -> None:
+    current_state = ConversationState(conversation.state)
+    if current_state == ConversationState.HUMAN_ACTIVE:
+        return
+    if current_state != ConversationState.WAITING_FOR_HUMAN:
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.WAITING_FOR_HUMAN,
+            actor=actor,
+            reason=reason,
+        )
+    await transition_conversation(
+        session,
+        conversation,
+        ConversationState.HUMAN_ACTIVE,
+        actor=actor,
+        reason=reason,
+    )
+
+
+def takeover_old_value(conversation: Conversation, handoff: Handoff | None) -> dict[str, object]:
+    return {
+        "conversation_id": conversation.id,
+        "state": conversation.state,
+        "bot_enabled": conversation.bot_enabled,
+        "handoff_id": handoff.id if handoff is not None else None,
+        "handoff_status": handoff.status if handoff is not None else None,
+        "assigned_to": handoff.assigned_to if handoff is not None else None,
+    }
 
 
 def append_handoff_summary_line(summary: str, direction: str, text: str) -> str:

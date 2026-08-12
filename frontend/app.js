@@ -177,11 +177,13 @@ async function loadAllAdminCases() {
   }
 
   try {
-    const results = await loadAllAdminCasesWithoutPartialData();
-    state.adminCases = results.flat().map(caseFromHandoff);
-    setText("metricPending", String(state.adminCases.filter((item) => item.status === "PENDING").length));
-    setText("metricTaken", String(state.adminCases.filter((item) => item.status === "TAKEN").length));
-    setText("metricReturned", String(state.adminCases.filter((item) => item.status === "RETURNED").length));
+    const conversations = await requestJson("/api/admin/conversations", {
+      headers: headers(),
+    });
+    state.adminCases = conversations.map(caseFromConversation);
+    setText("metricPending", String(state.adminCases.filter((item) => item.handoffStatus === "PENDING").length));
+    setText("metricTaken", String(state.adminCases.filter((item) => item.handoffStatus === "TAKEN").length));
+    setText("metricReturned", String(state.adminCases.filter((item) => item.handoffStatus === "RETURNED").length));
     renderAdminCases();
   } catch (error) {
     state.adminCases = [];
@@ -192,17 +194,6 @@ async function loadAllAdminCases() {
     }
     logEvent(`Clientes falló: ${error.message}`);
   }
-}
-
-async function loadAllAdminCasesWithoutPartialData() {
-  const statuses = ["PENDING", "TAKEN", "RETURNED"];
-  return Promise.all(
-    statuses.map((status) =>
-      requestJson(`/api/admin/handoffs?status=${encodeURIComponent(status)}`, {
-        headers: headers(),
-      })
-    )
-  );
 }
 
 function caseFromHandoff(handoff) {
@@ -220,6 +211,26 @@ function caseFromHandoff(handoff) {
     takenAt: handoff.taken_at,
     resolvedAt: handoff.resolved_at,
     summary: handoff.summary || "",
+  };
+}
+
+function caseFromConversation(conversation) {
+  const handoffStatus = conversation.handoff_status || "SIN_HANDOFF";
+  return {
+    id: conversation.handoff_id,
+    conversationId: conversation.conversation_id,
+    status: conversation.state,
+    handoffStatus,
+    priority: conversation.handoff_priority || "NORMAL",
+    reason: conversation.handoff_reason || conversation.last_intent || "Sin clasificar",
+    customerName: conversation.customer_name || "Cliente sin nombre confirmado",
+    phone: conversation.customer_phone || "Teléfono no disponible",
+    assignedTo: conversation.assigned_to || (conversation.bot_enabled ? "Bot activo" : "Sin asignar"),
+    createdAt: conversation.last_message_at,
+    takenAt: null,
+    resolvedAt: null,
+    summary: conversation.last_message_body || "",
+    lastMessageDirection: conversation.last_message_direction,
   };
 }
 
@@ -243,7 +254,7 @@ function renderAdminCases() {
 
   const query = ($("#caseSearch")?.value || "").trim().toLowerCase();
   const cases = state.adminCases.filter((item) => {
-    const statusMatches = state.caseStatus === "ALL" || item.status === state.caseStatus;
+    const statusMatches = state.caseStatus === "ALL" || item.handoffStatus === state.caseStatus;
     const text = [
       item.customerName,
       item.phone,
@@ -269,18 +280,17 @@ function renderAdminCases() {
     $(".caseClient", row).textContent = item.customerName;
     $(".casePhone", row).textContent = `${item.phone} · conversación ${item.conversationId}`;
     const status = $(".caseStatus", row);
-    status.className = `caseStatus pill ${statusClass(item.status)}`;
-    status.textContent = statusLabel(item.status);
+    status.className = `caseStatus pill ${statusClass(item.handoffStatus)}`;
+    status.textContent = statusLabel(item.handoffStatus, item.status);
     $(".caseAssignment", row).textContent = item.assignedTo;
     $(".caseReason", row).textContent = item.reason;
     $(".caseActivity", row).textContent = activityText(item);
     const actions = $(".caseActions", row);
-    if (item.status === "PENDING") {
-      actions.append(actionButton("Tomar", () => takeHandoff(item.id), "primary"));
-    } else if (item.status === "TAKEN") {
+    actions.append(actionButton("Tomar", () => takeConversation(item.conversationId), "primary"));
+    if (item.handoffStatus === "TAKEN" && item.id !== null) {
       actions.append(actionButton("Responder", () => openHandoffAndFocus(item.id)));
       actions.append(actionButton("Devolver", () => returnHandoff(item.id), "danger"));
-    } else {
+    } else if (item.id !== null) {
       actions.append(actionButton("Ver resumen", () => showSummary(item)));
     }
     container.append(row);
@@ -294,12 +304,13 @@ function statusClass(status) {
   return "neutral";
 }
 
-function statusLabel(status) {
+function statusLabel(status, conversationState = null) {
   return {
     PENDING: "Pendiente",
     TAKEN: "Asignado",
     RETURNED: "Devuelto",
     RESOLVED: "Resuelto",
+    SIN_HANDOFF: conversationState || "Sin handoff",
   }[status] || status;
 }
 
@@ -307,6 +318,9 @@ function activityText(item) {
   const timestamp = item.resolvedAt || item.takenAt || item.createdAt;
   if (!timestamp) return "Sin fecha";
   const label = item.resolvedAt ? "Devuelto" : item.takenAt ? "Tomado" : "Creado";
+  if (item.lastMessageDirection) {
+    return `${item.lastMessageDirection} · ${new Date(timestamp).toLocaleString("es-CO", { hour12: false })}`;
+  }
   return `${label} · ${new Date(timestamp).toLocaleString("es-CO", { hour12: false })}`;
 }
 
@@ -391,6 +405,23 @@ async function takeHandoff(handoffId) {
     await loadHandoffs("TAKEN");
   } catch (error) {
     logEvent(`No se pudo tomar el handoff: ${error.message}`);
+  }
+}
+
+async function takeConversation(conversationId) {
+  saveConfig();
+  try {
+    const handoff = await requestJson(`/api/admin/conversations/${conversationId}/take`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ agent: state.agentName }),
+    });
+    logEvent(`Conversación ${conversationId} tomada por ${state.agentName}.`);
+    await refreshAll();
+    await loadHandoffs("TAKEN");
+    openHandoffAndFocus(handoff.id);
+  } catch (error) {
+    logEvent(`No se pudo tomar la conversación: ${error.message}`);
   }
 }
 

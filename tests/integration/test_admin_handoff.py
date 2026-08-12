@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import IntentClassification
+from app.audit.models import AuditEvent
 from app.channel.models import Outbox
 from app.conversation.models import Conversation
 from app.customer.models import Customer
@@ -241,6 +242,51 @@ async def test_concurrent_take_allows_only_one_agent(
     assert conversation is not None
     assert conversation.state == "HUMAN_ACTIVE"
     assert conversation.bot_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_admin_can_take_any_bot_active_conversation(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_classifier(monkeypatch, fake_classification("GREETING"))
+    await post_whatsapp(client, "wamid.manual.take.1", "Hola")
+
+    conversations = await client.get("/admin/conversations", headers=admin_headers())
+    assert conversations.status_code == 200
+    conversation_payload = conversations.json()[0]
+    conversation_id = conversation_payload["conversation_id"]
+    assert conversation_payload["state"] == "BOT_ACTIVE"
+    assert conversation_payload["handoff_id"] is None
+
+    taken = await client.post(
+        f"/admin/conversations/{conversation_id}/take",
+        headers=admin_headers(),
+        json={"agent": "Alexandra"},
+    )
+    assert taken.status_code == 200
+    handoff = taken.json()
+    assert handoff["status"] == "TAKEN"
+    assert handoff["assigned_to"] == "Alexandra"
+
+    async with app.state.db_sessionmaker() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        audit = await session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "CONVERSATION_MANUAL_TAKEOVER")
+        )
+
+    assert conversation is not None
+    assert conversation.state == "HUMAN_ACTIVE"
+    assert conversation.bot_enabled is False
+    assert conversation.pending_action == "WAIT_FOR_HUMAN"
+    assert audit is not None
+
+    agent_message = await client.post(
+        f"/admin/conversations/{conversation_id}/messages",
+        headers=admin_headers(),
+        json={"text": "Hola, tomo tu caso."},
+    )
+    assert agent_message.status_code == 200
 
 
 @pytest.mark.asyncio
