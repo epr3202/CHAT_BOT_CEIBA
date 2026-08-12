@@ -82,6 +82,82 @@ El panel muestra una bandeja vacía cuando no hay handoffs reales. Si
 `OPENROUTER_API_KEY` no es válida, el mensaje `quiero hablar con un asesor` cae al
 menú determinístico y no crea handoff; ese comportamiento es por diseño.
 
+### Operación local con WhatsApp real
+
+Para probar con el número real de WhatsApp no se debe levantar `fake_meta_server.py`
+ni configurar `WHATSAPP_API_BASE_URL=http://localhost:8081` en el worker. Ese modo
+marca outbox como enviados contra el doble local y el cliente real no recibe nada.
+
+Terminales recomendadas:
+
+```bash
+docker compose up -d db
+.venv/bin/alembic upgrade head
+.venv/bin/python scripts/load_knowledge.py
+```
+
+```bash
+.venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+```bash
+.venv/bin/python -m app.channel.worker
+```
+
+```bash
+node frontend/server.mjs
+```
+
+La URL pública de Cloudflare debe registrarse en Meta como:
+
+```text
+https://<subdominio>.trycloudflare.com/webhook
+```
+
+La verificación de Meta usa `META_VERIFY_TOKEN`. El envío real del worker usa
+`META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`, `META_GRAPH_API_VERSION` y
+`WHATSAPP_API_BASE_URL`. `META_PHONE_NUMBER_ID` es el identificador numérico del
+teléfono en WhatsApp Cloud API; no es el número telefónico visible.
+
+Errores frecuentes del outbox:
+
+- `https://graph.facebook.com/vXX.0//messages` con HTTP 400: falta
+  `META_PHONE_NUMBER_ID`.
+- HTTP 401 contra `/messages`: `META_ACCESS_TOKEN` está ausente, vencido, no
+  corresponde al app/phone number, o no tiene permisos vigentes.
+- `wamid.fake...` en mensajes salientes: el worker estaba apuntando al doble local
+  de Meta, no a Graph API real.
+
+Después de cambiar `.env`, reiniciar API y worker. Ambos cargan configuración al
+arrancar.
+
+### Operación de handoffs en el panel
+
+La pestaña `Clientes` lista conversaciones persistidas, incluso si todavía no tienen
+handoff. Desde ahí se puede tomar cualquier conversación con el botón `Tomar`.
+Esa acción administrativa:
+
+- crea un handoff si no existe uno activo;
+- asigna o reasigna el caso al asesor configurado;
+- mueve la conversación a `HUMAN_ACTIVE`;
+- deja `bot_enabled = false`;
+- registra auditoría `CONVERSATION_MANUAL_TAKEOVER`;
+- permite responder por outbox desde la bandeja `Tomados`.
+
+La pestaña `Handoffs` muestra las colas `Pendientes`, `Tomados` y `Devueltos`.
+El hilo del caso tomado se actualiza por AJAX cada 3 segundos y también refresca
+inmediatamente después de enviar un mensaje humano. Los mensajes del cliente que
+llegan durante `HUMAN_ACTIVE` se guardan, aparecen en el panel y no disparan
+respuesta automática del bot.
+
+Reiniciar API, worker o frontend no libera ni borra un caso tomado. El estado vive
+en Postgres: `conversation.state = HUMAN_ACTIVE`, `conversation.bot_enabled = false`
+y `handoff.status = TAKEN`.
+
 ## Pruebas locales sin Meta
 
 Esta receta prueba el flujo completo webhook → orquestador → outbox → worker sin enviar

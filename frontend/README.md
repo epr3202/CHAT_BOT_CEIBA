@@ -31,29 +31,102 @@ Variables opcionales:
   `/api/webhook/simulate`. Si está definido en el proceso Node, el campo de secreto
   del panel es opcional.
 
-La pantalla principal es seguimiento administrativo de clientes/casos. Usa solo
-los datos disponibles hoy en `GET /admin/handoffs`:
+La pantalla principal es seguimiento administrativo de clientes/casos. Usa
+`GET /admin/conversations` para listar todas las conversaciones persistidas, no
+solo las que ya tienen handoff:
 
-- cliente y teléfono estructurados del payload admin, con fallback al resumen
-  determinístico para payloads antiguos;
+- cliente y teléfono estructurados;
 - conversación;
-- estado del handoff;
+- estado conversacional;
+- último mensaje registrado;
+- estado del handoff si existe;
 - asesor asignado;
 - prioridad;
 - motivo;
-- fechas de creación, toma o devolución;
-- acciones disponibles según estado.
+- última actividad;
+- acción `Tomar` disponible para cualquier conversación.
 
 El panel también cubre estas superficies actuales del backend:
 
 - salud de API;
 - simulación de webhook WhatsApp firmado;
 - reenvío duplicado del último webhook;
+- listado de conversaciones;
+- toma manual de cualquier conversación;
 - listado de handoffs por estado;
 - tomar handoff;
+- reasignar un caso ya tomado al asesor configurado;
+- chat de handoff con polling AJAX;
 - enviar respuesta humana vía outbox;
 - devolver conversación al bot.
 
 El token admin se guarda en `sessionStorage` bajo `ceiba.adminToken`: no persiste
 entre sesiones del navegador. Si existe un valor antiguo en `localStorage`, el
 panel lo migra a `sessionStorage` y elimina la copia persistente al cargar.
+
+## Vistas operativas
+
+### Clientes
+
+Lista conversaciones de `GET /admin/conversations`. Esta vista sirve como bandeja
+general de operación:
+
+- conversaciones sin handoff aparecen con su estado conversacional actual;
+- conversaciones con handoff muestran estado `Pendiente`, `Asignado` o `Devuelto`;
+- el botón `Tomar` llama `POST /admin/conversations/{conversation_id}/take`;
+- tomar una conversación crea o toma un handoff, pausa el bot y la mueve a
+  `HUMAN_ACTIVE`;
+- si el caso ya está tomado, el botón funciona como reasignación explícita al
+  asesor configurado en el campo `Agente`;
+- el botón `Responder` abre la bandeja `Tomados` y enfoca el handoff cuando aplica.
+
+### Handoffs
+
+La bandeja humana mantiene las colas históricas por estado:
+
+- `Pendientes`: handoffs creados por el bot u operación, todavía sin asesor activo;
+- `Tomados`: conversaciones en atención humana;
+- `Devueltos`: casos que ya regresaron al bot.
+
+En `Tomados`, cada tarjeta muestra dos fuentes:
+
+- resumen determinístico del momento de escalamiento o toma manual;
+- hilo de chat vivo consultado con `GET /admin/conversations/{conversation_id}/messages`.
+
+El hilo usa polling AJAX cada 3 segundos mediante `setInterval`. También se refresca
+después de presionar `Enviar`. Esto permite ver mensajes nuevos del cliente sin
+recargar la página mientras el bot permanece pausado.
+
+Estados de mensajes salientes:
+
+- mensajes ya materializados como `Message OUTBOUND` aparecen como burbujas
+  salientes sin estado adicional;
+- filas `outbox` todavía no enviadas aparecen como salientes con `pending`,
+  `sending` o `failed`;
+- si el worker falla contra Meta, el hilo permite ver que el mensaje fue escrito,
+  aunque la investigación técnica se hace en `outbox.last_error`.
+
+### Simulador
+
+El simulador firma un payload local y lo envía al backend por `/webhook`. Es útil
+para validar deduplicación y flujo local. No debe confundirse con WhatsApp real:
+para WhatsApp real se debe usar Cloudflare, webhook configurado en Meta y worker
+sin `WHATSAPP_API_BASE_URL=http://localhost:8081`.
+
+## Persistencia y reinicios
+
+El navegador solo conserva token admin y preferencias locales. Los casos operativos
+viven en Postgres. Reiniciar API, worker, frontend o Cloudflare no cambia:
+
+```text
+conversation.state
+conversation.bot_enabled
+handoff.status
+handoff.assigned_to
+message
+outbox
+audit_event
+```
+
+Por eso un caso tomado sigue tomado después de reiniciar procesos, siempre que no se
+borre la base de datos.

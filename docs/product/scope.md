@@ -904,9 +904,13 @@ El sistema deberá:
 * generar resumen;
 * enviar a bandeja común;
 * permitir toma manual;
+* permitir toma manual desde una conversación sin handoff previo;
 * registrar asesor;
+* reasignar explícitamente una conversación tomada;
 * pausar bot;
 * impedir respuestas simultáneas;
+* mostrar el hilo de mensajes al asesor;
+* actualizar el hilo operativo sin recarga manual;
 * permitir devolver al bot;
 * cerrar conversación.
 
@@ -949,6 +953,59 @@ Conversación escalada
 → asignación exclusiva
 → bot pausado
 ```
+
+También se admite toma manual operativa desde la bandeja general de conversaciones:
+
+```text
+Conversación existente
+→ asesor selecciona “Tomar”
+→ backend crea o reutiliza handoff
+→ asigna asesor
+→ conversation_status = HUMAN_ACTIVE
+→ bot_enabled = false
+→ auditoría de toma manual
+```
+
+Esta acción no depende de una clasificación previa del bot. Se usa cuando el equipo
+humano identifica que debe intervenir en una conversación que aún estaba siendo
+atendida por automatización, o cuando necesita reasignar un caso ya tomado.
+
+La toma manual deberá preservar la trazabilidad:
+
+* no elimina mensajes existentes;
+* no borra el historial del bot;
+* no confirma pagos, reservas, citas, precios ni disponibilidad;
+* registra `audit_event`;
+* deja al bot pausado hasta que un asesor devuelva la conversación.
+
+## 15.4.1 Persistencia operativa
+
+Los handoffs y conversaciones son persistentes. Reiniciar API, worker, frontend o
+túnel público no deberá liberar un caso tomado. Mientras la base de datos se conserve,
+el estado operativo queda definido por:
+
+```text
+conversation.state = HUMAN_ACTIVE
+conversation.bot_enabled = false
+handoff.status = TAKEN
+handoff.assigned_to = <asesor>
+```
+
+Si el cliente escribe durante `HUMAN_ACTIVE`, el sistema guarda el mensaje y lo
+muestra en la vista administrativa, pero el bot no responde automáticamente.
+
+## 15.4.2 Vista operativa del chat
+
+La bandeja humana deberá permitir ver el hilo de mensajes de una conversación tomada.
+La actualización puede implementarse con polling AJAX mientras no exista un canal de
+eventos en tiempo real. El hilo debe distinguir:
+
+* mensajes entrantes del cliente;
+* mensajes salientes ya enviados;
+* mensajes salientes pendientes o fallidos en outbox.
+
+El resumen determinístico del handoff es contexto operativo, no reemplaza el historial
+de mensajes.
 
 ## 15.5 Responsable general
 

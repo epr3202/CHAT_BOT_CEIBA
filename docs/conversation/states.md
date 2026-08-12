@@ -971,6 +971,37 @@ agent_has_permission = true
 bot_pause_successful = true
 ```
 
+## 14.7.1 Toma manual desde otros estados
+
+Un asesor autorizado puede tomar manualmente una conversación que aún no esté en
+`WAITING_FOR_HUMAN`. Esta operación administrativa debe pasar por las mismas
+invariantes de handoff humano:
+
+```text
+estado_actual
+→ WAITING_FOR_HUMAN
+→ HUMAN_ACTIVE
+```
+
+Efectos obligatorios:
+
+```text
+handoff.status = TAKEN
+handoff.assigned_to = asesor
+conversation_status = HUMAN_ACTIVE
+bot_enabled = false
+pending_action = WAIT_FOR_HUMAN
+audit_event.action = CONVERSATION_MANUAL_TAKEOVER
+```
+
+Si no existe handoff, el backend crea uno con motivo operativo `OTHER`. Si existe un
+handoff `PENDING`, lo toma. Si el caso ya está `TAKEN`, la acción funciona como
+reasignación explícita y debe quedar auditada.
+
+Esta toma manual no autoriza al sistema a ejecutar acciones críticas. Precios, pagos,
+reservas, disponibilidad, citas, devoluciones y descuentos siguen requiriendo servicios
+de dominio y autorización humana según sus reglas específicas.
+
 ## 14.8 Cancelación del handoff
 
 Podrá regresar a `BOT_ACTIVE` cuando:
@@ -996,6 +1027,10 @@ conversation_status = HUMAN_ACTIVE
 → bot_enabled = false
 ```
 
+Este estado es persistente. Reiniciar procesos de API, worker, frontend o túnel público
+no cambia la asignación humana ni reactiva el bot. La conversación solo sale de
+`HUMAN_ACTIVE` mediante una transición explícita registrada por backend.
+
 ## 15.3 Acciones de entrada
 
 * asignar asesor;
@@ -1004,6 +1039,8 @@ conversation_status = HUMAN_ACTIVE
 * bloquear toma por otros asesores;
 * mostrar resumen;
 * permitir respuesta humana.
+* mostrar hilo de mensajes;
+* actualizar el hilo operativo sin recarga manual cuando sea posible.
 
 ## 15.4 Acciones permitidas
 
@@ -1052,6 +1089,30 @@ Puede ocurrir si:
 La reasignación deberá ser explícita y auditada.
 
 No puede haber dos asesores activos.
+
+## 15.9 Mensajes durante atención humana
+
+Cuando el cliente envía mensajes durante `HUMAN_ACTIVE`:
+
+```text
+mensaje inbound
+→ guardar Message
+→ actualizar vista operativa
+→ no generar respuesta automática
+```
+
+La vista del asesor debe leer el historial persistido y puede incluir filas de outbox
+no materializadas todavía como `Message OUTBOUND`, indicando su estado operativo:
+
+```text
+PENDING
+SENDING
+FAILED
+```
+
+Cuando el worker confirma envío exitoso, el mensaje saliente queda persistido como
+`Message OUTBOUND`. Si falla, la causa técnica se conserva en `outbox.last_error` y
+la auditoría registra el fallo al agotar intentos.
 
 ---
 
