@@ -93,6 +93,13 @@ async def count_outbox() -> int:
 
 
 @pytest.mark.asyncio
+async def test_list_handoffs_rejects_invalid_status(client: AsyncClient) -> None:
+    response = await client.get("/admin/handoffs?status=RESOLVED", headers=admin_headers())
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_full_handoff_cycle_returns_control_to_bot(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,

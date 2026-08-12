@@ -3,7 +3,7 @@ from __future__ import annotations
 import hmac
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -59,13 +59,14 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 AdminAuth = Annotated[None, Depends(require_admin_token)]
 DbSession = Annotated[AsyncSession, Depends(get_session)]
+HandoffListStatus = Literal["PENDING", "TAKEN", "RETURNED"]
 
 
 @router.get("/handoffs")
 async def list_handoffs(
     _auth: AdminAuth,
     session: DbSession,
-    status: str = "PENDING",
+    status: HandoffListStatus = "PENDING",
 ) -> list[dict[str, object]]:
     result = await session.execute(
         select(Handoff, Customer)

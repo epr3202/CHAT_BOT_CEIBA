@@ -65,6 +65,23 @@ El script genera un payload realista de mensaje entrante de WhatsApp Cloud API,
 lo firma con `X-Hub-Signature-256` usando HMAC-SHA256 y lo envía a
 `http://localhost:8000/webhook`.
 
+## Panel admin (frontend)
+
+1. Generar un token admin local:
+
+```bash
+openssl rand -hex 32
+```
+
+2. Ponerlo en `.env` como `ADMIN_API_TOKEN`.
+3. Reiniciar `uvicorn` por completo. `get_settings` usa `lru_cache` y `--reload` no
+   vigila cambios en `.env`.
+4. Abrir el panel, pegar el mismo valor en el campo `Token admin` y guardar.
+
+El panel muestra una bandeja vacía cuando no hay handoffs reales. Si
+`OPENROUTER_API_KEY` no es válida, el mensaje `quiero hablar con un asesor` cae al
+menú determinístico y no crea handoff; ese comportamiento es por diseño.
+
 ## Pruebas locales sin Meta
 
 Esta receta prueba el flujo completo webhook → orquestador → outbox → worker sin enviar
