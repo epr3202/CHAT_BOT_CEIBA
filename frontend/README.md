@@ -80,7 +80,12 @@ conversación como `ADMIN`. El filtro `Mis conversaciones` solo aplica cuando ha
 una cédula de agente válida, porque el token admin no representa a un asesor
 individual.
 
-Crear o actualizar un asesor para que use su cédula como credencial:
+Si el asesor escribe su cédula y también hay `Token admin`, el panel registra la
+cédula automáticamente cuando todavía no existe. Usa un nombre operativo
+`Asesor ####` con los últimos cuatro dígitos. Si la cédula ya existe, el backend
+devuelve el mismo agente y no crea duplicados.
+
+Registro técnico equivalente:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/admin/agents \
@@ -91,6 +96,11 @@ curl -X POST http://127.0.0.1:8000/admin/agents \
 
 La respuesta devuelve `token` con esa cédula una sola vez por compatibilidad con el
 flujo de tokens, pero la base solo conserva el hash.
+
+El panel conserva en `localStorage` la cédula, el estado de la bandeja de handoffs,
+los filtros de conversaciones y `Mis conversaciones`. Reiniciar frontend, backend,
+worker o Cloudflare no debe sacar un caso tomado de la bandeja mientras la base
+Postgres se conserve.
 
 ## Vistas operativas
 

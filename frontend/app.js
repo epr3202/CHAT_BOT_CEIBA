@@ -1,6 +1,10 @@
 const adminTokenStorageKey = "ceiba.adminToken";
 const agentTokenStorageKey = "ceiba.agentToken";
 const agentDocumentIdStorageKey = "ceiba.agentDocumentId";
+const currentStatusStorageKey = "ceiba.currentStatus";
+const caseStatusStorageKey = "ceiba.caseStatus";
+const conversationStateStorageKey = "ceiba.conversationState";
+const assignedToMeStorageKey = "ceiba.assignedToMe";
 const directTakeEligibleStates = new Set([
   "BOT_ACTIVE",
   "ANSWERING_INFORMATION",
@@ -45,10 +49,10 @@ const state = {
   agentDocumentId: loadAgentDocumentId(),
   agent: null,
   metaSecret: sessionStorage.getItem("ceiba.metaSecret") || "",
-  currentStatus: "PENDING",
-  caseStatus: "ALL",
-  conversationState: "",
-  assignedToMe: false,
+  currentStatus: localStorage.getItem(currentStatusStorageKey) || "PENDING",
+  caseStatus: localStorage.getItem(caseStatusStorageKey) || "ALL",
+  conversationState: localStorage.getItem(conversationStateStorageKey) || "",
+  assignedToMe: localStorage.getItem(assignedToMeStorageKey) === "true",
   adminCases: [],
   visibleConversationIds: new Set(),
   chatPollIntervalMs: 3000,
@@ -115,6 +119,14 @@ function applyConfigToForm() {
   $("#adminToken").value = state.adminToken;
   $("#agentDocumentId").value = state.agentDocumentId;
   $("#metaSecret").value = state.metaSecret;
+  $("#conversationStateFilter").value = state.conversationState;
+  $("#assignedToMeFilter").checked = state.assignedToMe;
+  $$(".segment").forEach((button) =>
+    button.classList.toggle("active", button.dataset.status === state.currentStatus)
+  );
+  $$(".caseFilter").forEach((button) =>
+    button.classList.toggle("active", button.dataset.caseStatus === state.caseStatus)
+  );
 }
 
 function saveConfig() {
@@ -140,10 +152,40 @@ async function resolveAgentIdentity() {
     state.agent = await requestJson("/api/admin/me", { headers: agentHeaders() });
     setText("agentState", `Asesor: ${state.agent.name}`);
   } catch (error) {
+    if (state.adminToken) {
+      await ensureAgentRegistered();
+      return;
+    }
     state.agent = null;
     setText("agentState", "Cédula no registrada");
     logEvent(`Identidad de asesor falló: ${error.message}`);
   }
+}
+
+async function ensureAgentRegistered() {
+  const documentId = state.agentDocumentId.trim();
+  if (!documentId || !state.adminToken) return;
+  const defaultName = `Asesor ${documentId.slice(-4)}`;
+  try {
+    state.agent = await requestJson("/api/admin/agents", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: defaultName, document_id: documentId }),
+    });
+    setText("agentState", `Asesor: ${state.agent.name}`);
+    logEvent(`Cédula registrada para ${state.agent.name}.`);
+  } catch (error) {
+    state.agent = null;
+    setText("agentState", "Cédula no registrada");
+    logEvent(`No se pudo registrar la cédula: ${error.message}`);
+  }
+}
+
+function persistViewState() {
+  localStorage.setItem(currentStatusStorageKey, state.currentStatus);
+  localStorage.setItem(caseStatusStorageKey, state.caseStatus);
+  localStorage.setItem(conversationStateStorageKey, state.conversationState);
+  localStorage.setItem(assignedToMeStorageKey, String(state.assignedToMe));
 }
 
 function setApiState(kind, text) {
@@ -209,6 +251,7 @@ async function sendWebhook({ duplicate = false } = {}) {
 
 async function loadHandoffs(status = state.currentStatus) {
   state.currentStatus = status;
+  persistViewState();
   $$(".segment").forEach((button) => button.classList.toggle("active", button.dataset.status === status));
 
   const list = $("#handoffList");
@@ -236,6 +279,9 @@ async function loadAllAdminCases() {
   }
 
   try {
+    if (state.agentDocumentId && !state.agent) {
+      await resolveAgentIdentity();
+    }
     const params = new URLSearchParams({ limit: "200", offset: "0" });
     if (state.conversationState) params.set("state", state.conversationState);
     if (state.assignedToMe && state.agentDocumentId) params.set("assigned_to_me", "true");
@@ -506,12 +552,19 @@ async function takeConversation(conversationId) {
     logEvent("La toma directa requiere cédula de agente o token admin.");
     return;
   }
+  if (state.agentDocumentId && !state.agent) {
+    await resolveAgentIdentity();
+  }
+  if (state.agentDocumentId && !state.agent && !state.adminToken) {
+    logEvent("Registra la cédula antes de tomar la conversación.");
+    return;
+  }
   try {
     const options = {
       method: "POST",
-      headers: operationHeaders(),
+      headers: state.agent ? agentHeaders() : adminHeaders(),
     };
-    if (!state.agentDocumentId && state.adminToken) {
+    if (!state.agent && state.adminToken) {
       options.body = JSON.stringify({ agent: "ADMIN" });
     }
     const handoff = await requestJson(`/api/admin/conversations/${conversationId}/take`, {
@@ -662,6 +715,7 @@ function bindUi() {
   $$(".caseFilter").forEach((button) => {
     button.addEventListener("click", () => {
       state.caseStatus = button.dataset.caseStatus;
+      persistViewState();
       $$(".caseFilter").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
       renderAdminCases();
@@ -674,10 +728,12 @@ function bindUi() {
   $("#caseSearch").addEventListener("input", renderAdminCases);
   $("#conversationStateFilter").addEventListener("change", (event) => {
     state.conversationState = event.target.value;
+    persistViewState();
     loadAllAdminCases();
   });
   $("#assignedToMeFilter").addEventListener("change", (event) => {
     state.assignedToMe = event.target.checked;
+    persistViewState();
     loadAllAdminCases();
   });
   $("#refreshAll").addEventListener("click", refreshAll);

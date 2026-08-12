@@ -176,6 +176,20 @@ async def test_tc_agent_create_with_document_id_uses_document_as_agent_token(
 
 
 @pytest.mark.asyncio
+async def test_agent_creation_with_same_document_id_is_idempotent(
+    client: AsyncClient,
+) -> None:
+    document_id = "1020304050"
+    first = await create_agent(client, "Emerson", document_id=document_id)
+    second = await create_agent(client, "Otro Nombre", document_id=document_id)
+
+    assert second["id"] == first["id"]
+    assert second["name"] == "Emerson"
+    assert second["token"] == document_id
+    assert await count_rows(Agent) == 1
+
+
+@pytest.mark.asyncio
 async def test_tc_agent_003_deactivated_agent_returns_403(client: AsyncClient) -> None:
     agent = await create_agent(client, "Inactive")
 

@@ -2056,6 +2056,9 @@ Bloquear retorno si existe una acción humana crítica sin resolver.
 * la respuesta incluye el token en claro una sola vez;
 * la base persiste solo `token_hash`;
 * auditoría no contiene token ni hash.
+* si se envía `document_id`, ese valor funciona como token del agente;
+* repetir `POST /admin/agents` con el mismo `document_id` devuelve el agente
+  existente y no crea duplicados.
 
 ---
 

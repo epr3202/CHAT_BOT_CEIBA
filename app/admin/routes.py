@@ -161,6 +161,16 @@ async def create_agent(
     token = body.document_id.strip() if body.document_id is not None else secrets.token_urlsafe(32)
     token_hash = hash_agent_token(token)
     async with session.begin():
+        existing_agent = await session.scalar(select(Agent).where(Agent.token_hash == token_hash))
+        if existing_agent is not None:
+            return CreatedAgentPayload(
+                id=existing_agent.id,
+                name=existing_agent.name,
+                active=existing_agent.active,
+                created_at=existing_agent.created_at,
+                token=token,
+            )
+
         agent = Agent(name=body.name, token_hash=token_hash, active=True)
         session.add(agent)
         await session.flush()

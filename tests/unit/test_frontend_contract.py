@@ -26,12 +26,14 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/admin/conversations",
         "/api/admin/conversations/",
         "/api/admin/me",
+        "/api/admin/agents",
         "/api/webhook/simulate",
         "/health",
         "/admin/handoffs",
         "/admin/conversations",
         "/admin/conversations/",
         "/admin/me",
+        "/admin/agents",
         "/webhook",
     }
 
@@ -96,6 +98,9 @@ def test_agent_document_id_uses_local_storage_and_resolves_identity() -> None:
     assert "localStorage.setItem(agentDocumentIdStorageKey, state.agentDocumentId)" in app_js
     assert "sessionStorage.removeItem(agentTokenStorageKey)" in app_js
     assert "/api/admin/me" in app_js
+    assert "/api/admin/agents" in app_js
+    assert "function ensureAgentRegistered" in app_js
+    assert "document_id: documentId" in app_js
     assert 'id="agentState"' in index_html
     assert 'id="agentDocumentId"' in index_html
 
@@ -127,6 +132,7 @@ def test_admin_cases_list_conversations_and_can_take_any_chat() -> None:
     assert "function takeConversation" in app_js
     assert "/api/admin/conversations/${conversationId}/take" in app_js
     assert 'path === "/api/admin/conversations"' in server
+    assert 'path === "/api/admin/agents"' in server
 
 
 def test_frontend_has_conversation_filters_and_direct_take_uses_agent_token() -> None:
@@ -140,7 +146,8 @@ def test_frontend_has_conversation_filters_and_direct_take_uses_agent_token() ->
     function_start = app_js.index("async function takeConversation")
     function_end = app_js.index("async function sendAgentMessage", function_start)
     function_body = app_js[function_start:function_end]
-    assert "headers: operationHeaders()" in function_body
+    assert "headers: state.agent ? agentHeaders() : adminHeaders()" in function_body
+    assert "await resolveAgentIdentity()" in function_body
     assert 'options.body = JSON.stringify({ agent: "ADMIN" })' in function_body
     assert "prompt(" not in app_js
     assert "alert(" not in app_js
@@ -153,3 +160,13 @@ def test_frontend_shows_assignment_history() -> None:
     assert "assignment_history" in app_js
     assert "function assignmentText" in app_js
     assert "white-space: pre-line" in styles
+
+
+def test_frontend_persists_followup_bandeja_state() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+
+    assert 'const currentStatusStorageKey = "ceiba.currentStatus"' in app_js
+    assert 'const assignedToMeStorageKey = "ceiba.assignedToMe"' in app_js
+    assert "function persistViewState" in app_js
+    assert "localStorage.getItem(currentStatusStorageKey)" in app_js
+    assert "localStorage.setItem(currentStatusStorageKey, state.currentStatus)" in app_js
