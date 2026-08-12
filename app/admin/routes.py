@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated
@@ -45,7 +46,8 @@ async def require_admin_token(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin API token is not configured",
         )
-    if authorization != f"Bearer {expected}":
+    provided = (authorization or "").removeprefix("Bearer ")
+    if not hmac.compare_digest(provided, expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
 
