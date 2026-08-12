@@ -70,6 +70,12 @@ class AgentIdentityPayload(BaseModel):
     name: str
 
 
+class AssignmentHistoryPayload(BaseModel):
+    actor: str
+    action: str
+    created_at: datetime
+
+
 class ConversationMessagePayload(BaseModel):
     id: str
     direction: Literal["INBOUND", "OUTBOUND"]
@@ -92,6 +98,7 @@ class ConversationPayload(BaseModel):
     handoff_status: str | None
     assigned_to: str | None
     assigned_agent: AgentIdentityPayload | None
+    assignment_history: list[AssignmentHistoryPayload]
     handoff_reason: str | None
     handoff_priority: str | None
     last_message_body: str | None
@@ -311,6 +318,7 @@ async def list_conversations(
         handoff = await latest_handoff_for_conversation(session, conversation.id)
         latest_message = await latest_message_for_conversation(session, conversation.id)
         latest_body = message_body(latest_message) if latest_message is not None else None
+        assignment_history = await assignment_history_for_conversation(session, conversation.id)
         payloads.append(
             ConversationPayload(
                 id=conversation.id,
@@ -325,6 +333,7 @@ async def list_conversations(
                 handoff_status=handoff.status if handoff is not None else None,
                 assigned_to=handoff.assigned_to if handoff is not None else None,
                 assigned_agent=agent_identity_payload(assigned_agent),
+                assignment_history=assignment_history,
                 handoff_reason=handoff.reason if handoff is not None else None,
                 handoff_priority=handoff.priority if handoff is not None else None,
                 last_message_body=latest_body,
@@ -425,12 +434,14 @@ async def take_handoff(
 @router.post("/conversations/{conversation_id}/take")
 async def take_conversation(
     conversation_id: int,
+    request: Request,
     session: DbSession,
+    body: TakeHandoffRequest | None = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
-    agent = await require_agent_from_session(session, authorization)
-    agent_id = agent.id
-    agent_name = agent.name
+    agent = await require_admin_or_agent(request, session, authorization)
+    agent_id = agent.id if agent is not None else None
+    agent_name = agent.name if agent is not None else (body.agent if body is not None else "ADMIN")
     await session.rollback()
 
     async with session.begin():
@@ -828,6 +839,44 @@ async def latest_message_for_conversation(
         .order_by(Message.id.desc())
         .limit(1)
     )
+
+
+async def assignment_history_for_conversation(
+    session: AsyncSession,
+    conversation_id: int,
+) -> list[AssignmentHistoryPayload]:
+    events = await session.scalars(
+        select(AuditEvent)
+        .where(
+            AuditEvent.action.in_(
+                [
+                    "HANDOFF_TAKEN",
+                    "HANDOFF_RETURNED",
+                    "CONVERSATION_MANUAL_TAKEOVER",
+                ]
+            )
+        )
+        .order_by(AuditEvent.created_at.asc(), AuditEvent.id.asc())
+    )
+    history: list[AssignmentHistoryPayload] = []
+    for event in events.all():
+        new_value = event.new_value or {}
+        old_value = event.old_value or {}
+        event_conversation_id = new_value.get("conversation_id") or old_value.get(
+            "conversation_id"
+        )
+        if event_conversation_id != conversation_id:
+            continue
+        if event.action == "CONVERSATION_MANUAL_TAKEOVER":
+            continue
+        history.append(
+            AssignmentHistoryPayload(
+                actor=event.actor,
+                action=event.action,
+                created_at=event.created_at,
+            )
+        )
+    return history
 
 
 async def build_manual_takeover_summary(

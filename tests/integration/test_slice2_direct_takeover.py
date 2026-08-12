@@ -191,7 +191,7 @@ async def test_tc_agent_003_deactivated_agent_returns_403(client: AsyncClient) -
 
 
 @pytest.mark.asyncio
-async def test_tc_agent_004_admin_token_does_not_identify_agent_for_take(
+async def test_tc_agent_004_admin_token_can_manage_and_take_without_agent_identity(
     client: AsyncClient,
 ) -> None:
     await create_agent(client, "Alexandra")
@@ -201,9 +201,20 @@ async def test_tc_agent_004_admin_token_does_not_identify_agent_for_take(
     response = await client.post(
         f"/admin/conversations/{conversation.id}/take",
         headers=admin_headers(),
+        json={"agent": "ADMIN"},
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assigned_to"] == "ADMIN"
+    assert payload["assigned_agent"] is None
+
+    async with app.state.db_sessionmaker() as session:
+        conversation_after = await session.get(Conversation, conversation.id)
+
+    assert conversation_after is not None
+    assert conversation_after.state == "HUMAN_ACTIVE"
+    assert conversation_after.assigned_agent_id is None
 
 
 @pytest.mark.asyncio
@@ -460,6 +471,8 @@ async def test_tc_take_011_list_conversations_filters_paginates_and_orders(
     assert payload[0]["customer_phone"] == "+573001112237"
     assert payload[0]["state"] == "HUMAN_ACTIVE"
     assert payload[0]["assigned_agent"] == {"id": agent["id"], "name": "Alexandra"}
+    assert payload[0]["assignment_history"][0]["actor"] == "Alexandra"
+    assert payload[0]["assignment_history"][0]["action"] == "HANDOFF_TAKEN"
     assert payload[0]["last_message_preview"] == "Segundo"
     assert payload[0]["last_message_at"] is not None
 

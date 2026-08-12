@@ -135,11 +135,21 @@ def test_frontend_has_conversation_filters_and_direct_take_uses_agent_token() ->
 
     assert 'id="conversationStateFilter"' in index_html
     assert 'id="assignedToMeFilter"' in index_html
+    assert 'state.assignedToMe && state.agentDocumentId' in app_js
     assert 'params.set("assigned_to_me", "true")' in app_js
     function_start = app_js.index("async function takeConversation")
     function_end = app_js.index("async function sendAgentMessage", function_start)
     function_body = app_js[function_start:function_end]
-    assert "headers: agentHeaders()" in function_body
-    assert "body: JSON.stringify({ agent:" not in function_body
+    assert "headers: operationHeaders()" in function_body
+    assert 'options.body = JSON.stringify({ agent: "ADMIN" })' in function_body
     assert "prompt(" not in app_js
     assert "alert(" not in app_js
+
+
+def test_frontend_shows_assignment_history() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    styles = FRONTEND.joinpath("styles.css").read_text(encoding="utf-8")
+
+    assert "assignment_history" in app_js
+    assert "function assignmentText" in app_js
+    assert "white-space: pre-line" in styles

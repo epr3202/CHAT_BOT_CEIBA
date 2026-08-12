@@ -434,6 +434,10 @@ textarea {
   line-height: 1.35;
 }
 
+.caseAssignment {
+  white-space: pre-line;
+}
+
 .caseReason,
 .caseActivity {
   color: #314138;

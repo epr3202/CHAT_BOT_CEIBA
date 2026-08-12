@@ -2081,15 +2081,17 @@ Bloquear retorno si existe una acción humana crítica sin resolver.
 
 ---
 
-## TC-AGENT-004 — Token admin no identifica agente
+## TC-AGENT-004 — Token admin toma administrativamente sin identidad de agente
 
 **Precondición:** `ADMIN_API_TOKEN` válido.
 
 **Resultado esperado:**
 
 * el token admin permite gestión de agentes;
-* el token admin no permite tomar conversaciones como agente;
-* toma directa con token admin devuelve 401.
+* el token admin no identifica a un asesor individual;
+* toma directa con token admin devuelve 200 como toma administrativa;
+* `assigned_to = ADMIN`;
+* `assigned_agent_id = null`.
 
 ---
 
@@ -2209,6 +2211,7 @@ Bloquear retorno si existe una acción humana crítica sin resolver.
 * `GET /admin/conversations` soporta `state`, `assigned_to_me`, `limit` y `offset`;
 * payload incluye id, nombre y teléfono del cliente, estado, agente asignado y
   timestamp del último mensaje;
+* payload incluye historial compacto de asignaciones/tomas/devoluciones;
 * orden por actividad reciente descendente.
 
 ---

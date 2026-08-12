@@ -238,7 +238,7 @@ async function loadAllAdminCases() {
   try {
     const params = new URLSearchParams({ limit: "200", offset: "0" });
     if (state.conversationState) params.set("state", state.conversationState);
-    if (state.assignedToMe) params.set("assigned_to_me", "true");
+    if (state.assignedToMe && state.agentDocumentId) params.set("assigned_to_me", "true");
     const conversations = await requestJson(`/api/admin/conversations?${params.toString()}`, {
       headers: operationHeaders(),
     });
@@ -279,6 +279,7 @@ function caseFromHandoff(handoff) {
 function caseFromConversation(conversation) {
   const handoffStatus = conversation.handoff_status || "SIN_HANDOFF";
   const assignedAgent = conversation.assigned_agent?.name || conversation.assigned_to;
+  const assignmentHistory = conversation.assignment_history || [];
   return {
     id: conversation.handoff_id,
     conversationId: conversation.id || conversation.conversation_id,
@@ -289,6 +290,7 @@ function caseFromConversation(conversation) {
     customerName: conversation.customer_name || "Cliente sin nombre confirmado",
     phone: conversation.customer_phone || "Teléfono no disponible",
     assignedTo: assignedAgent || (conversation.bot_enabled ? "Bot activo" : "Sin asignar"),
+    assignmentHistory,
     createdAt: conversation.last_message_at,
     takenAt: null,
     resolvedAt: null,
@@ -345,7 +347,7 @@ function renderAdminCases() {
     const status = $(".caseStatus", row);
     status.className = `caseStatus pill ${statusClass(item.handoffStatus)}`;
     status.textContent = statusLabel(item.handoffStatus, item.status);
-    $(".caseAssignment", row).textContent = item.assignedTo;
+    $(".caseAssignment", row).textContent = assignmentText(item);
     $(".caseReason", row).textContent = item.reason;
     $(".caseActivity", row).textContent = activityText(item);
     const actions = $(".caseActions", row);
@@ -389,6 +391,20 @@ function activityText(item) {
     return `${item.lastMessageDirection} · ${new Date(timestamp).toLocaleString("es-CO", { hour12: false })}`;
   }
   return `${label} · ${new Date(timestamp).toLocaleString("es-CO", { hour12: false })}`;
+}
+
+function assignmentText(item) {
+  const history = item.assignmentHistory || [];
+  if (!history.length) {
+    return item.assignedTo;
+  }
+  const trail = history
+    .map((event) => {
+      if (event.action === "HANDOFF_RETURNED") return `${event.actor} devolvió`;
+      return `${event.actor} tomó`;
+    })
+    .join(" · ");
+  return `${item.assignedTo}\n${trail}`;
 }
 
 function openHandoffAndFocus(handoffId) {
@@ -486,16 +502,22 @@ async function takeHandoff(handoffId) {
 
 async function takeConversation(conversationId) {
   saveConfig();
-  if (!state.agentDocumentId) {
-    logEvent("La toma directa requiere cédula de agente.");
+  if (!state.agentDocumentId && !state.adminToken) {
+    logEvent("La toma directa requiere cédula de agente o token admin.");
     return;
   }
   try {
-    const handoff = await requestJson(`/api/admin/conversations/${conversationId}/take`, {
+    const options = {
       method: "POST",
-      headers: agentHeaders(),
+      headers: operationHeaders(),
+    };
+    if (!state.agentDocumentId && state.adminToken) {
+      options.body = JSON.stringify({ agent: "ADMIN" });
+    }
+    const handoff = await requestJson(`/api/admin/conversations/${conversationId}/take`, {
+      ...options,
     });
-    logEvent(`Conversación ${conversationId} tomada por ${state.agent?.name || "asesor"}.`);
+    logEvent(`Conversación ${conversationId} tomada por ${state.agent?.name || "ADMIN"}.`);
     await refreshAll();
     await loadHandoffs("TAKEN");
     openHandoffAndFocus(handoff.id);

@@ -75,6 +75,11 @@ El panel separa dos credenciales:
   en `localStorage`, el panel lo migra a `sessionStorage` y elimina la copia
   persistente al cargar.
 
+Si solo se configura `Token admin`, el panel puede listar y tomar cualquier
+conversación como `ADMIN`. El filtro `Mis conversaciones` solo aplica cuando hay
+una cédula de agente válida, porque el token admin no representa a un asesor
+individual.
+
 Crear o actualizar un asesor para que use su cédula como credencial:
 
 ```bash
@@ -99,8 +104,11 @@ general de operación:
 - el botón `Tomar` llama `POST /admin/conversations/{conversation_id}/take`;
 - tomar una conversación elegible crea un `Handoff(reason=MANUAL_TAKEOVER)`,
   pausa el bot y mueve la conversación a `HUMAN_ACTIVE`;
-- la toma directa requiere token individual de agente y no envía mensaje
-  automático al cliente;
+- la toma directa con cédula queda asignada al asesor; con token admin queda
+  asignada como `ADMIN`;
+- la toma directa no envía mensaje automático al cliente;
+- la columna de asignación muestra el responsable actual y el historial compacto
+  de tomas/devoluciones del caso;
 - si la conversación está en `WAITING_FOR_HUMAN`, se debe tomar el handoff
   pendiente existente;
 - el botón `Responder` abre la bandeja `Tomados` y enfoca el handoff cuando aplica.
