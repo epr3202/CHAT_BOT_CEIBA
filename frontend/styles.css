@@ -467,6 +467,60 @@ textarea {
   overflow: auto;
 }
 
+.chatThread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 180px;
+  max-height: 360px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f8f6;
+}
+
+.chatBubble {
+  width: min(76%, 720px);
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.chatBubble.inbound {
+  align-self: flex-start;
+  background: var(--surface);
+}
+
+.chatBubble.outbound {
+  align-self: flex-end;
+  background: #dcefe4;
+  border-color: #bfd9ca;
+}
+
+.chatBody {
+  font-size: 14px;
+}
+
+.chatMeta,
+.chatEmpty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chatMeta {
+  margin-top: 5px;
+  text-align: right;
+}
+
+.chatEmpty {
+  padding: 18px;
+  text-align: center;
+}
+
 .handoffActions {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) auto auto;

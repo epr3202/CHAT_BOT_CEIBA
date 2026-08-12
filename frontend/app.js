@@ -21,6 +21,8 @@ const state = {
   currentStatus: "PENDING",
   caseStatus: "ALL",
   adminCases: [],
+  visibleConversationIds: new Set(),
+  chatPollIntervalMs: 3000,
   lastWebhook: null,
 };
 
@@ -158,6 +160,7 @@ async function loadHandoffs(status = state.currentStatus) {
       headers: headers(),
     });
     renderHandoffs(handoffs);
+    await refreshVisibleHandoffMessages();
     if (status === "PENDING") setText("metricPending", String(handoffs.length));
     if (status === "TAKEN") setText("metricTaken", String(handoffs.length));
     return handoffs;
@@ -329,6 +332,7 @@ function priorityClass(priority) {
 function renderHandoffs(handoffs) {
   const list = $("#handoffList");
   list.innerHTML = "";
+  state.visibleConversationIds = new Set(handoffs.map((handoff) => handoff.conversation_id));
   if (!handoffs.length) {
     list.innerHTML = `<div class="emptyState">No hay handoffs en este estado.</div>`;
     return;
@@ -344,6 +348,8 @@ function renderHandoffs(handoffs) {
     priority.className = `priority ${priorityClass(handoff.priority)}`;
     priority.textContent = handoff.priority;
     $(".summary", node).textContent = handoff.summary || "Sin resumen disponible";
+    $(".chatThread", node).dataset.conversationId = String(handoff.conversation_id);
+    $(".chatThread", node).innerHTML = `<div class="chatEmpty">Cargando conversación...</div>`;
 
     const actions = $(".handoffActions", node);
     if (handoff.status === "PENDING") {
@@ -401,9 +407,79 @@ async function sendAgentMessage(conversationId, text) {
     });
     logEvent(`Respuesta encolada para conversación ${conversationId}.`);
     await refreshAll();
+    await refreshConversationMessages(conversationId);
   } catch (error) {
     logEvent(`No se pudo enviar la respuesta: ${error.message}`);
   }
+}
+
+async function refreshVisibleHandoffMessages() {
+  if (!state.adminToken || state.visibleConversationIds.size === 0) return;
+  await Promise.all(
+    Array.from(state.visibleConversationIds).map((conversationId) =>
+      refreshConversationMessages(conversationId)
+    )
+  );
+}
+
+async function refreshConversationMessages(conversationId) {
+  const threads = $$(`.chatThread[data-conversation-id="${conversationId}"]`);
+  if (!threads.length) return;
+
+  try {
+    const messages = await requestJson(`/api/admin/conversations/${conversationId}/messages`, {
+      headers: headers(),
+    });
+    for (const thread of threads) {
+      renderChatThread(thread, messages);
+    }
+  } catch (error) {
+    for (const thread of threads) {
+      thread.innerHTML = `<div class="chatEmpty">No se pudo cargar el chat: ${error.message}</div>`;
+    }
+  }
+}
+
+function renderChatThread(thread, messages) {
+  const wasNearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
+  thread.innerHTML = "";
+  if (!messages.length) {
+    thread.innerHTML = `<div class="chatEmpty">Sin mensajes en esta conversación.</div>`;
+    return;
+  }
+
+  for (const message of messages) {
+    const bubble = document.createElement("div");
+    bubble.className = `chatBubble ${message.direction === "OUTBOUND" ? "outbound" : "inbound"}`;
+
+    const body = document.createElement("div");
+    body.className = "chatBody";
+    body.textContent = message.body;
+    bubble.append(body);
+
+    const meta = document.createElement("div");
+    meta.className = "chatMeta";
+    meta.textContent = chatMetaText(message);
+    bubble.append(meta);
+
+    thread.append(bubble);
+  }
+
+  if (wasNearBottom) {
+    thread.scrollTop = thread.scrollHeight;
+  }
+}
+
+function chatMetaText(message) {
+  const timestamp = message.created_at
+    ? new Date(message.created_at).toLocaleTimeString("es-CO", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : "";
+  const status = message.status ? ` · ${message.status.toLowerCase()}` : "";
+  return `${timestamp}${status}`;
 }
 
 async function returnHandoff(handoffId) {
@@ -479,3 +555,4 @@ function bindUi() {
 applyConfigToForm();
 bindUi();
 refreshAll();
+setInterval(refreshVisibleHandoffMessages, state.chatPollIntervalMs);

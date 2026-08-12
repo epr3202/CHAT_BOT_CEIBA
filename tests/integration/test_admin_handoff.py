@@ -162,6 +162,20 @@ async def test_full_handoff_cycle_returns_control_to_bot(
     assert "OUTBOUND: Hola, soy Alexandra. Ya reviso tu solicitud." in taken_after_message.json()[
         0
     ]["summary"]
+    conversation_messages = await client.get(
+        f"/admin/conversations/{conversation_id}/messages",
+        headers=admin_headers(),
+    )
+    assert conversation_messages.status_code == 200
+    message_payloads = conversation_messages.json()
+    assert [message["direction"] for message in message_payloads] == [
+        "INBOUND",
+        "OUTBOUND",
+        "INBOUND",
+        "OUTBOUND",
+    ]
+    assert message_payloads[-1]["body"] == "Hola, soy Alexandra. Ya reviso tu solicitud."
+    assert message_payloads[-1]["status"] == "PENDING"
 
     returned = await client.post(
         f"/admin/handoffs/{handoff_id}/return",

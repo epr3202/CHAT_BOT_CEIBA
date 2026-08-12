@@ -35,6 +35,15 @@ class AgentMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4096)
 
 
+class ConversationMessagePayload(BaseModel):
+    id: str
+    direction: Literal["INBOUND", "OUTBOUND"]
+    body: str
+    message_type: str
+    status: str | None = None
+    created_at: datetime
+
+
 async def require_admin_token(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
@@ -295,11 +304,86 @@ async def create_agent_message(
     return {"outbox_id": outbox.id, "status": outbox.status}
 
 
+@router.get("/conversations/{conversation_id}/messages")
+async def list_conversation_messages(
+    conversation_id: int,
+    _auth: AdminAuth,
+    session: DbSession,
+) -> list[ConversationMessagePayload]:
+    conversation = await session.get(Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+    message_rows = await session.scalars(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+    )
+    messages = [
+        ConversationMessagePayload(
+            id=f"message-{message.id}",
+            direction=message_direction(message),
+            body=message_body(message),
+            message_type=message.message_type,
+            status=None,
+            created_at=message.created_at,
+        )
+        for message in message_rows.all()
+    ]
+
+    pending_outbox_rows = await session.scalars(
+        select(Outbox)
+        .where(
+            Outbox.conversation_id == conversation_id,
+            Outbox.status != "SENT",
+        )
+        .order_by(Outbox.created_at.asc(), Outbox.id.asc())
+    )
+    messages.extend(
+        ConversationMessagePayload(
+            id=f"outbox-{outbox.id}",
+            direction="OUTBOUND",
+            body=outbox_body(outbox),
+            message_type=str(outbox.payload.get("type", "text")),
+            status=outbox.status,
+            created_at=outbox.created_at,
+        )
+        for outbox in pending_outbox_rows.all()
+    )
+    return sorted(messages, key=lambda message: (message.created_at, message.id))
+
+
 def append_handoff_summary_line(summary: str, direction: str, text: str) -> str:
     clean_text = " ".join(text.split())
     if not clean_text:
         return summary
     return f"{summary.rstrip()}\n- {direction}: {clean_text}"
+
+
+def message_direction(message: Message) -> Literal["INBOUND", "OUTBOUND"]:
+    if message.direction not in {"INBOUND", "OUTBOUND"}:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Conversation message has invalid direction",
+        )
+    return message.direction
+
+
+def message_body(message: Message) -> str:
+    text = message.content.get("text")
+    if isinstance(text, dict) and isinstance(text.get("body"), str):
+        return text["body"]
+    return "[mensaje no textual]"
+
+
+def outbox_body(outbox: Outbox) -> str:
+    text = outbox.payload.get("text")
+    if isinstance(text, dict) and isinstance(text.get("body"), str):
+        return text["body"]
+    return "[mensaje saliente no textual]"
 
 
 def handoff_payload(handoff: Handoff, customer: Customer | None = None) -> dict[str, object]:

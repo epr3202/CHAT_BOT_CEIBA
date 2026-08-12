@@ -87,3 +87,13 @@ def test_agent_message_refreshes_handoff_view() -> None:
     function_body = app_js[function_start:function_end]
 
     assert "await refreshAll();" in function_body
+
+
+def test_handoff_chat_uses_ajax_polling() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
+
+    assert 'class="chatThread"' in index_html
+    assert "/api/admin/conversations/${conversationId}/messages" in app_js
+    assert "setInterval(refreshVisibleHandoffMessages, state.chatPollIntervalMs)" in app_js
+    assert "function renderChatThread" in app_js
