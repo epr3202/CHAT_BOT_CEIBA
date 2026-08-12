@@ -77,16 +77,14 @@ lo firma con `X-Hub-Signature-256` usando HMAC-SHA256 y lo envía a
 
 ## Panel admin (frontend)
 
-1. Generar un token admin local:
+1. Crear o actualizar un usuario administrador:
 
 ```bash
-openssl rand -hex 32
+.venv/bin/python scripts/create_admin.py --name "Admin" --document-id "90000000"
 ```
 
-2. Ponerlo en `.env` como `ADMIN_API_TOKEN`.
-3. Reiniciar `uvicorn` por completo. `get_settings` usa `lru_cache` y `--reload` no
-   vigila cambios en `.env`.
-4. Abrir el panel, pegar el mismo valor en el campo `Token admin` y guardar.
+2. El script solicita el PIN dos veces con `getpass`; no se pasa por argumento.
+3. Abrir el panel e ingresar con cédula + PIN. La sesión dura 12 horas o hasta logout.
 
 El panel muestra una bandeja vacía cuando no hay handoffs reales. Si
 `OPENROUTER_API_KEY` no es válida, el mensaje `quiero hablar con un asesor` cae al

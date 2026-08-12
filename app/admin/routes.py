@@ -1,22 +1,32 @@
 from __future__ import annotations
 
-import hmac
 import secrets
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.auth import hash_agent_token, require_agent_from_session
-from app.agent.models import Agent
+from app.agent.auth import (
+    DUMMY_PASSWORD_HASH,
+    PIN_MIN_LENGTH,
+    delete_expired_sessions_for_agent,
+    hash_agent_token,
+    hash_pin,
+    require_admin,
+    require_session,
+    resolve_session_from_authorization,
+    revoke_sessions_for_agent,
+    verify_pin,
+)
+from app.agent.models import Agent, AgentSession
 from app.audit.models import AuditEvent
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
-from app.config.settings import Settings
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
@@ -37,10 +47,6 @@ DIRECT_TAKE_ELIGIBLE_STATES = {
 }
 
 
-class TakeHandoffRequest(BaseModel):
-    agent: str | None = Field(default=None, min_length=1, max_length=128)
-
-
 class ReturnHandoffRequest(BaseModel):
     resolution: str = Field(min_length=1, max_length=500)
 
@@ -51,23 +57,36 @@ class AgentMessageRequest(BaseModel):
 
 class CreateAgentRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    document_id: str | None = Field(default=None, min_length=4, max_length=64)
+    role: Literal["ADMIN", "AGENT"] = "AGENT"
+
+
+class AgentCredentialsRequest(BaseModel):
+    document_id: str = Field(min_length=4, max_length=64)
+    pin: str = Field(min_length=PIN_MIN_LENGTH, max_length=256)
+
+
+class LoginRequest(BaseModel):
+    document_id: str = Field(min_length=4, max_length=64)
+    pin: str = Field(min_length=1, max_length=256)
 
 
 class AgentPayload(BaseModel):
     id: int
     name: str
+    role: Literal["ADMIN", "AGENT"]
     active: bool
     created_at: datetime
-
-
-class CreatedAgentPayload(AgentPayload):
-    token: str
 
 
 class AgentIdentityPayload(BaseModel):
     id: int
     name: str
+    role: Literal["ADMIN", "AGENT"]
+
+
+class LoginPayload(BaseModel):
+    token: str
+    agent: AgentIdentityPayload
 
 
 class AssignmentHistoryPayload(BaseModel):
@@ -98,7 +117,6 @@ class ConversationPayload(BaseModel):
     handoff_status: str | None
     assigned_to: str | None
     assigned_agent: AgentIdentityPayload | None
-    assignment_history: list[AssignmentHistoryPayload]
     handoff_reason: str | None
     handoff_priority: str | None
     handoff_summary: str | None
@@ -108,117 +126,219 @@ class ConversationPayload(BaseModel):
     last_message_at: datetime | None
 
 
-async def require_admin_token(
-    request: Request,
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    if is_admin_authorized(request, authorization):
-        return
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-
-
-def is_admin_authorized(request: Request, authorization: str | None) -> bool:
-    settings: Settings = request.app.state.settings
-    expected = settings.admin_api_token.strip()
-    if not expected:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Admin API token is not configured",
-        )
-    provided = (authorization or "").removeprefix("Bearer ")
-    return hmac.compare_digest(provided, expected)
-
-
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     sessionmaker = request.app.state.db_sessionmaker
     async with sessionmaker() as session:
         yield session
 
 
-AdminAuth = Annotated[None, Depends(require_admin_token)]
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 HandoffListStatus = Literal["PENDING", "TAKEN", "RETURNED"]
 
 
-async def require_admin_or_agent(
-    request: Request,
-    session: AsyncSession,
-    authorization: str | None,
-) -> Agent | None:
-    settings: Settings = request.app.state.settings
-    expected = settings.admin_api_token.strip()
-    provided = (authorization or "").removeprefix("Bearer ")
-    if expected and hmac.compare_digest(provided, expected):
-        return None
-    return await require_agent_from_session(session, authorization)
+async def authenticated_agent(session: AsyncSession, authorization: str | None) -> Agent:
+    return await require_session(session, authorization)
+
+
+async def authenticated_admin(session: AsyncSession, authorization: str | None) -> Agent:
+    agent = await authenticated_agent(session, authorization)
+    require_admin(agent)
+    return agent
+
+
+@router.post("/login")
+async def login(body: LoginRequest, session: DbSession) -> LoginPayload:
+    document_id = body.document_id.strip()
+    agent = await session.scalar(select(Agent).where(Agent.document_id == document_id))
+    password_hash = (
+        agent.password_hash if agent is not None and agent.password_hash else DUMMY_PASSWORD_HASH
+    )
+    pin_ok = verify_pin(body.pin, password_hash)
+    if agent is None or not pin_ok:
+        session.add(
+            AuditEvent(
+                actor="UNKNOWN",
+                action="ADMIN_LOGIN_FAILED",
+                entity="agent",
+                old_value=None,
+                new_value={"document_id": document_id},
+                reason="Invalid credentials",
+                request_id=None,
+            )
+        )
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not agent.active:
+        session.add(
+            AuditEvent(
+                actor=agent.name,
+                action="ADMIN_LOGIN_FAILED",
+                entity="agent",
+                old_value=None,
+                new_value={"agent_id": agent.id, "document_id": document_id},
+                reason="Inactive agent",
+                request_id=None,
+            )
+        )
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent is inactive")
+
+    token = secrets.token_urlsafe(32)
+    await delete_expired_sessions_for_agent(session, agent.id)
+    agent_session = AgentSession(
+        agent_id=agent.id,
+        token_hash=hash_agent_token(token),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
+    )
+    session.add(agent_session)
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="ADMIN_LOGIN_SUCCEEDED",
+            entity="agent",
+            old_value=None,
+            new_value={"agent_id": agent.id, "role": agent.role},
+            reason="Admin session created",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    return LoginPayload(token=token, agent=agent_identity_payload(agent))
+
+
+@router.post("/logout")
+async def logout(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, str]:
+    agent = await authenticated_agent(session, authorization)
+    agent_name = agent.name
+    agent_id = agent.id
+    agent_session = await resolve_session_from_authorization(session, authorization)
+    if agent_session is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+    await session.rollback()
+    async with session.begin():
+        agent_session.revoked_at = datetime.now(UTC)
+        session.add(
+            AuditEvent(
+                actor=agent_name,
+                action="ADMIN_LOGOUT",
+                entity="agent_session",
+                old_value={"revoked_at": None},
+                new_value={"agent_id": agent_id, "revoked": True},
+                reason="Admin session revoked",
+                request_id=None,
+            )
+        )
+    return {"status": "ok"}
 
 
 @router.post("/agents")
 async def create_agent(
     body: CreateAgentRequest,
-    _auth: AdminAuth,
     session: DbSession,
-) -> CreatedAgentPayload:
-    token = body.document_id.strip() if body.document_id is not None else secrets.token_urlsafe(32)
-    token_hash = hash_agent_token(token)
+    authorization: Annotated[str | None, Header()] = None,
+) -> AgentPayload:
+    admin = await authenticated_admin(session, authorization)
+    admin_name = admin.name
+    await session.rollback()
     async with session.begin():
-        existing_agent = await session.scalar(select(Agent).where(Agent.token_hash == token_hash))
-        if existing_agent is not None:
-            return CreatedAgentPayload(
-                id=existing_agent.id,
-                name=existing_agent.name,
-                active=existing_agent.active,
-                created_at=existing_agent.created_at,
-                token=token,
-            )
-
-        agent = Agent(name=body.name, token_hash=token_hash, active=True)
+        agent = Agent(name=body.name, role=body.role, active=True)
         session.add(agent)
         await session.flush()
         session.add(
             AuditEvent(
-                actor="ADMIN",
+                actor=admin_name,
                 action="AGENT_CREATED",
                 entity="agent",
                 old_value=None,
-                new_value={"agent_id": agent.id, "name": agent.name, "active": agent.active},
-                reason="Admin created agent token",
+                new_value={
+                    "agent_id": agent.id,
+                    "name": agent.name,
+                    "active": agent.active,
+                    "role": agent.role,
+                },
+                reason="Admin created agent",
                 request_id=None,
             )
         )
-    return CreatedAgentPayload(
+    return AgentPayload(
         id=agent.id,
         name=agent.name,
+        role=agent.role,
         active=agent.active,
         created_at=agent.created_at,
-        token=token,
     )
 
 
 @router.get("/agents")
 async def list_agents(
-    _auth: AdminAuth,
     session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> list[AgentPayload]:
+    await authenticated_admin(session, authorization)
     agents = await session.scalars(select(Agent).order_by(Agent.name.asc()))
     return [
-        AgentPayload(id=agent.id, name=agent.name, active=agent.active, created_at=agent.created_at)
+        AgentPayload(
+            id=agent.id,
+            name=agent.name,
+            role=agent.role,
+            active=agent.active,
+            created_at=agent.created_at,
+        )
         for agent in agents.all()
     ]
+
+
+@router.post("/agents/{agent_id}/credentials")
+async def set_agent_credentials(
+    agent_id: int,
+    body: AgentCredentialsRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    admin = await authenticated_admin(session, authorization)
+    admin_name = admin.name
+    await session.rollback()
+    async with session.begin():
+        agent = await session.get(Agent, agent_id, with_for_update=True)
+        if agent is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+        old_value = {"agent_id": agent.id, "document_id": agent.document_id}
+        agent.document_id = body.document_id.strip()
+        agent.password_hash = hash_pin(body.pin)
+        await revoke_sessions_for_agent(session, agent.id)
+        session.add(
+            AuditEvent(
+                actor=admin_name,
+                action="AGENT_CREDENTIALS_RESET",
+                entity="agent",
+                old_value=old_value,
+                new_value={"agent_id": agent.id, "document_id": agent.document_id},
+                reason="Admin reset agent credentials",
+                request_id=None,
+            )
+        )
+    return {"id": agent.id, "document_id": agent.document_id, "status": "credentials_set"}
 
 
 @router.post("/agents/{agent_id}/deactivate")
 async def deactivate_agent(
     agent_id: int,
-    _auth: AdminAuth,
     session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
+    admin = await authenticated_admin(session, authorization)
+    admin_name = admin.name
+    await session.rollback()
     async with session.begin():
         agent = await session.get(Agent, agent_id, with_for_update=True)
         if agent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
         was_active = agent.active
         agent.active = False
+        await revoke_sessions_for_agent(session, agent.id)
         active_conversation_count = await session.scalar(
             select(func.count())
             .select_from(Conversation)
@@ -229,7 +349,7 @@ async def deactivate_agent(
         )
         session.add(
             AuditEvent(
-                actor="ADMIN",
+                actor=admin_name,
                 action="AGENT_DEACTIVATED",
                 entity="agent",
                 old_value={"agent_id": agent.id, "active": was_active},
@@ -255,20 +375,17 @@ async def read_me(
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> AgentIdentityPayload:
-    agent = await require_agent_from_session(session, authorization)
-    if not agent.active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent is inactive")
-    return AgentIdentityPayload(id=agent.id, name=agent.name)
+    agent = await authenticated_agent(session, authorization)
+    return AgentIdentityPayload(id=agent.id, name=agent.name, role=agent.role)
 
 
 @router.get("/handoffs")
 async def list_handoffs(
-    request: Request,
     session: DbSession,
     status: HandoffListStatus = "PENDING",
     authorization: Annotated[str | None, Header()] = None,
 ) -> list[dict[str, object]]:
-    await require_admin_or_agent(request, session, authorization)
+    await authenticated_agent(session, authorization)
     result = await session.execute(
         select(Handoff, Customer)
         .join(Conversation, Handoff.conversation_id == Conversation.id)
@@ -281,7 +398,6 @@ async def list_handoffs(
 
 @router.get("/conversations")
 async def list_conversations(
-    request: Request,
     session: DbSession,
     state: str | None = Query(default=None),
     assigned_to_me: bool = Query(default=False),
@@ -289,7 +405,7 @@ async def list_conversations(
     offset: int = Query(default=0, ge=0),
     authorization: Annotated[str | None, Header()] = None,
 ) -> list[ConversationPayload]:
-    agent = await require_admin_or_agent(request, session, authorization)
+    agent = await authenticated_agent(session, authorization)
     if state is not None:
         try:
             ConversationState(state)
@@ -298,16 +414,10 @@ async def list_conversations(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Invalid conversation state",
             ) from exc
-    if assigned_to_me and agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="assigned_to_me requires agent authentication",
-        )
-
     filters = []
     if state is not None:
         filters.append(Conversation.state == state)
-    if assigned_to_me and agent is not None:
+    if assigned_to_me:
         filters.append(Conversation.assigned_agent_id == agent.id)
 
     statement = (
@@ -329,7 +439,6 @@ async def list_conversations(
         handoff = await latest_handoff_for_conversation(session, conversation.id)
         latest_message = await latest_message_for_conversation(session, conversation.id)
         latest_body = message_body(latest_message) if latest_message is not None else None
-        assignment_history = await assignment_history_for_conversation(session, conversation.id)
         payloads.append(
             ConversationPayload(
                 id=conversation.id,
@@ -344,7 +453,6 @@ async def list_conversations(
                 handoff_status=handoff.status if handoff is not None else None,
                 assigned_to=handoff.assigned_to if handoff is not None else None,
                 assigned_agent=agent_identity_payload(assigned_agent),
-                assignment_history=assignment_history,
                 handoff_reason=handoff.reason if handoff is not None else None,
                 handoff_priority=handoff.priority if handoff is not None else None,
                 handoff_summary=handoff.summary if handoff is not None else None,
@@ -362,24 +470,13 @@ async def list_conversations(
 @router.post("/handoffs/{handoff_id}/take")
 async def take_handoff(
     handoff_id: int,
-    request: Request,
     session: DbSession,
-    body: TakeHandoffRequest | None = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
-    agent = await require_admin_or_agent(request, session, authorization)
-    if agent is not None:
-        actor = agent.name
-        assigned_agent_id = agent.id
-        await session.rollback()
-    else:
-        actor = body.agent if body is not None else None
-        assigned_agent_id = None
-        if actor is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="agent is required when using admin authentication",
-            )
+    agent = await authenticated_agent(session, authorization)
+    actor = agent.name
+    assigned_agent_id = agent.id
+    await session.rollback()
 
     async with session.begin():
         handoff = await session.get(Handoff, handoff_id, with_for_update=True)
@@ -446,14 +543,12 @@ async def take_handoff(
 @router.post("/conversations/{conversation_id}/take")
 async def take_conversation(
     conversation_id: int,
-    request: Request,
     session: DbSession,
-    body: TakeHandoffRequest | None = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
-    agent = await require_admin_or_agent(request, session, authorization)
-    agent_id = agent.id if agent is not None else None
-    agent_name = agent.name if agent is not None else (body.agent if body is not None else "ADMIN")
+    agent = await authenticated_agent(session, authorization)
+    agent_id = agent.id
+    agent_name = agent.name
     await session.rollback()
 
     async with session.begin():
@@ -606,16 +701,12 @@ async def take_conversation(
 async def return_handoff(
     handoff_id: int,
     body: ReturnHandoffRequest,
-    request: Request,
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
-    agent = await require_admin_or_agent(request, session, authorization)
-    if agent is not None:
-        actor = agent.name
-        await session.rollback()
-    else:
-        actor = "ADMIN"
+    agent = await authenticated_agent(session, authorization)
+    actor = agent.name
+    await session.rollback()
 
     async with session.begin():
         handoff = await session.get(Handoff, handoff_id, with_for_update=True)
@@ -688,14 +779,12 @@ async def return_handoff(
 async def create_agent_message(
     conversation_id: int,
     body: AgentMessageRequest,
-    request: Request,
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, int | str]:
-    agent = await require_admin_or_agent(request, session, authorization)
-    actor = agent.name if agent is not None else "ADMIN"
-    if agent is not None:
-        await session.rollback()
+    agent = await authenticated_agent(session, authorization)
+    actor = agent.name
+    await session.rollback()
 
     async with session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
@@ -773,11 +862,10 @@ async def create_agent_message(
 @router.get("/conversations/{conversation_id}/messages")
 async def list_conversation_messages(
     conversation_id: int,
-    request: Request,
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> list[ConversationMessagePayload]:
-    await require_admin_or_agent(request, session, authorization)
+    await authenticated_agent(session, authorization)
     conversation = await session.get(Conversation, conversation_id)
     if conversation is None:
         raise HTTPException(
@@ -824,6 +912,51 @@ async def list_conversation_messages(
     return sorted(messages, key=lambda message: (message.created_at, message.id))
 
 
+@router.get("/conversations/{conversation_id}/history")
+async def list_conversation_assignment_history(
+    conversation_id: int,
+    session: DbSession,
+    limit: int = Query(default=50, ge=1, le=200),
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[AssignmentHistoryPayload]:
+    await authenticated_agent(session, authorization)
+    conversation = await session.get(Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+    conversation_id_text = str(conversation_id)
+    old_conversation_id = cast(AuditEvent.old_value, JSONB)["conversation_id"].astext
+    new_conversation_id = cast(AuditEvent.new_value, JSONB)["conversation_id"].astext
+    events = await session.scalars(
+        select(AuditEvent)
+        .where(
+            AuditEvent.action.in_(
+                [
+                    "HANDOFF_TAKEN",
+                    "HANDOFF_RETURNED",
+                    "CONVERSATION_MANUAL_TAKEOVER",
+                ]
+            ),
+            or_(
+                old_conversation_id == conversation_id_text,
+                new_conversation_id == conversation_id_text,
+            ),
+        )
+        .order_by(AuditEvent.created_at.asc(), AuditEvent.id.asc())
+        .limit(limit)
+    )
+    return [
+        AssignmentHistoryPayload(
+            actor=event.actor,
+            action=event.action,
+            created_at=event.created_at,
+        )
+        for event in events.all()
+    ]
+
+
 async def latest_handoff_for_conversation(
     session: AsyncSession,
     conversation_id: int,
@@ -851,44 +984,6 @@ async def latest_message_for_conversation(
         .order_by(Message.id.desc())
         .limit(1)
     )
-
-
-async def assignment_history_for_conversation(
-    session: AsyncSession,
-    conversation_id: int,
-) -> list[AssignmentHistoryPayload]:
-    events = await session.scalars(
-        select(AuditEvent)
-        .where(
-            AuditEvent.action.in_(
-                [
-                    "HANDOFF_TAKEN",
-                    "HANDOFF_RETURNED",
-                    "CONVERSATION_MANUAL_TAKEOVER",
-                ]
-            )
-        )
-        .order_by(AuditEvent.created_at.asc(), AuditEvent.id.asc())
-    )
-    history: list[AssignmentHistoryPayload] = []
-    for event in events.all():
-        new_value = event.new_value or {}
-        old_value = event.old_value or {}
-        event_conversation_id = new_value.get("conversation_id") or old_value.get(
-            "conversation_id"
-        )
-        if event_conversation_id != conversation_id:
-            continue
-        if event.action == "CONVERSATION_MANUAL_TAKEOVER":
-            continue
-        history.append(
-            AssignmentHistoryPayload(
-                actor=event.actor,
-                action=event.action,
-                created_at=event.created_at,
-            )
-        )
-    return history
 
 
 async def build_manual_takeover_summary(
@@ -945,7 +1040,7 @@ async def move_conversation_to_human_active(
 def agent_identity_payload(agent: Agent | None) -> AgentIdentityPayload | None:
     if agent is None:
         return None
-    return AgentIdentityPayload(id=agent.id, name=agent.name)
+    return AgentIdentityPayload(id=agent.id, name=agent.name, role=agent.role)
 
 
 def truncate_preview(text: str | None, limit: int = 120) -> str | None:

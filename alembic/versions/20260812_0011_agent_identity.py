@@ -78,6 +78,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint("ck_handoff_reason", "handoff", type_="check")
+    op.execute("UPDATE handoff SET reason = 'OTHER' WHERE reason = 'MANUAL_TAKEOVER'")
     op.create_check_constraint(
         "ck_handoff_reason",
         "handoff",

@@ -1,6 +1,7 @@
-const adminTokenStorageKey = "ceiba.adminToken";
-const agentTokenStorageKey = "ceiba.agentToken";
-const agentDocumentIdStorageKey = "ceiba.agentDocumentId";
+const sessionTokenStorageKey = "ceiba.sessionToken";
+const legacyAdminTokenStorageKey = "ceiba.adminToken";
+const legacyAgentDocumentIdStorageKey = "ceiba.agentDocumentId";
+const legacyAgentTokenStorageKey = "ceiba.agentToken";
 const currentStatusStorageKey = "ceiba.currentStatus";
 const caseStatusStorageKey = "ceiba.caseStatus";
 const conversationStateStorageKey = "ceiba.conversationState";
@@ -16,37 +17,18 @@ const directTakeEligibleStates = new Set([
   "RESOLVED",
 ]);
 
-function loadAdminToken() {
-  const sessionToken = sessionStorage.getItem(adminTokenStorageKey);
-  if (sessionToken !== null) {
-    return sessionToken;
-  }
-  const legacyToken = localStorage.getItem(adminTokenStorageKey);
-  if (legacyToken !== null) {
-    sessionStorage.setItem(adminTokenStorageKey, legacyToken);
-    localStorage.removeItem(adminTokenStorageKey);
-    return legacyToken;
-  }
-  return "";
+function cleanupLegacyAuthStorage() {
+  localStorage.removeItem(legacyAgentDocumentIdStorageKey);
+  localStorage.removeItem(legacyAdminTokenStorageKey);
+  localStorage.removeItem("ceiba.agentName");
+  sessionStorage.removeItem(legacyAgentTokenStorageKey);
 }
 
-function loadAgentDocumentId() {
-  const persistentDocumentId = localStorage.getItem(agentDocumentIdStorageKey);
-  if (persistentDocumentId !== null) {
-    return persistentDocumentId;
-  }
-  const legacyToken = sessionStorage.getItem(agentTokenStorageKey);
-  if (legacyToken !== null) {
-    localStorage.setItem(agentDocumentIdStorageKey, legacyToken);
-    sessionStorage.removeItem(agentTokenStorageKey);
-    return legacyToken;
-  }
-  return "";
-}
+cleanupLegacyAuthStorage();
 
 const state = {
-  adminToken: loadAdminToken(),
-  agentDocumentId: loadAgentDocumentId(),
+  sessionToken: sessionStorage.getItem(sessionTokenStorageKey) || "",
+  documentId: "",
   agent: null,
   metaSecret: sessionStorage.getItem("ceiba.metaSecret") || "",
   currentStatus: localStorage.getItem(currentStatusStorageKey) || "PENDING",
@@ -67,20 +49,25 @@ function setText(id, value) {
   if (node) node.textContent = value;
 }
 
-function agentHeaders() {
-  return state.agentDocumentId ? { Authorization: `Bearer ${state.agentDocumentId}` } : {};
+function setEmpty(container, text, className = "emptyState") {
+  if (!container) return;
+  container.replaceChildren();
+  const node = document.createElement("div");
+  node.className = className;
+  node.textContent = text;
+  container.append(node);
 }
 
-function adminHeaders() {
-  return state.adminToken ? { Authorization: `Bearer ${state.adminToken}` } : {};
+function sessionHeaders() {
+  return state.sessionToken ? { Authorization: `Bearer ${state.sessionToken}` } : {};
 }
 
 function operationHeaders() {
-  return state.agentDocumentId ? agentHeaders() : adminHeaders();
+  return sessionHeaders();
 }
 
 function hasOperationToken() {
-  return Boolean(state.agentDocumentId || state.adminToken);
+  return Boolean(state.sessionToken);
 }
 
 function resetAdminMetrics() {
@@ -93,9 +80,7 @@ function renderAdminTokenRequired() {
   state.adminCases = [];
   resetAdminMetrics();
   const container = $("#caseList");
-  if (container) {
-    container.innerHTML = `<div class="emptyState">Configura y guarda un token para cargar conversaciones.</div>`;
-  }
+  setEmpty(container, "Ingresa con cédula y PIN para cargar conversaciones.");
 }
 
 async function requestJson(path, options = {}) {
@@ -110,14 +95,17 @@ async function requestJson(path, options = {}) {
   const payload = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
     const detail = typeof payload === "object" && payload !== null ? payload.detail || JSON.stringify(payload) : payload;
+    if (response.status === 401 && path !== "/api/admin/login") {
+      clearSession();
+    }
     throw new Error(detail || `HTTP ${response.status}`);
   }
   return payload;
 }
 
 function applyConfigToForm() {
-  $("#adminToken").value = state.adminToken;
-  $("#agentDocumentId").value = state.agentDocumentId;
+  $("#documentId").value = state.documentId;
+  $("#pin").value = "";
   $("#metaSecret").value = state.metaSecret;
   $("#conversationStateFilter").value = state.conversationState;
   $("#assignedToMeFilter").checked = state.assignedToMe;
@@ -129,55 +117,74 @@ function applyConfigToForm() {
   );
 }
 
-function saveConfig() {
-  state.adminToken = $("#adminToken").value.trim();
-  state.agentDocumentId = $("#agentDocumentId").value.trim();
+function saveLocalConfig() {
+  state.documentId = $("#documentId").value.trim();
   state.metaSecret = $("#metaSecret").value;
-  sessionStorage.setItem(adminTokenStorageKey, state.adminToken);
-  localStorage.setItem(agentDocumentIdStorageKey, state.agentDocumentId);
-  sessionStorage.removeItem(agentTokenStorageKey);
-  localStorage.removeItem(adminTokenStorageKey);
-  localStorage.removeItem("ceiba.agentName");
   sessionStorage.setItem("ceiba.metaSecret", state.metaSecret);
-  logEvent("Configuración guardada para esta estación.");
 }
 
 async function resolveAgentIdentity() {
-  if (!state.agentDocumentId) {
+  if (!state.sessionToken) {
     state.agent = null;
     setText("agentState", "Sin asesor");
+    setText("agentRoleState", "Sesión requerida");
     return;
   }
   try {
-    state.agent = await requestJson("/api/admin/me", { headers: agentHeaders() });
-    setText("agentState", `Asesor: ${state.agent.name}`);
+    state.agent = await requestJson("/api/admin/me", { headers: sessionHeaders() });
+    setText("agentState", `${state.agent.name}`);
+    setText("agentRoleState", state.agent.role);
   } catch (error) {
-    if (state.adminToken) {
-      await ensureAgentRegistered();
-      return;
-    }
     state.agent = null;
-    setText("agentState", "Cédula no registrada");
-    logEvent(`Identidad de asesor falló: ${error.message}`);
+    setText("agentState", "Sesión inválida");
+    setText("agentRoleState", "Sesión requerida");
+    logEvent(`Sesión falló: ${error.message}`);
   }
 }
 
-async function ensureAgentRegistered() {
-  const documentId = state.agentDocumentId.trim();
-  if (!documentId || !state.adminToken) return;
-  const defaultName = `Asesor ${documentId.slice(-4)}`;
+async function login() {
+  saveLocalConfig();
+  const pin = $("#pin").value;
+  if (!state.documentId || !pin) {
+    logEvent("Cédula y PIN son obligatorios.");
+    return;
+  }
   try {
-    state.agent = await requestJson("/api/admin/agents", {
+    const payload = await requestJson("/api/admin/login", {
       method: "POST",
-      headers: adminHeaders(),
-      body: JSON.stringify({ name: defaultName, document_id: documentId }),
+      body: JSON.stringify({ document_id: state.documentId, pin }),
     });
-    setText("agentState", `Asesor: ${state.agent.name}`);
-    logEvent(`Cédula registrada para ${state.agent.name}.`);
+    state.sessionToken = payload.token;
+    state.agent = payload.agent;
+    sessionStorage.setItem(sessionTokenStorageKey, state.sessionToken);
+    $("#pin").value = "";
+    setText("agentState", state.agent.name);
+    setText("agentRoleState", state.agent.role);
+    logEvent(`Sesión iniciada para ${state.agent.name}.`);
+    await refreshAll();
   } catch (error) {
-    state.agent = null;
-    setText("agentState", "Cédula no registrada");
-    logEvent(`No se pudo registrar la cédula: ${error.message}`);
+    logEvent(`Login falló: ${error.message}`);
+  }
+}
+
+function clearSession() {
+  state.sessionToken = "";
+  state.agent = null;
+  sessionStorage.removeItem(sessionTokenStorageKey);
+  setText("agentState", "Sin asesor");
+  setText("agentRoleState", "Sesión requerida");
+}
+
+async function logout() {
+  try {
+    if (state.sessionToken) {
+      await requestJson("/api/admin/logout", { method: "POST", headers: sessionHeaders() });
+    }
+  } catch (error) {
+    logEvent(`Logout falló: ${error.message}`);
+  } finally {
+    clearSession();
+    renderAdminTokenRequired();
   }
 }
 
@@ -218,7 +225,7 @@ function messageId() {
 }
 
 async function sendWebhook({ duplicate = false } = {}) {
-  saveConfig();
+  saveLocalConfig();
   const payload = duplicate && state.lastWebhook
     ? state.lastWebhook
     : {
@@ -255,7 +262,7 @@ async function loadHandoffs(status = state.currentStatus) {
   $$(".segment").forEach((button) => button.classList.toggle("active", button.dataset.status === status));
 
   const list = $("#handoffList");
-  list.innerHTML = `<div class="emptyState">Cargando ${status.toLowerCase()}...</div>`;
+  setEmpty(list, `Cargando ${status.toLowerCase()}...`);
 
   try {
     const handoffs = await requestJson(`/api/admin/handoffs?status=${encodeURIComponent(status)}`, {
@@ -267,7 +274,7 @@ async function loadHandoffs(status = state.currentStatus) {
     if (status === "TAKEN") setText("metricTaken", String(handoffs.length));
     return handoffs;
   } catch (error) {
-    list.innerHTML = `<div class="emptyState">No se pudo cargar la bandeja: ${error.message}</div>`;
+    setEmpty(list, `No se pudo cargar la bandeja: ${error.message}`);
     return [];
   }
 }
@@ -279,12 +286,12 @@ async function loadAllAdminCases() {
   }
 
   try {
-    if (state.agentDocumentId && !state.agent) {
+    if (state.sessionToken && !state.agent) {
       await resolveAgentIdentity();
     }
     const params = new URLSearchParams({ limit: "200", offset: "0" });
     if (state.conversationState) params.set("state", state.conversationState);
-    if (state.assignedToMe && state.agentDocumentId) params.set("assigned_to_me", "true");
+    if (state.assignedToMe) params.set("assigned_to_me", "true");
     const conversations = await requestJson(`/api/admin/conversations?${params.toString()}`, {
       headers: operationHeaders(),
     });
@@ -297,9 +304,7 @@ async function loadAllAdminCases() {
     state.adminCases = [];
     resetAdminMetrics();
     const container = $("#caseList");
-    if (container) {
-      container.innerHTML = `<div class="emptyState">No se pudo cargar clientes: ${error.message}</div>`;
-    }
+    setEmpty(container, `No se pudo cargar clientes: ${error.message}`);
     logEvent(`Clientes falló: ${error.message}`);
   }
 }
@@ -325,7 +330,6 @@ function caseFromHandoff(handoff) {
 function caseFromConversation(conversation) {
   const handoffStatus = conversation.handoff_status || "SIN_HANDOFF";
   const assignedAgent = conversation.assigned_agent?.name || conversation.assigned_to;
-  const assignmentHistory = conversation.assignment_history || [];
   return {
     id: conversation.handoff_id,
     conversationId: conversation.id || conversation.conversation_id,
@@ -336,7 +340,7 @@ function caseFromConversation(conversation) {
     customerName: conversation.customer_name || "Cliente sin nombre confirmado",
     phone: conversation.customer_phone || "Teléfono no disponible",
     assignedTo: assignedAgent || (conversation.bot_enabled ? "Bot activo" : "Sin asignar"),
-    assignmentHistory,
+    assignmentHistory: [],
     createdAt: conversation.last_message_at,
     takenAt: null,
     resolvedAt: null,
@@ -379,9 +383,9 @@ function renderAdminCases() {
     return statusMatches && (!query || text.includes(query));
   });
 
-  container.innerHTML = "";
+  container.replaceChildren();
   if (!cases.length) {
-    container.innerHTML = `<div class="emptyState">No hay clientes para este filtro con la API actual.</div>`;
+    setEmpty(container, "No hay clientes para este filtro con la API actual.");
     return;
   }
 
@@ -473,6 +477,24 @@ function showSummary(item) {
   ].join("\n");
   $("#summaryModalBody").textContent = item.summary || "Sin resumen disponible.";
   $("#summaryModal").hidden = false;
+  loadAssignmentHistory(item.conversationId);
+}
+
+async function loadAssignmentHistory(conversationId) {
+  try {
+    const history = await requestJson(`/api/admin/conversations/${conversationId}/history`, {
+      headers: operationHeaders(),
+    });
+    const lines = history.map((event) => {
+      if (event.action === "HANDOFF_RETURNED") return `${event.actor} devolvió`;
+      if (event.action === "CONVERSATION_MANUAL_TAKEOVER") return `${event.actor} tomó conversación`;
+      return `${event.actor} tomó handoff`;
+    });
+    $("#summaryModalDetails").textContent += `\nHistorial: ${lines.join(" · ") || "Sin eventos"}`;
+  } catch (error) {
+    $("#summaryModalDetails").textContent += `\nHistorial: no disponible`;
+    logEvent(`Historial falló: ${error.message}`);
+  }
 }
 
 function closeSummaryModal() {
@@ -487,10 +509,10 @@ function priorityClass(priority) {
 
 function renderHandoffs(handoffs) {
   const list = $("#handoffList");
-  list.innerHTML = "";
+  list.replaceChildren();
   state.visibleConversationIds = new Set(handoffs.map((handoff) => handoff.conversation_id));
   if (!handoffs.length) {
-    list.innerHTML = `<div class="emptyState">No hay handoffs en este estado.</div>`;
+    setEmpty(list, "No hay handoffs en este estado.");
     return;
   }
 
@@ -505,7 +527,7 @@ function renderHandoffs(handoffs) {
     priority.textContent = handoff.priority;
     $(".summary", node).textContent = handoff.summary || "Sin resumen disponible";
     $(".chatThread", node).dataset.conversationId = String(handoff.conversation_id);
-    $(".chatThread", node).innerHTML = `<div class="chatEmpty">Cargando conversación...</div>`;
+    setEmpty($(".chatThread", node), "Cargando conversación...", "chatEmpty");
 
     const actions = $(".handoffActions", node);
     if (handoff.status === "PENDING") {
@@ -535,9 +557,9 @@ function actionButton(label, onClick, className = "") {
 }
 
 async function takeHandoff(handoffId) {
-  saveConfig();
-  if (!state.agentDocumentId && !state.adminToken) {
-    logEvent("Configura un token para tomar handoffs.");
+  saveLocalConfig();
+  if (!state.sessionToken) {
+    logEvent("Inicia sesión para tomar handoffs.");
     return;
   }
   try {
@@ -545,9 +567,6 @@ async function takeHandoff(handoffId) {
       method: "POST",
       headers: operationHeaders(),
     };
-    if (!state.agentDocumentId && state.adminToken) {
-      options.body = JSON.stringify({ agent: "ADMIN" });
-    }
     await requestJson(`/api/admin/handoffs/${handoffId}/take`, {
       ...options,
     });
@@ -560,30 +579,27 @@ async function takeHandoff(handoffId) {
 }
 
 async function takeConversation(conversationId) {
-  saveConfig();
-  if (!state.agentDocumentId && !state.adminToken) {
-    logEvent("La toma directa requiere cédula de agente o token admin.");
+  saveLocalConfig();
+  if (!state.sessionToken) {
+    logEvent("La toma directa requiere sesión activa.");
     return;
   }
-  if (state.agentDocumentId && !state.agent) {
+  if (!state.agent) {
     await resolveAgentIdentity();
   }
-  if (state.agentDocumentId && !state.agent && !state.adminToken) {
-    logEvent("Registra la cédula antes de tomar la conversación.");
+  if (!state.agent) {
+    logEvent("Inicia sesión antes de tomar la conversación.");
     return;
   }
   try {
     const options = {
       method: "POST",
-      headers: state.agent ? agentHeaders() : adminHeaders(),
+      headers: sessionHeaders(),
     };
-    if (!state.agent && state.adminToken) {
-      options.body = JSON.stringify({ agent: "ADMIN" });
-    }
     const handoff = await requestJson(`/api/admin/conversations/${conversationId}/take`, {
       ...options,
     });
-    logEvent(`Conversación ${conversationId} tomada por ${state.agent?.name || "ADMIN"}.`);
+    logEvent(`Conversación ${conversationId} tomada por ${state.agent.name}.`);
     await refreshAll();
     await loadHandoffs("TAKEN");
     openHandoffAndFocus(handoff.id);
@@ -633,16 +649,16 @@ async function refreshConversationMessages(conversationId) {
     }
   } catch (error) {
     for (const thread of threads) {
-      thread.innerHTML = `<div class="chatEmpty">No se pudo cargar el chat: ${error.message}</div>`;
+      setEmpty(thread, `No se pudo cargar el chat: ${error.message}`, "chatEmpty");
     }
   }
 }
 
 function renderChatThread(thread, messages) {
   const wasNearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
-  thread.innerHTML = "";
+  thread.replaceChildren();
   if (!messages.length) {
-    thread.innerHTML = `<div class="chatEmpty">Sin mensajes en esta conversación.</div>`;
+    setEmpty(thread, "Sin mensajes en esta conversación.", "chatEmpty");
     return;
   }
 
@@ -735,7 +751,8 @@ function bindUi() {
     });
   });
 
-  $("#saveConfig").addEventListener("click", saveConfig);
+  $("#login").addEventListener("click", login);
+  $("#logout").addEventListener("click", logout);
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);
   $("#caseSearch").addEventListener("input", renderAdminCases);
@@ -758,7 +775,7 @@ function bindUi() {
     if (event.key === "Escape" && !$("#summaryModal").hidden) closeSummaryModal();
   });
   $("#clearLog").addEventListener("click", () => {
-    $("#eventLog").innerHTML = "";
+    $("#eventLog").replaceChildren();
     setText("metricWebhook", "--");
   });
   $("#duplicateLast").addEventListener("click", () => sendWebhook({ duplicate: true }));

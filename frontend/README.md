@@ -46,7 +46,7 @@ solo las que ya tienen handoff:
 - última actividad;
 - acción `Tomar` disponible para cualquier conversación.
 - filtro por estado conversacional;
-- filtro `Mis conversaciones` cuando se usa token de agente.
+- filtro `Mis conversaciones` para la sesión autenticada.
 
 El panel también cubre estas superficies actuales del backend:
 
@@ -54,7 +54,7 @@ El panel también cubre estas superficies actuales del backend:
 - simulación de webhook WhatsApp firmado;
 - reenvío duplicado del último webhook;
 - listado de conversaciones;
-- toma directa de conversaciones elegibles con token individual de agente;
+- toma directa de conversaciones elegibles con sesión de `ADMIN` o `AGENT`;
 - listado de handoffs por estado;
 - tomar handoff;
 - chat de handoff con polling AJAX;
@@ -63,44 +63,24 @@ El panel también cubre estas superficies actuales del backend:
 
 ## Autenticación
 
-El panel separa dos credenciales:
+El panel usa login con cédula + PIN contra `POST /admin/login`. El token de sesión se
+guarda en `sessionStorage` bajo `ceiba.sessionToken`; al cargar se eliminan claves
+legadas de `localStorage` como `ceiba.agentDocumentId` y `ceiba.adminToken`.
 
-- `Cédula agente`: cédula registrada para el asesor con `POST /admin/agents`.
-  Se guarda en `localStorage` bajo `ceiba.agentDocumentId`, se valida con
-  `GET /admin/me` y define la identidad usada para tomar conversaciones, tomar
-  handoffs, responder y devolver. En Postgres no se guarda la cédula en claro:
-  solo se persiste su `token_hash`.
-- `Token admin`: `ADMIN_API_TOKEN`, reservado para vistas y acciones de gestión.
-  Se guarda en `sessionStorage` bajo `ceiba.adminToken`. Si existe un valor antiguo
-  en `localStorage`, el panel lo migra a `sessionStorage` y elimina la copia
-  persistente al cargar.
-
-Si solo se configura `Token admin`, el panel puede listar y tomar cualquier
-conversación como `ADMIN`. El filtro `Mis conversaciones` solo aplica cuando hay
-una cédula de agente válida, porque el token admin no representa a un asesor
-individual.
-
-Si el asesor escribe su cédula y también hay `Token admin`, el panel registra la
-cédula automáticamente cuando todavía no existe. Usa un nombre operativo
-`Asesor ####` con los últimos cuatro dígitos. Si la cédula ya existe, el backend
-devuelve el mismo agente y no crea duplicados.
-
-Registro técnico equivalente:
+Crear el primer administrador:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/admin/agents \
-  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Emerson","document_id":"1020304050"}'
+.venv/bin/python scripts/create_admin.py --name "Admin" --document-id "90000000"
 ```
 
-La respuesta devuelve `token` con esa cédula una sola vez por compatibilidad con el
-flujo de tokens, pero la base solo conserva el hash.
+Un `ADMIN` crea usuarios con `POST /admin/agents` y luego asigna o restablece
+credenciales con `POST /admin/agents/{id}/credentials`. El PIN mínimo es de 6
+caracteres y solo se conserva como bcrypt.
 
-El panel conserva en `localStorage` la cédula, el estado de la bandeja de handoffs,
-los filtros de conversaciones y `Mis conversaciones`. Reiniciar frontend, backend,
-worker o Cloudflare no debe sacar un caso tomado de la bandeja mientras la base
-Postgres se conserve.
+El panel conserva en `localStorage` solo el estado de bandeja, filtros de
+conversaciones y `Mis conversaciones`. Reiniciar frontend, backend, worker o
+Cloudflare no debe sacar un caso tomado de la bandeja mientras la base Postgres se
+conserve.
 
 ## Vistas operativas
 
@@ -114,11 +94,9 @@ general de operación:
 - el botón `Tomar` llama `POST /admin/conversations/{conversation_id}/take`;
 - tomar una conversación elegible crea un `Handoff(reason=MANUAL_TAKEOVER)`,
   pausa el bot y mueve la conversación a `HUMAN_ACTIVE`;
-- la toma directa con cédula queda asignada al asesor; con token admin queda
-  asignada como `ADMIN`;
+- la toma directa siempre queda asignada al usuario autenticado;
 - la toma directa no envía mensaje automático al cliente;
-- la columna de asignación muestra el responsable actual y el historial compacto
-  de tomas/devoluciones del caso;
+- el historial de tomas/devoluciones se carga al abrir el detalle del caso;
 - si la conversación está en `WAITING_FOR_HUMAN`, se debe tomar el handoff
   pendiente existente;
 - el botón `Responder` abre la bandeja `Tomados` y enfoca el handoff cuando aplica.
@@ -158,7 +136,8 @@ sin `WHATSAPP_API_BASE_URL=http://localhost:8081`.
 
 ## Persistencia y reinicios
 
-El navegador solo conserva token admin y preferencias locales. Los casos operativos
+El navegador solo conserva token de sesión en `sessionStorage` y preferencias locales.
+Los casos operativos
 viven en Postgres. Reiniciar API, worker, frontend o Cloudflare no cambia:
 
 ```text

@@ -16,10 +16,11 @@ from app.customer.models import Customer
 from app.handoff.models import Handoff
 from app.main import app
 from tests.integration.helpers import (
-    ADMIN_API_TOKEN,
     app_client,
+    bootstrap_agent,
     cleanup_test_environment,
     configure_test_environment,
+    login_headers,
     signature,
     whatsapp_message_payload,
 )
@@ -28,6 +29,7 @@ from tests.integration.helpers import (
 @pytest.fixture(autouse=True)
 async def test_environment(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
     await configure_test_environment(monkeypatch)
+    await bootstrap_agent(name="Admin", document_id="99999999", pin="123456", role="ADMIN")
     yield
     await cleanup_test_environment()
 
@@ -38,8 +40,8 @@ async def client() -> AsyncIterator[AsyncClient]:
         yield test_client
 
 
-def admin_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {ADMIN_API_TOKEN}"}
+async def admin_headers(client: AsyncClient) -> dict[str, str]:
+    return await login_headers(client, "99999999", "123456")
 
 
 def fake_classification(
@@ -94,18 +96,35 @@ async def count_outbox() -> int:
 
 
 async def create_agent(client: AsyncClient, name: str = "Alexandra") -> dict[str, object]:
+    admin_auth = await admin_headers(client)
     response = await client.post(
         "/admin/agents",
-        headers=admin_headers(),
-        json={"name": name},
+        headers=admin_auth,
+        json={"name": name, "role": "AGENT"},
     )
     assert response.status_code == 200
-    return response.json()
+    payload = response.json()
+    credentials = await client.post(
+        f"/admin/agents/{payload['id']}/credentials",
+        headers=admin_auth,
+        json={"document_id": f"10{payload['id']:08d}", "pin": "123456"},
+    )
+    assert credentials.status_code == 200
+    login = await client.post(
+        "/admin/login",
+        json={"document_id": f"10{payload['id']:08d}", "pin": "123456"},
+    )
+    assert login.status_code == 200
+    payload["token"] = login.json()["token"]
+    return payload
 
 
 @pytest.mark.asyncio
 async def test_list_handoffs_rejects_invalid_status(client: AsyncClient) -> None:
-    response = await client.get("/admin/handoffs?status=RESOLVED", headers=admin_headers())
+    response = await client.get(
+        "/admin/handoffs?status=RESOLVED",
+        headers=await admin_headers(client),
+    )
 
     assert response.status_code == 422
 
@@ -133,7 +152,7 @@ async def test_full_handoff_cycle_returns_control_to_bot(
             assert customer is not None
             customer.full_name = "Natalia Perez"
 
-    pending = await client.get("/admin/handoffs", headers=admin_headers())
+    pending = await client.get("/admin/handoffs", headers=await admin_headers(client))
     assert pending.status_code == 200
     handoff = pending.json()[0]
     handoff_id = handoff["id"]
@@ -147,7 +166,7 @@ async def test_full_handoff_cycle_returns_control_to_bot(
 
     take = await client.post(
         f"/admin/handoffs/{handoff_id}/take",
-        headers=admin_headers(),
+        headers=await admin_headers(client),
         json={"agent": "Alexandra"},
     )
     assert take.status_code == 200
@@ -160,14 +179,14 @@ async def test_full_handoff_cycle_returns_control_to_bot(
 
     agent_message = await client.post(
         f"/admin/conversations/{conversation_id}/messages",
-        headers=admin_headers(),
+        headers=await admin_headers(client),
         json={"text": "Hola, soy Alexandra. Ya reviso tu solicitud."},
     )
     assert agent_message.status_code == 200
     assert await count_outbox() == 2
     taken_after_message = await client.get(
         "/admin/handoffs?status=TAKEN",
-        headers=admin_headers(),
+        headers=await admin_headers(client),
     )
     assert taken_after_message.status_code == 200
     assert "OUTBOUND: Hola, soy Alexandra. Ya reviso tu solicitud." in taken_after_message.json()[
@@ -175,7 +194,7 @@ async def test_full_handoff_cycle_returns_control_to_bot(
     ]["summary"]
     conversation_messages = await client.get(
         f"/admin/conversations/{conversation_id}/messages",
-        headers=admin_headers(),
+        headers=await admin_headers(client),
     )
     assert conversation_messages.status_code == 200
     message_payloads = conversation_messages.json()
@@ -190,7 +209,7 @@ async def test_full_handoff_cycle_returns_control_to_bot(
 
     returned = await client.post(
         f"/admin/handoffs/{handoff_id}/return",
-        headers=admin_headers(),
+        headers=await admin_headers(client),
         json={"resolution": "Cliente atendido y devuelto al bot."},
     )
     assert returned.status_code == 200
@@ -224,18 +243,18 @@ async def test_concurrent_take_allows_only_one_agent(
     )
     await post_whatsapp(client, "wamid.handoff.concurrent.1", "Necesito un asesor")
 
-    pending = await client.get("/admin/handoffs", headers=admin_headers())
+    pending = await client.get("/admin/handoffs", headers=await admin_headers(client))
     handoff_id = pending.json()[0]["id"]
 
     first, second = await asyncio.gather(
         client.post(
             f"/admin/handoffs/{handoff_id}/take",
-            headers=admin_headers(),
+            headers=await admin_headers(client),
             json={"agent": "Agente A"},
         ),
         client.post(
             f"/admin/handoffs/{handoff_id}/take",
-            headers=admin_headers(),
+            headers=await admin_headers(client),
             json={"agent": "Agente B"},
         ),
     )
@@ -248,7 +267,7 @@ async def test_concurrent_take_allows_only_one_agent(
 
     assert handoff is not None
     assert handoff.status == "TAKEN"
-    assert handoff.assigned_to in {"Agente A", "Agente B"}
+    assert handoff.assigned_to == "Admin"
     assert conversation is not None
     assert conversation.state == "HUMAN_ACTIVE"
     assert conversation.bot_enabled is False
@@ -263,7 +282,7 @@ async def test_agent_can_take_any_bot_active_conversation(
     mock_classifier(monkeypatch, fake_classification("GREETING"))
     await post_whatsapp(client, "wamid.manual.take.1", "Hola")
 
-    conversations = await client.get("/admin/conversations", headers=admin_headers())
+    conversations = await client.get("/admin/conversations", headers=await admin_headers(client))
     assert conversations.status_code == 200
     conversation_payload = conversations.json()[0]
     conversation_id = conversation_payload["conversation_id"]
@@ -296,7 +315,7 @@ async def test_agent_can_take_any_bot_active_conversation(
 
     agent_message = await client.post(
         f"/admin/conversations/{conversation_id}/messages",
-        headers=admin_headers(),
+        headers=await admin_headers(client),
         json={"text": "Hola, tomo tu caso."},
     )
     assert agent_message.status_code == 200

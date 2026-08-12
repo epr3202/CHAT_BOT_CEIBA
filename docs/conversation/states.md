@@ -1018,8 +1018,8 @@ Efectos obligatorios:
 ```text
 handoff.reason = MANUAL_TAKEOVER
 handoff.status = TAKEN
-handoff.assigned_agent_id = asesor autenticado o null para toma administrativa
-handoff.assigned_to = agent.name o ADMIN
+handoff.assigned_agent_id = usuario autenticado
+handoff.assigned_to = agent.name
 conversation_status = HUMAN_ACTIVE
 bot_enabled = false
 pending_action = WAIT_FOR_HUMAN
@@ -1027,8 +1027,8 @@ audit_event.action = CONVERSATION_MANUAL_TAKEOVER
 ```
 
 El handoff nace y se toma en el mismo acto con motivo `MANUAL_TAKEOVER`. La identidad
-del asesor se deriva de su token individual. Si se usa `ADMIN_API_TOKEN`, la toma se
-registra como acción administrativa `ADMIN`, no como identidad de un asesor individual.
+del asesor o administrador se deriva de su sesión; toda toma conserva
+`assigned_agent_id` real.
 
 Esta toma manual no autoriza al sistema a ejecutar acciones críticas. Precios, pagos,
 reservas, disponibilidad, citas, devoluciones y descuentos siguen requiriendo servicios

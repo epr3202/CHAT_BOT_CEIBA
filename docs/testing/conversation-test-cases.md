@@ -2048,23 +2048,21 @@ Bloquear retorno si existe una acción humana crítica sin resolver.
 
 ## TC-AGENT-001 — Crear agente
 
-**Precondición:** request autenticado con `ADMIN_API_TOKEN`.
+**Precondición:** request autenticado con sesión de usuario `ADMIN`.
 
 **Resultado esperado:**
 
 * `POST /admin/agents` crea agente activo;
-* la respuesta incluye el token en claro una sola vez;
-* la base persiste solo `token_hash`;
-* auditoría no contiene token ni hash.
-* si se envía `document_id`, ese valor funciona como token del agente;
-* repetir `POST /admin/agents` con el mismo `document_id` devuelve el agente
-  existente y no crea duplicados.
+* la respuesta no incluye credenciales;
+* las credenciales se establecen con `POST /admin/agents/{id}/credentials`;
+* la base persiste `document_id` y `password_hash` bcrypt;
+* auditoría no contiene PIN ni token de sesión.
 
 ---
 
-## TC-AGENT-002 — Token inválido
+## TC-AGENT-002 — Sesión inválida
 
-**Entrada:** request protegido por agente con token inexistente.
+**Entrada:** request protegido con sesión inexistente, expirada o revocada.
 
 **Resultado esperado:**
 
@@ -2084,17 +2082,16 @@ Bloquear retorno si existe una acción humana crítica sin resolver.
 
 ---
 
-## TC-AGENT-004 — Token admin toma administrativamente sin identidad de agente
+## TC-AGENT-004 — Admin toma con identidad real
 
-**Precondición:** `ADMIN_API_TOKEN` válido.
+**Precondición:** sesión válida de usuario `ADMIN`.
 
 **Resultado esperado:**
 
-* el token admin permite gestión de agentes;
-* el token admin no identifica a un asesor individual;
-* toma directa con token admin devuelve 200 como toma administrativa;
-* `assigned_to = ADMIN`;
-* `assigned_agent_id = null`.
+* la sesión admin permite gestión de agentes;
+* toma directa con sesión admin devuelve 200;
+* `assigned_to = agent.name`;
+* `assigned_agent_id` apunta al usuario `ADMIN`.
 
 ---
 
@@ -2104,7 +2101,7 @@ Bloquear retorno si existe una acción humana crítica sin resolver.
 
 **Resultado esperado:**
 
-* `POST /admin/conversations/{id}/take` con token de agente activo devuelve 200;
+* `POST /admin/conversations/{id}/take` con sesión activa devuelve 200;
 * crea `Handoff(reason = MANUAL_TAKEOVER, status = TAKEN)`;
 * `conversation_status = HUMAN_ACTIVE`;
 * `bot_enabled = false`;
@@ -3726,6 +3723,47 @@ La cita de prueba deberá utilizar un recurso o calendario destinado a pruebas.
 ---
 
 # 39. Invariantes que siempre deben probarse
+
+## TC-AUTH-001
+
+Login con cédula y PIN correctos devuelve 200 con token de sesión y `{id, name, role}`.
+La base conserva solo `password_hash` bcrypt y `agent_session.token_hash`; PIN y token no
+aparecen en claro en tablas ni auditoría.
+
+## TC-AUTH-002
+
+PIN incorrecto y cédula inexistente devuelven 401 genérico con la misma respuesta.
+
+## TC-AUTH-003
+
+Usuario inactivo devuelve 403 al login y sus sesiones existentes dejan de ser válidas.
+
+## TC-AUTH-004
+
+Sesión expirada devuelve 401; sesión revocada por logout devuelve 401.
+
+## TC-AUTH-005
+
+Rol `AGENT` no puede crear usuarios, restablecer credenciales ni desactivar usuarios;
+rol `ADMIN` sí puede.
+
+## TC-AUTH-006
+
+Toma directa ejecutada por usuario `ADMIN` guarda `assigned_agent_id` con su fila real.
+No existe camino que produzca toma con `assigned_agent_id = null`.
+
+## TC-AUTH-007
+
+PIN menor a 6 caracteres al crear o restablecer credenciales devuelve 422.
+
+## TC-AUTH-008
+
+Restablecer credenciales revoca todas las sesiones activas del usuario.
+
+## TC-AUTH-009
+
+El historial de asignaciones del endpoint de detalle devuelve solo eventos de la
+conversación consultada, en orden cronológico.
 
 ## INV-T-001
 

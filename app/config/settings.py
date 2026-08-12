@@ -19,7 +19,6 @@ class Settings(BaseSettings):
         alias="ENVIRONMENT",
     )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    admin_api_token: str = Field(default="", alias="ADMIN_API_TOKEN")
     # TODO Slice 3: move human-hours and holiday rules to the Configuration table.
     human_hours_days: str = Field(default="1,2,3,4,5", alias="HUMAN_HOURS_DAYS")
     human_hours_start: str = Field(default="08:00", alias="HUMAN_HOURS_START")
@@ -79,7 +78,6 @@ class Settings(BaseSettings):
                 "META_APP_SECRET": self.meta_app_secret,
                 "META_ACCESS_TOKEN": self.meta_access_token,
                 "OPENROUTER_API_KEY": self.openrouter_api_key,
-                "ADMIN_API_TOKEN": self.admin_api_token,
             }.items()
             if not value.strip()
         ]

@@ -26,14 +26,20 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/admin/conversations",
         "/api/admin/conversations/",
         "/api/admin/me",
+        "/api/admin/login",
+        "/api/admin/logout",
         "/api/admin/agents",
+        "/api/admin/agents/",
         "/api/webhook/simulate",
         "/health",
         "/admin/handoffs",
         "/admin/conversations",
         "/admin/conversations/",
         "/admin/me",
+        "/admin/login",
+        "/admin/logout",
         "/admin/agents",
+        "/admin/agents/",
         "/webhook",
     }
 
@@ -79,30 +85,30 @@ def test_conversations_require_operation_token_before_fetching() -> None:
     assert ".catch(() => [])" not in function_body
 
 
-def test_admin_token_uses_session_storage_with_legacy_migration() -> None:
+def test_session_token_uses_session_storage_and_removes_legacy_auth() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
 
-    assert 'sessionStorage.getItem(adminTokenStorageKey)' in app_js
-    assert 'sessionStorage.setItem(adminTokenStorageKey, legacyToken)' in app_js
-    assert 'localStorage.removeItem(adminTokenStorageKey)' in app_js
+    assert 'const sessionTokenStorageKey = "ceiba.sessionToken"' in app_js
+    assert "sessionStorage.getItem(sessionTokenStorageKey)" in app_js
+    assert "sessionStorage.setItem(sessionTokenStorageKey, state.sessionToken)" in app_js
+    assert "localStorage.removeItem(legacyAgentDocumentIdStorageKey)" in app_js
+    assert "localStorage.removeItem(legacyAdminTokenStorageKey)" in app_js
     assert 'localStorage.setItem("ceiba.adminToken"' not in app_js
 
 
-def test_agent_document_id_uses_local_storage_and_resolves_identity() -> None:
+def test_login_uses_document_id_and_pin_without_auto_registration() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
     index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
 
-    assert 'const agentTokenStorageKey = "ceiba.agentToken"' in app_js
-    assert 'const agentDocumentIdStorageKey = "ceiba.agentDocumentId"' in app_js
-    assert "localStorage.getItem(agentDocumentIdStorageKey)" in app_js
-    assert "localStorage.setItem(agentDocumentIdStorageKey, state.agentDocumentId)" in app_js
-    assert "sessionStorage.removeItem(agentTokenStorageKey)" in app_js
+    assert "/api/admin/login" in app_js
+    assert "/api/admin/logout" in app_js
+    assert "document_id: state.documentId" in app_js
+    assert "pin" in app_js
     assert "/api/admin/me" in app_js
-    assert "/api/admin/agents" in app_js
-    assert "function ensureAgentRegistered" in app_js
-    assert "document_id: documentId" in app_js
     assert 'id="agentState"' in index_html
-    assert 'id="agentDocumentId"' in index_html
+    assert 'id="documentId"' in index_html
+    assert 'id="pin"' in index_html
+    assert "function ensureAgentRegistered" not in app_js
 
 
 def test_agent_message_refreshes_handoff_view() -> None:
@@ -141,25 +147,32 @@ def test_frontend_has_conversation_filters_and_direct_take_uses_agent_token() ->
 
     assert 'id="conversationStateFilter"' in index_html
     assert 'id="assignedToMeFilter"' in index_html
-    assert 'state.assignedToMe && state.agentDocumentId' in app_js
+    assert 'if (state.assignedToMe) params.set("assigned_to_me", "true")' in app_js
     assert 'params.set("assigned_to_me", "true")' in app_js
     function_start = app_js.index("async function takeConversation")
     function_end = app_js.index("async function sendAgentMessage", function_start)
     function_body = app_js[function_start:function_end]
-    assert "headers: state.agent ? agentHeaders() : adminHeaders()" in function_body
+    assert "headers: sessionHeaders()" in function_body
     assert "await resolveAgentIdentity()" in function_body
-    assert 'options.body = JSON.stringify({ agent: "ADMIN" })' in function_body
+    assert 'options.body = JSON.stringify({ agent: "ADMIN" })' not in function_body
     assert "prompt(" not in app_js
     assert "alert(" not in app_js
 
 
-def test_frontend_shows_assignment_history() -> None:
+def test_frontend_fetches_assignment_history_on_detail() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
     styles = FRONTEND.joinpath("styles.css").read_text(encoding="utf-8")
 
-    assert "assignment_history" in app_js
+    assert "/api/admin/conversations/${conversationId}/history" in app_js
+    assert "function loadAssignmentHistory" in app_js
     assert "function assignmentText" in app_js
     assert "white-space: pre-line" in styles
+
+
+def test_frontend_avoids_dynamic_inner_html() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+
+    assert ".innerHTML" not in app_js
 
 
 def test_frontend_summary_button_opens_modal() -> None:

@@ -85,6 +85,8 @@ def downgrade() -> None:
     op.drop_column("handoff", "assigned_to")
     op.drop_constraint("ck_handoff_reason", "handoff", type_="check")
     op.drop_constraint("ck_handoff_status", "handoff", type_="check")
+    op.execute("UPDATE handoff SET status = 'IN_PROGRESS' WHERE status = 'TAKEN'")
+    op.execute("UPDATE handoff SET status = 'RESOLVED' WHERE status = 'RETURNED'")
     op.create_check_constraint(
         "ck_handoff_status",
         "handoff",

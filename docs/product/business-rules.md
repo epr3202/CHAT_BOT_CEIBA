@@ -2379,6 +2379,34 @@ Implementa:
 - BR-APT-014
 ```
 
+---
+
+# 31A. BR-AUTH — Autenticación operativa
+
+## BR-AUTH-001
+
+Toda acción administrativa u operativa queda atribuida a un usuario (`agent`) con rol
+`ADMIN` o `AGENT`; no existen acciones anónimas.
+
+## BR-AUTH-002
+
+La credencial de login es cédula como identificador y PIN como secreto de mínimo 6
+caracteres. El PIN se almacena únicamente con hash bcrypt.
+
+## BR-AUTH-003
+
+Las sesiones expiran a las 12 horas y pueden revocarse.
+
+## BR-AUTH-004
+
+Solo `ADMIN` puede crear usuarios, restablecer credenciales, desactivar usuarios y
+reabrir conversaciones `CLOSED`.
+
+## BR-AUTH-005
+
+Los roles `ADMIN` y `AGENT` pueden tomar conversaciones, responder y devolver. En todos
+los casos la operación usa un `assigned_agent_id` real.
+
 Cada prueba deberá indicar:
 
 * requerimiento;

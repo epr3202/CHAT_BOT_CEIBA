@@ -1,49 +1,23 @@
-from types import SimpleNamespace
-
-from fastapi import Depends, FastAPI
-from fastapi.testclient import TestClient
-
-from app.admin.routes import require_admin_token
+from app.agent.auth import bearer_token, hash_agent_token, hash_pin, verify_pin
 
 
-def make_client(admin_api_token: str) -> TestClient:
-    app = FastAPI()
-    app.state.settings = SimpleNamespace(admin_api_token=admin_api_token)
+def test_pin_hash_uses_bcrypt_and_verifies_without_plaintext() -> None:
+    password_hash = hash_pin("123456")
 
-    @app.get("/protected", dependencies=[Depends(require_admin_token)])
-    async def protected() -> dict[str, str]:
-        return {"status": "ok"}
-
-    return TestClient(app)
+    assert password_hash.startswith("$2b$")
+    assert "123456" not in password_hash
+    assert verify_pin("123456", password_hash)
+    assert not verify_pin("000000", password_hash)
 
 
-def test_empty_admin_token_returns_503() -> None:
-    with make_client("") as client:
-        response = client.get("/protected", headers={"Authorization": "Bearer any"})
+def test_session_token_hash_is_sha256_hex() -> None:
+    token_hash = hash_agent_token("session-token")
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Admin API token is not configured"
-
-
-def test_missing_admin_header_returns_401() -> None:
-    with make_client("expected-token") as client:
-        response = client.get("/protected")
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Unauthorized"
+    assert len(token_hash) == 64
+    assert token_hash != "session-token"
 
 
-def test_wrong_admin_token_returns_401() -> None:
-    with make_client("expected-token") as client:
-        response = client.get("/protected", headers={"Authorization": "Bearer wrong-token"})
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Unauthorized"
-
-
-def test_correct_admin_token_passes() -> None:
-    with make_client("expected-token") as client:
-        response = client.get("/protected", headers={"Authorization": "Bearer expected-token"})
-
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+def test_bearer_token_requires_bearer_prefix() -> None:
+    assert bearer_token("Bearer abc") == "abc"
+    assert bearer_token("abc") is None
+    assert bearer_token(None) is None

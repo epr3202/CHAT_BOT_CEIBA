@@ -66,17 +66,17 @@
 
         <section class="panel">
           <div class="panelHeader">
-            <h2>Acceso del asesor</h2>
-            <span>La cédula identifica al asesor en este navegador</span>
+            <h2>Acceso</h2>
+            <span id="agentRoleState">Sesión requerida</span>
           </div>
           <div class="formGrid">
             <label>
-              Cédula agente
-              <input id="agentDocumentId" type="password" autocomplete="off" placeholder="Cédula registrada del asesor" />
+              Cédula
+              <input id="documentId" type="text" autocomplete="username" placeholder="Cédula registrada" />
             </label>
             <label>
-              Token admin
-              <input id="adminToken" type="password" autocomplete="off" placeholder="ADMIN_API_TOKEN" />
+              PIN
+              <input id="pin" type="password" autocomplete="current-password" placeholder="PIN" />
             </label>
             <label>
               Filtro de clientes
@@ -84,7 +84,8 @@
             </label>
           </div>
           <div class="actions">
-            <button id="saveConfig" class="primary">Guardar</button>
+            <button id="login" class="primary">Ingresar</button>
+            <button id="logout">Cerrar sesión</button>
             <button id="checkHealth">Verificar API</button>
             <button id="refreshCases">Actualizar casos</button>
           </div>

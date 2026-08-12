@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -9,7 +8,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
-from app.agent.models import Agent
+from app.agent.auth import hash_agent_token
+from app.agent.models import Agent, AgentSession
 from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import IntentClassification
 from app.audit.models import AuditEvent
@@ -20,10 +20,11 @@ from app.conversation.states import ConversationState
 from app.handoff.models import Handoff
 from app.main import app
 from tests.integration.helpers import (
-    ADMIN_API_TOKEN,
     app_client,
+    bootstrap_agent,
     cleanup_test_environment,
     configure_test_environment,
+    login_headers,
     signature,
     whatsapp_message_payload,
 )
@@ -32,6 +33,7 @@ from tests.integration.helpers import (
 @pytest.fixture(autouse=True)
 async def test_environment(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
     await configure_test_environment(monkeypatch)
+    await bootstrap_agent(name="Admin", document_id="99999999", pin="123456", role="ADMIN")
     yield
     await cleanup_test_environment()
 
@@ -42,12 +44,12 @@ async def client() -> AsyncIterator[AsyncClient]:
         yield test_client
 
 
-def admin_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {ADMIN_API_TOKEN}"}
-
-
 def agent_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+async def admin_headers(client: AsyncClient) -> dict[str, str]:
+    return await login_headers(client, "99999999", "123456")
 
 
 def fake_classification(intent: str) -> IntentClassification:
@@ -99,13 +101,31 @@ async def create_agent(
     client: AsyncClient,
     name: str = "Alexandra",
     document_id: str | None = None,
+    pin: str = "123456",
+    role: str = "AGENT",
 ) -> dict[str, Any]:
-    body = {"name": name}
-    if document_id is not None:
-        body["document_id"] = document_id
-    response = await client.post("/admin/agents", headers=admin_headers(), json=body)
+    admin_auth = await login_headers(client, "99999999", "123456")
+    response = await client.post(
+        "/admin/agents",
+        headers=admin_auth,
+        json={"name": name, "role": role},
+    )
     assert response.status_code == 200
-    return response.json()
+    payload = response.json()
+    credentials = await client.post(
+        f"/admin/agents/{payload['id']}/credentials",
+        headers=admin_auth,
+        json={"document_id": document_id or f"10{payload['id']:08d}", "pin": pin},
+    )
+    assert credentials.status_code == 200
+    login = await client.post(
+        "/admin/login",
+        json={"document_id": document_id or f"10{payload['id']:08d}", "pin": pin},
+    )
+    assert login.status_code == 200
+    payload["token"] = login.json()["token"]
+    payload["document_id"] = document_id or f"10{payload['id']:08d}"
+    return payload
 
 
 async def latest_conversation() -> Conversation:
@@ -121,10 +141,10 @@ async def count_rows(model: type) -> int:
 
 
 @pytest.mark.asyncio
-async def test_tc_agent_001_create_agent_returns_plain_token_once_and_stores_hash(
+async def test_tc_auth_001_login_creates_session_and_stores_only_hashes(
     client: AsyncClient,
 ) -> None:
-    payload = await create_agent(client, "Alexandra")
+    payload = await create_agent(client, "Alexandra", document_id="1020304050", pin="654321")
 
     assert payload["id"]
     assert payload["name"] == "Alexandra"
@@ -132,103 +152,104 @@ async def test_tc_agent_001_create_agent_returns_plain_token_once_and_stores_has
 
     async with app.state.db_sessionmaker() as session:
         agent = await session.get(Agent, payload["id"])
-        audit = await session.scalar(select(AuditEvent).where(AuditEvent.action == "AGENT_CREATED"))
+        agent_session = await session.scalar(
+            select(AgentSession).where(AgentSession.agent_id == payload["id"])
+        )
+        audit_values = [
+            str(event.new_value) + str(event.old_value)
+            for event in (await session.scalars(select(AuditEvent))).all()
+        ]
 
     assert agent is not None
-    assert agent.token_hash == hashlib.sha256(payload["token"].encode()).hexdigest()
-    assert agent.token_hash != payload["token"]
-    assert audit is not None
-    assert payload["token"] not in str(audit.new_value)
-    assert agent.token_hash not in str(audit.new_value)
+    assert agent.document_id == "1020304050"
+    assert agent.password_hash is not None
+    assert agent.password_hash.startswith("$2b$")
+    assert "654321" not in agent.password_hash
+    assert agent_session is not None
+    assert agent_session.token_hash == hash_agent_token(payload["token"])
+    assert payload["token"] not in "".join(audit_values)
+    assert "654321" not in "".join(audit_values)
 
-    listed = await client.get("/admin/agents", headers=admin_headers())
+    listed = await client.get("/admin/agents", headers=await admin_headers(client))
     assert listed.status_code == 200
     assert "token" not in listed.json()[0]
 
 
 @pytest.mark.asyncio
-async def test_tc_agent_002_invalid_agent_token_returns_401(client: AsyncClient) -> None:
-    response = await client.get("/admin/me", headers=agent_headers("invalid-token"))
+async def test_tc_auth_002_bad_pin_and_missing_user_return_same_401(client: AsyncClient) -> None:
+    await create_agent(client, "Emerson", document_id="1020304050", pin="654321")
 
-    assert response.status_code == 401
+    bad_pin = await client.post(
+        "/admin/login",
+        json={"document_id": "1020304050", "pin": "000000"},
+    )
+    missing_user = await client.post(
+        "/admin/login",
+        json={"document_id": "99990000", "pin": "000000"},
+    )
+
+    assert bad_pin.status_code == 401
+    assert missing_user.status_code == 401
+    assert bad_pin.json() == missing_user.json()
 
 
 @pytest.mark.asyncio
-async def test_tc_agent_create_with_document_id_uses_document_as_agent_token(
+async def test_tc_auth_004_logout_revokes_session(
     client: AsyncClient,
 ) -> None:
-    document_id = "1020304050"
-
-    payload = await create_agent(client, "Emerson", document_id=document_id)
-
-    assert payload["token"] == document_id
-
-    async with app.state.db_sessionmaker() as session:
-        agent = await session.get(Agent, payload["id"])
-
-    assert agent is not None
-    assert agent.token_hash == hashlib.sha256(document_id.encode()).hexdigest()
-    assert agent.token_hash != document_id
-
-    me = await client.get("/admin/me", headers=agent_headers(document_id))
-    assert me.status_code == 200
-    assert me.json() == {"id": payload["id"], "name": "Emerson"}
+    agent = await create_agent(client, "Emerson", document_id="1020304050")
+    logout = await client.post("/admin/logout", headers=agent_headers(agent["token"]))
+    assert logout.status_code == 200
+    me = await client.get("/admin/me", headers=agent_headers(agent["token"]))
+    assert me.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_agent_creation_with_same_document_id_is_idempotent(
+async def test_tc_auth_003_deactivated_agent_returns_403_and_invalidates_sessions(
     client: AsyncClient,
 ) -> None:
-    document_id = "1020304050"
-    first = await create_agent(client, "Emerson", document_id=document_id)
-    second = await create_agent(client, "Otro Nombre", document_id=document_id)
-
-    assert second["id"] == first["id"]
-    assert second["name"] == "Emerson"
-    assert second["token"] == document_id
-    assert await count_rows(Agent) == 1
-
-
-@pytest.mark.asyncio
-async def test_tc_agent_003_deactivated_agent_returns_403(client: AsyncClient) -> None:
     agent = await create_agent(client, "Inactive")
 
     deactivate = await client.post(
         f"/admin/agents/{agent['id']}/deactivate",
-        headers=admin_headers(),
+        headers=await admin_headers(client),
     )
     assert deactivate.status_code == 200
 
+    relogin = await client.post(
+        "/admin/login",
+        json={"document_id": agent["document_id"], "pin": "123456"},
+    )
     response = await client.get("/admin/me", headers=agent_headers(agent["token"]))
 
-    assert response.status_code == 403
+    assert relogin.status_code == 403
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_tc_agent_004_admin_token_can_manage_and_take_without_agent_identity(
+async def test_tc_auth_006_admin_take_uses_real_assigned_agent_id(
     client: AsyncClient,
 ) -> None:
-    await create_agent(client, "Alexandra")
     await post_whatsapp(client, "wamid.agent.admin-not-agent")
     conversation = await latest_conversation()
+    auth = await admin_headers(client)
 
     response = await client.post(
         f"/admin/conversations/{conversation.id}/take",
-        headers=admin_headers(),
-        json={"agent": "ADMIN"},
+        headers=auth,
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["assigned_to"] == "ADMIN"
-    assert payload["assigned_agent"] is None
+    assert payload["assigned_to"] == "Admin"
+    assert payload["assigned_agent"]["name"] == "Admin"
 
     async with app.state.db_sessionmaker() as session:
         conversation_after = await session.get(Conversation, conversation.id)
 
     assert conversation_after is not None
     assert conversation_after.state == "HUMAN_ACTIVE"
-    assert conversation_after.assigned_agent_id is None
+    assert conversation_after.assigned_agent_id == payload["assigned_agent"]["id"]
 
 
 @pytest.mark.asyncio
@@ -417,6 +438,11 @@ async def test_taken_conversation_survives_client_restart_and_new_customer_messa
         assert take.status_code == 200
 
     async for second_client in app_client():
+        second_login = await second_client.post(
+            "/admin/login",
+            json={"document_id": "11223344", "pin": "123456"},
+        )
+        assert second_login.status_code == 200
         await post_whatsapp(
             second_client,
             "wamid.persist.after-restart",
@@ -425,13 +451,17 @@ async def test_taken_conversation_survives_client_restart_and_new_customer_messa
         )
         mine = await second_client.get(
             "/admin/conversations?assigned_to_me=true",
-            headers=agent_headers("11223344"),
+            headers=agent_headers(second_login.json()["token"]),
         )
         assert mine.status_code == 200
         payload = mine.json()
         assert [row["id"] for row in payload] == [conversation.id]
         assert payload[0]["state"] == "HUMAN_ACTIVE"
-        assert payload[0]["assigned_agent"] == {"id": agent["id"], "name": "Persistente"}
+        assert payload[0]["assigned_agent"] == {
+            "id": agent["id"],
+            "name": "Persistente",
+            "role": "AGENT",
+        }
         assert payload[0]["last_message_preview"] == "Sigo aquí"
 
         async with app.state.db_sessionmaker() as session:
@@ -523,9 +553,15 @@ async def test_tc_take_011_list_conversations_filters_paginates_and_orders(
     assert [row["id"] for row in payload[:2]] == [second_conversation.id, first_conversation.id]
     assert payload[0]["customer_phone"] == "+573001112237"
     assert payload[0]["state"] == "HUMAN_ACTIVE"
-    assert payload[0]["assigned_agent"] == {"id": agent["id"], "name": "Alexandra"}
-    assert payload[0]["assignment_history"][0]["actor"] == "Alexandra"
-    assert payload[0]["assignment_history"][0]["action"] == "HANDOFF_TAKEN"
+    assert payload[0]["assigned_agent"] == {"id": agent["id"], "name": "Alexandra", "role": "AGENT"}
+    assert "assignment_history" not in payload[0]
+    history = await client.get(
+        f"/admin/conversations/{second_conversation.id}/history",
+        headers=agent_headers(agent["token"]),
+    )
+    assert history.status_code == 200
+    assert history.json()[0]["actor"] == "Alexandra"
+    assert history.json()[0]["action"] == "HANDOFF_TAKEN"
     assert "Motivo: MANUAL_TAKEOVER" in payload[0]["handoff_summary"]
     assert payload[0]["last_message_preview"] == "Segundo"
     assert payload[0]["last_message_at"] is not None

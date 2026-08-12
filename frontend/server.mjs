@@ -167,6 +167,14 @@ const server = createServer(async (request, response) => {
       await proxy(request, response, `/admin/handoffs${requestUrl.search}`);
       return;
     }
+    if (path === "/api/admin/login") {
+      await proxy(request, response, "/admin/login");
+      return;
+    }
+    if (path === "/api/admin/logout") {
+      await proxy(request, response, "/admin/logout");
+      return;
+    }
     if (path.startsWith("/api/admin/handoffs/")) {
       await proxy(request, response, path.replace("/api", ""));
       return;
@@ -181,6 +189,10 @@ const server = createServer(async (request, response) => {
     }
     if (path === "/api/admin/agents") {
       await proxy(request, response, "/admin/agents");
+      return;
+    }
+    if (path.startsWith("/api/admin/agents/")) {
+      await proxy(request, response, path.replace("/api", ""));
       return;
     }
     if (path.startsWith("/api/admin/conversations/")) {

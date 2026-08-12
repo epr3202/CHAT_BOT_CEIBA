@@ -13,6 +13,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models_registry  # noqa: F401
+from app.agent.auth import hash_pin
+from app.agent.models import Agent
 from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import IntentClassification
 from app.config.database import Base
@@ -24,7 +26,6 @@ from scripts.load_knowledge import load_knowledge_entries
 APP_SECRET = "test-app-secret"
 VERIFY_TOKEN = "test-verify-token"
 PHONE_NUMBER_ID = "123456789"
-ADMIN_API_TOKEN = "test-admin-token"
 DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test",
@@ -87,7 +88,6 @@ async def configure_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("META_VERIFY_TOKEN", VERIFY_TOKEN)
     monkeypatch.setenv("META_ACCESS_TOKEN", "test-meta-access-token")
     monkeypatch.setenv("META_PHONE_NUMBER_ID", PHONE_NUMBER_ID)
-    monkeypatch.setenv("ADMIN_API_TOKEN", ADMIN_API_TOKEN)
     monkeypatch.setenv("META_GRAPH_API_VERSION", "v20.0")
     monkeypatch.setenv("WHATSAPP_API_BASE_URL", "https://graph.facebook.com")
     monkeypatch.setenv("WEBHOOK_MAX_BODY_BYTES", "1048576")
@@ -152,6 +152,43 @@ async def database_sessionmaker() -> AsyncIterator[async_sessionmaker[AsyncSessi
     engine = create_async_engine(DATABASE_URL)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
+
+
+async def bootstrap_agent(
+    name: str = "Alexandra",
+    document_id: str = "1020304050",
+    pin: str = "123456",
+    role: str = "ADMIN",
+    active: bool = True,
+) -> Agent:
+    engine = create_async_engine(DATABASE_URL)
+    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessionmaker() as session:
+        async with session.begin():
+            agent = Agent(
+                name=name,
+                document_id=document_id,
+                password_hash=hash_pin(pin),
+                role=role,
+                active=active,
+            )
+            session.add(agent)
+            await session.flush()
+    await engine.dispose()
+    return agent
+
+
+async def login_headers(
+    client: AsyncClient,
+    document_id: str = "1020304050",
+    pin: str = "123456",
+) -> dict[str, str]:
+    response = await client.post(
+        "/admin/login",
+        json={"document_id": document_id, "pin": pin},
+    )
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['token']}"}
 
 
 def whatsapp_message_payload(
