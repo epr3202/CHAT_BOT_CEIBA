@@ -8,6 +8,7 @@ const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
 const port = Number.parseInt(process.env.FRONTEND_PORT || "5173", 10);
 const host = process.env.FRONTEND_HOST || "127.0.0.1";
 const backendBaseUrl = (process.env.API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const metaAppSecret = process.env.META_APP_SECRET || "";
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -101,14 +102,15 @@ async function simulateWebhook(request, response) {
     return;
   }
 
-  if (!input.metaSecret || !input.text) {
+  const signingSecret = metaAppSecret || input.metaSecret;
+  if (!signingSecret || !input.text) {
     sendJson(response, 400, { detail: "META_APP_SECRET y texto son obligatorios" });
     return;
   }
 
   const payload = signedWhatsAppPayload(input);
   const body = JSON.stringify(payload);
-  const signature = createHmac("sha256", String(input.metaSecret)).update(body).digest("hex");
+  const signature = createHmac("sha256", String(signingSecret)).update(body).digest("hex");
   const upstream = await fetch(`${backendBaseUrl}/webhook`, {
     method: "POST",
     headers: {

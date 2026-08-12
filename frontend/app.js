@@ -1,5 +1,21 @@
+const adminTokenStorageKey = "ceiba.adminToken";
+
+function loadAdminToken() {
+  const sessionToken = sessionStorage.getItem(adminTokenStorageKey);
+  if (sessionToken !== null) {
+    return sessionToken;
+  }
+  const legacyToken = localStorage.getItem(adminTokenStorageKey);
+  if (legacyToken !== null) {
+    sessionStorage.setItem(adminTokenStorageKey, legacyToken);
+    localStorage.removeItem(adminTokenStorageKey);
+    return legacyToken;
+  }
+  return "";
+}
+
 const state = {
-  adminToken: localStorage.getItem("ceiba.adminToken") || "",
+  adminToken: loadAdminToken(),
   agentName: localStorage.getItem("ceiba.agentName") || "Asesor",
   metaSecret: sessionStorage.getItem("ceiba.metaSecret") || "",
   currentStatus: "PENDING",
@@ -62,7 +78,8 @@ function saveConfig() {
   state.adminToken = $("#adminToken").value.trim();
   state.agentName = $("#agentName").value.trim() || "Asesor";
   state.metaSecret = $("#metaSecret").value;
-  localStorage.setItem("ceiba.adminToken", state.adminToken);
+  sessionStorage.setItem(adminTokenStorageKey, state.adminToken);
+  localStorage.removeItem(adminTokenStorageKey);
   localStorage.setItem("ceiba.agentName", state.agentName);
   sessionStorage.setItem("ceiba.metaSecret", state.metaSecret);
   logEvent("Configuración guardada para esta estación.");
@@ -108,10 +125,6 @@ async function sendWebhook({ duplicate = false } = {}) {
         metaSecret: state.metaSecret,
       };
 
-  if (!payload.metaSecret) {
-    logEvent("Falta META_APP_SECRET para firmar el webhook.");
-    return;
-  }
   if (!payload.text) {
     logEvent("El mensaje no puede estar vacío.");
     return;
@@ -126,7 +139,10 @@ async function sendWebhook({ duplicate = false } = {}) {
     logEvent(duplicate ? `Duplicado reenviado: ${payload.messageId}` : `Webhook aceptado: ${payload.text}`);
     await refreshAll();
   } catch (error) {
-    logEvent(`Webhook falló: ${error.message}`);
+    const hint = error.message === "META_APP_SECRET y texto son obligatorios"
+      ? " Exporta META_APP_SECRET antes de arrancar node frontend/server.mjs."
+      : "";
+    logEvent(`Webhook falló: ${error.message}.${hint}`);
   }
 }
 

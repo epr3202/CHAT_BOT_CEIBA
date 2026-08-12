@@ -54,6 +54,7 @@ def test_frontend_server_keeps_webhook_secret_out_of_logs() -> None:
     server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
 
     assert "metaSecret" in server
+    assert "process.env.META_APP_SECRET" in server
     assert "console.log(metaSecret" not in server
     assert "console.error(metaSecret" not in server
     assert "createHmac" in server
@@ -68,3 +69,12 @@ def test_admin_cases_require_token_before_fetching() -> None:
     assert "state.adminToken" in function_body
     assert function_body.index("state.adminToken") < function_body.index("/api/admin/handoffs")
     assert ".catch(() => [])" not in function_body
+
+
+def test_admin_token_uses_session_storage_with_legacy_migration() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+
+    assert 'sessionStorage.getItem(adminTokenStorageKey)' in app_js
+    assert 'sessionStorage.setItem(adminTokenStorageKey, legacyToken)' in app_js
+    assert 'localStorage.removeItem(adminTokenStorageKey)' in app_js
+    assert 'localStorage.setItem("ceiba.adminToken"' not in app_js
