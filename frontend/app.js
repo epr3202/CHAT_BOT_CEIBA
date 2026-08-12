@@ -20,6 +20,21 @@ function headers() {
   return state.adminToken ? { Authorization: `Bearer ${state.adminToken}` } : {};
 }
 
+function resetAdminMetrics() {
+  setText("metricPending", "--");
+  setText("metricTaken", "--");
+  setText("metricReturned", "--");
+}
+
+function renderAdminTokenRequired() {
+  state.adminCases = [];
+  resetAdminMetrics();
+  const container = $("#caseList");
+  if (container) {
+    container.innerHTML = `<div class="emptyState">Configura y guarda el token admin para cargar clientes.</div>`;
+  }
+}
+
 async function requestJson(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -137,19 +152,38 @@ async function loadHandoffs(status = state.currentStatus) {
 }
 
 async function loadAllAdminCases() {
+  if (!state.adminToken) {
+    renderAdminTokenRequired();
+    return;
+  }
+
+  try {
+    const results = await loadAllAdminCasesWithoutPartialData();
+    state.adminCases = results.flat().map(caseFromHandoff);
+    setText("metricPending", String(state.adminCases.filter((item) => item.status === "PENDING").length));
+    setText("metricTaken", String(state.adminCases.filter((item) => item.status === "TAKEN").length));
+    setText("metricReturned", String(state.adminCases.filter((item) => item.status === "RETURNED").length));
+    renderAdminCases();
+  } catch (error) {
+    state.adminCases = [];
+    resetAdminMetrics();
+    const container = $("#caseList");
+    if (container) {
+      container.innerHTML = `<div class="emptyState">No se pudo cargar clientes: ${error.message}</div>`;
+    }
+    logEvent(`Clientes falló: ${error.message}`);
+  }
+}
+
+async function loadAllAdminCasesWithoutPartialData() {
   const statuses = ["PENDING", "TAKEN", "RETURNED"];
-  const results = await Promise.all(
+  return Promise.all(
     statuses.map((status) =>
       requestJson(`/api/admin/handoffs?status=${encodeURIComponent(status)}`, {
         headers: headers(),
-      }).catch(() => [])
+      })
     )
   );
-  state.adminCases = results.flat().map(caseFromHandoff);
-  setText("metricPending", String(state.adminCases.filter((item) => item.status === "PENDING").length));
-  setText("metricTaken", String(state.adminCases.filter((item) => item.status === "TAKEN").length));
-  setText("metricReturned", String(state.adminCases.filter((item) => item.status === "RETURNED").length));
-  renderAdminCases();
 }
 
 function caseFromHandoff(handoff) {
@@ -373,6 +407,10 @@ async function returnHandoff(handoffId) {
 
 async function refreshAll() {
   await checkHealth();
+  if (!state.adminToken) {
+    renderAdminTokenRequired();
+    return;
+  }
   await loadAllAdminCases();
   await loadHandoffs(state.currentStatus);
 }

@@ -57,3 +57,14 @@ def test_frontend_server_keeps_webhook_secret_out_of_logs() -> None:
     assert "console.log(metaSecret" not in server
     assert "console.error(metaSecret" not in server
     assert "createHmac" in server
+
+
+def test_admin_cases_require_token_before_fetching() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    function_start = app_js.index("async function loadAllAdminCases()")
+    function_end = app_js.index("function caseFromHandoff", function_start)
+    function_body = app_js[function_start:function_end]
+
+    assert "state.adminToken" in function_body
+    assert function_body.index("state.adminToken") < function_body.index("/api/admin/handoffs")
+    assert ".catch(() => [])" not in function_body
