@@ -11,6 +11,7 @@ from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import IntentClassification
 from app.channel.models import Outbox
 from app.conversation.models import Conversation
+from app.customer.models import Customer
 from app.handoff.models import Handoff
 from app.main import app
 from tests.integration.helpers import (
@@ -106,12 +107,22 @@ async def test_full_handoff_cycle_returns_control_to_bot(
     )
     await post_whatsapp(client, "wamid.handoff.full.1", "Quiero hablar con un asesor")
 
+    async with app.state.db_sessionmaker() as session:
+        async with session.begin():
+            customer = await session.scalar(
+                select(Customer).where(Customer.phone_number == "+573001112233")
+            )
+            assert customer is not None
+            customer.full_name = "Natalia Perez"
+
     pending = await client.get("/admin/handoffs", headers=admin_headers())
     assert pending.status_code == 200
     handoff = pending.json()[0]
     handoff_id = handoff["id"]
     conversation_id = handoff["conversation_id"]
     assert handoff["status"] == "PENDING"
+    assert handoff["customer_name"] == "Natalia Perez"
+    assert handoff["customer_phone"] == "+573001112233"
 
     await post_whatsapp(client, "wamid.handoff.full.2", "Sigo esperando")
     assert await count_outbox() == 1

@@ -67,10 +67,14 @@ async def list_handoffs(
     session: DbSession,
     status: str = "PENDING",
 ) -> list[dict[str, object]]:
-    result = await session.scalars(
-        select(Handoff).where(Handoff.status == status).order_by(Handoff.created_at.asc())
+    result = await session.execute(
+        select(Handoff, Customer)
+        .join(Conversation, Handoff.conversation_id == Conversation.id)
+        .join(Customer, Conversation.customer_id == Customer.id)
+        .where(Handoff.status == status)
+        .order_by(Handoff.created_at.asc())
     )
-    return [handoff_payload(handoff) for handoff in result.all()]
+    return [handoff_payload(handoff, customer) for handoff, customer in result.all()]
 
 
 @router.post("/handoffs/{handoff_id}/take")
@@ -105,6 +109,7 @@ async def take_handoff(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conversation is not waiting for human",
             )
+        customer = await session.get(Customer, conversation.customer_id)
 
         now = datetime.now(UTC)
         handoff.status = "TAKEN"
@@ -135,7 +140,7 @@ async def take_handoff(
             )
         )
 
-    return handoff_payload(handoff)
+    return handoff_payload(handoff, customer)
 
 
 @router.post("/handoffs/{handoff_id}/return")
@@ -170,6 +175,7 @@ async def return_handoff(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conversation is not human active",
             )
+        customer = await session.get(Customer, conversation.customer_id)
 
         handoff.status = "RETURNED"
         handoff.resolved_at = datetime.now(UTC)
@@ -205,7 +211,7 @@ async def return_handoff(
             )
         )
 
-    return handoff_payload(handoff)
+    return handoff_payload(handoff, customer)
 
 
 @router.post("/conversations/{conversation_id}/messages")
@@ -273,10 +279,12 @@ async def create_agent_message(
     return {"outbox_id": outbox.id, "status": outbox.status}
 
 
-def handoff_payload(handoff: Handoff) -> dict[str, object]:
+def handoff_payload(handoff: Handoff, customer: Customer | None = None) -> dict[str, object]:
     return {
         "id": handoff.id,
         "conversation_id": handoff.conversation_id,
+        "customer_name": customer.full_name if customer is not None else None,
+        "customer_phone": customer.phone_number if customer is not None else None,
         "reason": handoff.reason,
         "priority": handoff.priority,
         "summary": handoff.summary,
