@@ -501,6 +501,39 @@ textarea {
   overflow: auto;
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(18, 35, 29, 0.42);
+}
+
+.modalBackdrop[hidden] {
+  display: none;
+}
+
+.summaryModal {
+  width: min(760px, 100%);
+  max-height: min(760px, 90vh);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.summaryDetails {
+  white-space: pre-line;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+
 .chatThread {
   display: flex;
   flex-direction: column;

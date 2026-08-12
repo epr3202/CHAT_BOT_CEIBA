@@ -526,6 +526,7 @@ async def test_tc_take_011_list_conversations_filters_paginates_and_orders(
     assert payload[0]["assigned_agent"] == {"id": agent["id"], "name": "Alexandra"}
     assert payload[0]["assignment_history"][0]["actor"] == "Alexandra"
     assert payload[0]["assignment_history"][0]["action"] == "HANDOFF_TAKEN"
+    assert "Motivo: MANUAL_TAKEOVER" in payload[0]["handoff_summary"]
     assert payload[0]["last_message_preview"] == "Segundo"
     assert payload[0]["last_message_at"] is not None
 

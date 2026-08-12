@@ -101,6 +101,7 @@ class ConversationPayload(BaseModel):
     assignment_history: list[AssignmentHistoryPayload]
     handoff_reason: str | None
     handoff_priority: str | None
+    handoff_summary: str | None
     last_message_body: str | None
     last_message_preview: str | None
     last_message_direction: str | None
@@ -346,6 +347,7 @@ async def list_conversations(
                 assignment_history=assignment_history,
                 handoff_reason=handoff.reason if handoff is not None else None,
                 handoff_priority=handoff.priority if handoff is not None else None,
+                handoff_summary=handoff.summary if handoff is not None else None,
                 last_message_body=latest_body,
                 last_message_preview=truncate_preview(latest_body),
                 last_message_direction=latest_message.direction

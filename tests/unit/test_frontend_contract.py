@@ -162,6 +162,20 @@ def test_frontend_shows_assignment_history() -> None:
     assert "white-space: pre-line" in styles
 
 
+def test_frontend_summary_button_opens_modal() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
+    styles = FRONTEND.joinpath("styles.css").read_text(encoding="utf-8")
+
+    assert 'id="summaryModal"' in index_html
+    assert 'id="summaryModalBody"' in index_html
+    assert "function showSummary" in app_js
+    assert '$("#summaryModal").hidden = false' in app_js
+    assert "function closeSummaryModal" in app_js
+    assert "conversation.handoff_summary" in app_js
+    assert ".modalBackdrop" in styles
+
+
 def test_frontend_persists_followup_bandeja_state() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
 

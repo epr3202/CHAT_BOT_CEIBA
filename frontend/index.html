@@ -241,6 +241,20 @@
       </article>
     </template>
 
+    <div id="summaryModal" class="modalBackdrop" hidden>
+      <section class="summaryModal" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
+        <div class="panelHeader compact">
+          <div>
+            <h2 id="summaryModalTitle">Resumen</h2>
+            <span id="summaryModalMeta"></span>
+          </div>
+          <button id="closeSummaryModal" class="iconButton" type="button" title="Cerrar">×</button>
+        </div>
+        <div id="summaryModalDetails" class="summaryDetails"></div>
+        <pre id="summaryModalBody" class="summary"></pre>
+      </section>
+    </div>
+
     <script src="/app.js" type="module"></script>
   </body>
 </html>

@@ -340,7 +340,7 @@ function caseFromConversation(conversation) {
     createdAt: conversation.last_message_at,
     takenAt: null,
     resolvedAt: null,
-    summary: conversation.last_message_preview || conversation.last_message_body || "",
+    summary: conversation.handoff_summary || conversation.last_message_preview || conversation.last_message_body || "",
     lastMessageDirection: conversation.last_message_direction,
   };
 }
@@ -463,7 +463,20 @@ function openHandoffAndFocus(handoffId) {
 }
 
 function showSummary(item) {
-  logEvent(item.summary ? `Resumen conversación ${item.conversationId}: ${item.summary}` : "Sin resumen disponible.");
+  $("#summaryModalTitle").textContent = item.customerName;
+  $("#summaryModalMeta").textContent = `${item.phone} · conversación ${item.conversationId}`;
+  $("#summaryModalDetails").textContent = [
+    `Estado: ${statusLabel(item.handoffStatus, item.status)}`,
+    `Asignación: ${item.assignedTo}`,
+    `Motivo: ${item.reason}`,
+    `Actividad: ${activityText(item)}`,
+  ].join("\n");
+  $("#summaryModalBody").textContent = item.summary || "Sin resumen disponible.";
+  $("#summaryModal").hidden = false;
+}
+
+function closeSummaryModal() {
+  $("#summaryModal").hidden = true;
 }
 
 function priorityClass(priority) {
@@ -737,6 +750,13 @@ function bindUi() {
     loadAllAdminCases();
   });
   $("#refreshAll").addEventListener("click", refreshAll);
+  $("#closeSummaryModal").addEventListener("click", closeSummaryModal);
+  $("#summaryModal").addEventListener("click", (event) => {
+    if (event.target.id === "summaryModal") closeSummaryModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("#summaryModal").hidden) closeSummaryModal();
+  });
   $("#clearLog").addEventListener("click", () => {
     $("#eventLog").innerHTML = "";
     setText("metricWebhook", "--");
