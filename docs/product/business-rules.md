@@ -1736,6 +1736,7 @@ SPECIAL_EVENT
 SUPPLIER_CONFIRMATION
 URGENT_EVENT
 SYSTEM_ERROR
+MANUAL_TAKEOVER
 OTHER
 ```
 
@@ -1771,6 +1772,14 @@ Las conversaciones escaladas entrarán a una bandeja central.
 Un asesor se asignará mediante:
 
 **Tomar conversación**
+
+La toma directa de una conversación sin handoff previo creará un handoff con motivo:
+
+```text
+MANUAL_TAKEOVER
+```
+
+El handoff nacerá y será tomado en el mismo acto transaccional.
 
 ---
 
@@ -1835,9 +1844,21 @@ El responsable general de escalaciones será:
 
 ---
 
+## BR-HAND-012 — Toma directa sin mensaje automático
+
+La toma directa de una conversación por un asesor no enviará ningún mensaje automático
+al cliente.
+
+El primer mensaje posterior a la toma directa deberá escribirlo el asesor humano desde
+el panel operativo.
+
+Esta regla evita introducir texto hacia cliente sin plantilla aprobada.
+
+---
+
 # 21. Reglas de quejas
 
-## BR-HAND-012 — Detección
+## BR-HAND-013 — Detección
 
 Una queja deberá detectarse cuando exista:
 
@@ -1850,7 +1871,7 @@ Una queja deberá detectarse cuando exista:
 
 ---
 
-## BR-HAND-013 — Prioridad
+## BR-HAND-014 — Prioridad
 
 Las quejas tendrán prioridad mínima:
 
@@ -1860,13 +1881,13 @@ URGENT
 
 ---
 
-## BR-HAND-014 — Respuesta
+## BR-HAND-015 — Respuesta
 
 > Lamentamos que estés pasando por esta situación. Queremos revisar tu caso con la atención que merece. Voy a trasladar la conversación a nuestro equipo responsable.
 
 ---
 
-## BR-HAND-015 — Prohibiciones
+## BR-HAND-016 — Prohibiciones
 
 El bot no podrá:
 

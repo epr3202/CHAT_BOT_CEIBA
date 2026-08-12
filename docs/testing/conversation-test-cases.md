@@ -2044,7 +2044,176 @@ Bloquear retorno si existe una acción humana crítica sin resolver.
 
 ---
 
-# 18. Suite I — Pagos y reservas
+# 18. Suite TAKE — Toma directa e identidad de asesores
+
+## TC-AGENT-001 — Crear agente
+
+**Precondición:** request autenticado con `ADMIN_API_TOKEN`.
+
+**Resultado esperado:**
+
+* `POST /admin/agents` crea agente activo;
+* la respuesta incluye el token en claro una sola vez;
+* la base persiste solo `token_hash`;
+* auditoría no contiene token ni hash.
+
+---
+
+## TC-AGENT-002 — Token inválido
+
+**Entrada:** request protegido por agente con token inexistente.
+
+**Resultado esperado:**
+
+* HTTP 401;
+* sin efectos secundarios.
+
+---
+
+## TC-AGENT-003 — Agente desactivado
+
+**Precondición:** `agent.active = false`.
+
+**Resultado esperado:**
+
+* request protegido por agente devuelve HTTP 403;
+* sin efectos secundarios.
+
+---
+
+## TC-AGENT-004 — Token admin no identifica agente
+
+**Precondición:** `ADMIN_API_TOKEN` válido.
+
+**Resultado esperado:**
+
+* el token admin permite gestión de agentes;
+* el token admin no permite tomar conversaciones como agente;
+* toma directa con token admin devuelve 401.
+
+---
+
+## TC-TAKE-001 — Toma directa en BOT_ACTIVE
+
+**Precondición:** conversación en `BOT_ACTIVE`.
+
+**Resultado esperado:**
+
+* `POST /admin/conversations/{id}/take` con token de agente activo devuelve 200;
+* crea `Handoff(reason = MANUAL_TAKEOVER, status = TAKEN)`;
+* `conversation_status = HUMAN_ACTIVE`;
+* `bot_enabled = false`;
+* `assigned_agent_id` apunta al agente autenticado;
+* auditoría registra creación de handoff, toma y transiciones.
+
+---
+
+## TC-TAKE-002 — Toma directa sin mensaje automático
+
+**Resultado esperado:**
+
+* la toma directa no crea filas nuevas en `outbox`;
+* el primer mensaje al cliente lo escribe el asesor.
+
+---
+
+## TC-TAKE-003 — Toma directa concurrente
+
+**Precondición:** dos agentes activos intentan tomar la misma conversación.
+
+**Resultado esperado:**
+
+* exactamente un request gana;
+* el otro recibe HTTP 409;
+* existe exactamente un handoff;
+* existe un solo asesor activo.
+
+---
+
+## TC-TAKE-004 — Toma directa sobre HUMAN_ACTIVE
+
+**Resultado esperado:**
+
+* HTTP 409;
+* no se crea handoff adicional;
+* no cambia el asesor activo.
+
+---
+
+## TC-TAKE-005 — Toma directa sobre CLOSED
+
+**Resultado esperado:**
+
+* HTTP 409;
+* sin efectos secundarios.
+
+---
+
+## TC-TAKE-006 — Toma directa sobre WAITING_FOR_HUMAN
+
+**Resultado esperado:**
+
+* HTTP 409;
+* respuesta indica tomar el handoff pendiente existente;
+* no se crea segundo handoff.
+
+---
+
+## TC-TAKE-007 — Mensaje del cliente durante HUMAN_ACTIVE post-toma
+
+**Resultado esperado:**
+
+* mensaje inbound persistido y visible;
+* bot no responde;
+* el orquestador no ejecuta `pending_action`.
+
+---
+
+## TC-TAKE-008 — Webhook duplicado durante HUMAN_ACTIVE post-toma
+
+**Resultado esperado:**
+
+* `external_message_id` repetido no crea segundo mensaje;
+* no crea segunda respuesta;
+* no crea segundo handoff.
+
+---
+
+## TC-TAKE-009 — Devolución de handoff de toma directa
+
+**Resultado esperado:**
+
+* `/admin/handoffs/{id}/return` exige resolución;
+* `RETURNED_TO_BOT`;
+* `bot_enabled = true`;
+* asignación de agente liberada.
+
+---
+
+## TC-TAKE-010 — Toma directa sobre RESOLVED
+
+**Precondición:** conversación en `RESOLVED`.
+
+**Resultado esperado:**
+
+* reapertura auditada;
+* handoff `MANUAL_TAKEOVER` creado y tomado;
+* conversación termina en `HUMAN_ACTIVE`.
+
+---
+
+## TC-TAKE-011 — Listado de conversaciones
+
+**Resultado esperado:**
+
+* `GET /admin/conversations` soporta `state`, `assigned_to_me`, `limit` y `offset`;
+* payload incluye id, nombre y teléfono del cliente, estado, agente asignado y
+  timestamp del último mensaje;
+* orden por actividad reciente descendente.
+
+---
+
+# 19. Suite I — Pagos y reservas
 
 ## TC-PAY-001 — Consulta de métodos
 
@@ -3680,4 +3849,3 @@ Su aprobación implica que:
 * los casos de seguridad están incluidos;
 * el MVP cuenta con criterios objetivos de calidad;
 * la Fase 0 queda documentalmente cerrada.
-

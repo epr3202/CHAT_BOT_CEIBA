@@ -922,6 +922,7 @@ SUPPLIER_CONFIRMATION
 URGENT_EVENT
 SYSTEM_ERROR
 REPEATED_NO_SHOW
+MANUAL_TAKEOVER
 OTHER
 ```
 
@@ -971,36 +972,70 @@ agent_has_permission = true
 bot_pause_successful = true
 ```
 
-## 14.7.1 Toma manual desde otros estados
+## 14.7.1 Toma directa desde otros estados
 
 Un asesor autorizado puede tomar manualmente una conversación que aún no esté en
 `WAITING_FOR_HUMAN`. Esta operación administrativa debe pasar por las mismas
-invariantes de handoff humano:
+invariantes de handoff humano y se ejecuta como composición atómica de transiciones
+existentes, dentro de una sola transacción:
 
 ```text
-estado_actual
+<estado elegible>
 → WAITING_FOR_HUMAN
 → HUMAN_ACTIVE
 ```
 
+Estados elegibles:
+
+```text
+BOT_ACTIVE
+ANSWERING_INFORMATION
+COLLECTING_EVENT_DATA
+WAITING_FOR_APPOINTMENT_DATE
+WAITING_FOR_APPOINTMENT_SELECTION
+APPOINTMENT_PENDING_CONFIRMATION
+APPOINTMENT_CONFIRMED
+RESOLVED
+```
+
+`RESOLVED` implica reapertura auditada antes de entrar a atención humana.
+
+Estados no elegibles:
+
+```text
+HUMAN_ACTIVE
+CLOSED
+WAITING_FOR_HUMAN
+```
+
+`HUMAN_ACTIVE` devuelve conflicto porque ya existe un asesor activo.
+`CLOSED` requiere reapertura administrativa explícita fuera de este flujo.
+`WAITING_FOR_HUMAN` debe tomarse con el handoff pendiente existente para no crear un
+segundo handoff.
+
 Efectos obligatorios:
 
 ```text
+handoff.reason = MANUAL_TAKEOVER
 handoff.status = TAKEN
-handoff.assigned_to = asesor
+handoff.assigned_agent_id = asesor
+handoff.assigned_to = agent.name
 conversation_status = HUMAN_ACTIVE
 bot_enabled = false
 pending_action = WAIT_FOR_HUMAN
 audit_event.action = CONVERSATION_MANUAL_TAKEOVER
 ```
 
-Si no existe handoff, el backend crea uno con motivo operativo `OTHER`. Si existe un
-handoff `PENDING`, lo toma. Si el caso ya está `TAKEN`, la acción funciona como
-reasignación explícita y debe quedar auditada.
+El handoff nace y se toma en el mismo acto con motivo `MANUAL_TAKEOVER`. La identidad
+del asesor se deriva de su token individual, no de un string libre enviado por el
+cliente HTTP.
 
 Esta toma manual no autoriza al sistema a ejecutar acciones críticas. Precios, pagos,
 reservas, disponibilidad, citas, devoluciones y descuentos siguen requiriendo servicios
 de dominio y autorización humana según sus reglas específicas.
+
+La toma directa no envía ningún mensaje automático al cliente. El primer mensaje tras
+la toma lo escribe el asesor.
 
 ## 14.8 Cancelación del handoff
 

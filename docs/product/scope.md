@@ -959,8 +959,9 @@ También se admite toma manual operativa desde la bandeja general de conversacio
 ```text
 Conversación existente
 → asesor selecciona “Tomar”
-→ backend crea o reutiliza handoff
-→ asigna asesor
+→ backend valida estado elegible
+→ backend crea Handoff(reason = MANUAL_TAKEOVER)
+→ asigna asesor autenticado
 → conversation_status = HUMAN_ACTIVE
 → bot_enabled = false
 → auditoría de toma manual
@@ -968,7 +969,31 @@ Conversación existente
 
 Esta acción no depende de una clasificación previa del bot. Se usa cuando el equipo
 humano identifica que debe intervenir en una conversación que aún estaba siendo
-atendida por automatización, o cuando necesita reasignar un caso ya tomado.
+atendida por automatización.
+
+Estados elegibles:
+
+```text
+BOT_ACTIVE
+ANSWERING_INFORMATION
+COLLECTING_EVENT_DATA
+WAITING_FOR_APPOINTMENT_DATE
+WAITING_FOR_APPOINTMENT_SELECTION
+APPOINTMENT_PENDING_CONFIRMATION
+APPOINTMENT_CONFIRMED
+RESOLVED
+```
+
+Estados no elegibles:
+
+```text
+HUMAN_ACTIVE
+CLOSED
+WAITING_FOR_HUMAN
+```
+
+`WAITING_FOR_HUMAN` debe tomarse mediante el handoff pendiente existente. La toma
+directa no debe crear un segundo handoff.
 
 La toma manual deberá preservar la trazabilidad:
 
@@ -976,7 +1001,8 @@ La toma manual deberá preservar la trazabilidad:
 * no borra el historial del bot;
 * no confirma pagos, reservas, citas, precios ni disponibilidad;
 * registra `audit_event`;
-* deja al bot pausado hasta que un asesor devuelva la conversación.
+* deja al bot pausado hasta que un asesor devuelva la conversación;
+* no envía ningún mensaje automático al cliente.
 
 ## 15.4.1 Persistencia operativa
 
