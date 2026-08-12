@@ -20,6 +20,9 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      # Compose environment overrides env_file so containers use the db service host.
+      DATABASE_URL: postgresql+asyncpg://ceiba:ceiba@db:5432/ceiba
     ports:
       - "8000:8000"
     depends_on:
@@ -32,6 +35,9 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      # Compose environment overrides env_file so containers use the db service host.
+      DATABASE_URL: postgresql+asyncpg://ceiba:ceiba@db:5432/ceiba
     depends_on:
       db:
         condition: service_healthy
