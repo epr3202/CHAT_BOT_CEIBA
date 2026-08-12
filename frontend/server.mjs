@@ -172,7 +172,11 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (path === "/api/admin/conversations") {
-      await proxy(request, response, "/admin/conversations");
+      await proxy(request, response, `/admin/conversations${requestUrl.search}`);
+      return;
+    }
+    if (path === "/api/admin/me") {
+      await proxy(request, response, "/admin/me");
       return;
     }
     if (path.startsWith("/api/admin/conversations/")) {

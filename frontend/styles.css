@@ -32,6 +32,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -277,6 +278,30 @@ label {
   margin-bottom: 14px;
 }
 
+.caseToolbar {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.caseToolbar label {
+  min-width: 240px;
+}
+
+.checkLabel {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.checkLabel input {
+  width: auto;
+}
+
 label {
   display: grid;
   gap: 7px;
@@ -285,6 +310,7 @@ label {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -292,6 +318,10 @@ textarea {
   background: #fbfcfb;
   color: var(--text);
   padding: 10px 11px;
+}
+
+select {
+  min-height: 40px;
 }
 
 textarea {

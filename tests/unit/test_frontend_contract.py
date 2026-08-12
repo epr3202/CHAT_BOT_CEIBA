@@ -25,11 +25,13 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/admin/handoffs/",
         "/api/admin/conversations",
         "/api/admin/conversations/",
+        "/api/admin/me",
         "/api/webhook/simulate",
         "/health",
         "/admin/handoffs",
         "/admin/conversations",
         "/admin/conversations/",
+        "/admin/me",
         "/webhook",
     }
 
@@ -62,14 +64,16 @@ def test_frontend_server_keeps_webhook_secret_out_of_logs() -> None:
     assert "createHmac" in server
 
 
-def test_admin_cases_require_token_before_fetching() -> None:
+def test_conversations_require_operation_token_before_fetching() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
     function_start = app_js.index("async function loadAllAdminCases()")
     function_end = app_js.index("function caseFromHandoff", function_start)
     function_body = app_js[function_start:function_end]
 
-    assert "state.adminToken" in function_body
-    assert function_body.index("state.adminToken") < function_body.index("/api/admin/conversations")
+    assert "hasOperationToken()" in function_body
+    assert function_body.index("hasOperationToken()") < function_body.index(
+        "/api/admin/conversations"
+    )
     assert ".catch(() => [])" not in function_body
 
 
@@ -80,6 +84,18 @@ def test_admin_token_uses_session_storage_with_legacy_migration() -> None:
     assert 'sessionStorage.setItem(adminTokenStorageKey, legacyToken)' in app_js
     assert 'localStorage.removeItem(adminTokenStorageKey)' in app_js
     assert 'localStorage.setItem("ceiba.adminToken"' not in app_js
+
+
+def test_agent_token_uses_session_storage_and_resolves_identity() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
+
+    assert 'const agentTokenStorageKey = "ceiba.agentToken"' in app_js
+    assert "sessionStorage.getItem(agentTokenStorageKey)" in app_js
+    assert "sessionStorage.setItem(agentTokenStorageKey, state.agentToken)" in app_js
+    assert "/api/admin/me" in app_js
+    assert 'id="agentState"' in index_html
+    assert 'id="agentToken"' in index_html
 
 
 def test_agent_message_refreshes_handoff_view() -> None:
@@ -105,7 +121,23 @@ def test_admin_cases_list_conversations_and_can_take_any_chat() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
     server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
 
-    assert 'requestJson("/api/admin/conversations"' in app_js
+    assert "requestJson(`/api/admin/conversations?${params.toString()}`" in app_js
     assert "function takeConversation" in app_js
     assert "/api/admin/conversations/${conversationId}/take" in app_js
     assert 'path === "/api/admin/conversations"' in server
+
+
+def test_frontend_has_conversation_filters_and_direct_take_uses_agent_token() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
+
+    assert 'id="conversationStateFilter"' in index_html
+    assert 'id="assignedToMeFilter"' in index_html
+    assert 'params.set("assigned_to_me", "true")' in app_js
+    function_start = app_js.index("async function takeConversation")
+    function_end = app_js.index("async function sendAgentMessage", function_start)
+    function_body = app_js[function_start:function_end]
+    assert "headers: agentHeaders()" in function_body
+    assert "body: JSON.stringify({ agent:" not in function_body
+    assert "prompt(" not in app_js
+    assert "alert(" not in app_js

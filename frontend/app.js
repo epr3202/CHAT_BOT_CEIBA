@@ -1,4 +1,15 @@
 const adminTokenStorageKey = "ceiba.adminToken";
+const agentTokenStorageKey = "ceiba.agentToken";
+const directTakeEligibleStates = new Set([
+  "BOT_ACTIVE",
+  "ANSWERING_INFORMATION",
+  "COLLECTING_EVENT_DATA",
+  "WAITING_FOR_APPOINTMENT_DATE",
+  "WAITING_FOR_APPOINTMENT_SELECTION",
+  "APPOINTMENT_PENDING_CONFIRMATION",
+  "APPOINTMENT_CONFIRMED",
+  "RESOLVED",
+]);
 
 function loadAdminToken() {
   const sessionToken = sessionStorage.getItem(adminTokenStorageKey);
@@ -16,10 +27,13 @@ function loadAdminToken() {
 
 const state = {
   adminToken: loadAdminToken(),
-  agentName: localStorage.getItem("ceiba.agentName") || "Asesor",
+  agentToken: sessionStorage.getItem(agentTokenStorageKey) || "",
+  agent: null,
   metaSecret: sessionStorage.getItem("ceiba.metaSecret") || "",
   currentStatus: "PENDING",
   caseStatus: "ALL",
+  conversationState: "",
+  assignedToMe: false,
   adminCases: [],
   visibleConversationIds: new Set(),
   chatPollIntervalMs: 3000,
@@ -34,8 +48,20 @@ function setText(id, value) {
   if (node) node.textContent = value;
 }
 
-function headers() {
+function agentHeaders() {
+  return state.agentToken ? { Authorization: `Bearer ${state.agentToken}` } : {};
+}
+
+function adminHeaders() {
   return state.adminToken ? { Authorization: `Bearer ${state.adminToken}` } : {};
+}
+
+function operationHeaders() {
+  return state.agentToken ? agentHeaders() : adminHeaders();
+}
+
+function hasOperationToken() {
+  return Boolean(state.agentToken || state.adminToken);
 }
 
 function resetAdminMetrics() {
@@ -49,7 +75,7 @@ function renderAdminTokenRequired() {
   resetAdminMetrics();
   const container = $("#caseList");
   if (container) {
-    container.innerHTML = `<div class="emptyState">Configura y guarda el token admin para cargar clientes.</div>`;
+    container.innerHTML = `<div class="emptyState">Configura y guarda un token para cargar conversaciones.</div>`;
   }
 }
 
@@ -72,19 +98,36 @@ async function requestJson(path, options = {}) {
 
 function applyConfigToForm() {
   $("#adminToken").value = state.adminToken;
-  $("#agentName").value = state.agentName;
+  $("#agentToken").value = state.agentToken;
   $("#metaSecret").value = state.metaSecret;
 }
 
 function saveConfig() {
   state.adminToken = $("#adminToken").value.trim();
-  state.agentName = $("#agentName").value.trim() || "Asesor";
+  state.agentToken = $("#agentToken").value.trim();
   state.metaSecret = $("#metaSecret").value;
   sessionStorage.setItem(adminTokenStorageKey, state.adminToken);
+  sessionStorage.setItem(agentTokenStorageKey, state.agentToken);
   localStorage.removeItem(adminTokenStorageKey);
-  localStorage.setItem("ceiba.agentName", state.agentName);
+  localStorage.removeItem("ceiba.agentName");
   sessionStorage.setItem("ceiba.metaSecret", state.metaSecret);
   logEvent("Configuración guardada para esta estación.");
+}
+
+async function resolveAgentIdentity() {
+  if (!state.agentToken) {
+    state.agent = null;
+    setText("agentState", "Sin asesor");
+    return;
+  }
+  try {
+    state.agent = await requestJson("/api/admin/me", { headers: agentHeaders() });
+    setText("agentState", `Asesor: ${state.agent.name}`);
+  } catch (error) {
+    state.agent = null;
+    setText("agentState", "Token agente inválido");
+    logEvent(`Identidad de asesor falló: ${error.message}`);
+  }
 }
 
 function setApiState(kind, text) {
@@ -157,7 +200,7 @@ async function loadHandoffs(status = state.currentStatus) {
 
   try {
     const handoffs = await requestJson(`/api/admin/handoffs?status=${encodeURIComponent(status)}`, {
-      headers: headers(),
+      headers: operationHeaders(),
     });
     renderHandoffs(handoffs);
     await refreshVisibleHandoffMessages();
@@ -171,14 +214,17 @@ async function loadHandoffs(status = state.currentStatus) {
 }
 
 async function loadAllAdminCases() {
-  if (!state.adminToken) {
+  if (!hasOperationToken()) {
     renderAdminTokenRequired();
     return;
   }
 
   try {
-    const conversations = await requestJson("/api/admin/conversations", {
-      headers: headers(),
+    const params = new URLSearchParams({ limit: "200", offset: "0" });
+    if (state.conversationState) params.set("state", state.conversationState);
+    if (state.assignedToMe) params.set("assigned_to_me", "true");
+    const conversations = await requestJson(`/api/admin/conversations?${params.toString()}`, {
+      headers: operationHeaders(),
     });
     state.adminCases = conversations.map(caseFromConversation);
     setText("metricPending", String(state.adminCases.filter((item) => item.handoffStatus === "PENDING").length));
@@ -216,20 +262,21 @@ function caseFromHandoff(handoff) {
 
 function caseFromConversation(conversation) {
   const handoffStatus = conversation.handoff_status || "SIN_HANDOFF";
+  const assignedAgent = conversation.assigned_agent?.name || conversation.assigned_to;
   return {
     id: conversation.handoff_id,
-    conversationId: conversation.conversation_id,
+    conversationId: conversation.id || conversation.conversation_id,
     status: conversation.state,
     handoffStatus,
     priority: conversation.handoff_priority || "NORMAL",
     reason: conversation.handoff_reason || conversation.last_intent || "Sin clasificar",
     customerName: conversation.customer_name || "Cliente sin nombre confirmado",
     phone: conversation.customer_phone || "Teléfono no disponible",
-    assignedTo: conversation.assigned_to || (conversation.bot_enabled ? "Bot activo" : "Sin asignar"),
+    assignedTo: assignedAgent || (conversation.bot_enabled ? "Bot activo" : "Sin asignar"),
     createdAt: conversation.last_message_at,
     takenAt: null,
     resolvedAt: null,
-    summary: conversation.last_message_body || "",
+    summary: conversation.last_message_preview || conversation.last_message_body || "",
     lastMessageDirection: conversation.last_message_direction,
   };
 }
@@ -286,7 +333,11 @@ function renderAdminCases() {
     $(".caseReason", row).textContent = item.reason;
     $(".caseActivity", row).textContent = activityText(item);
     const actions = $(".caseActions", row);
-    actions.append(actionButton("Tomar", () => takeConversation(item.conversationId), "primary"));
+    if (directTakeEligibleStates.has(item.status)) {
+      actions.append(actionButton("Tomar conversación", () => takeConversation(item.conversationId), "primary"));
+    } else if (item.status === "WAITING_FOR_HUMAN" && item.handoffStatus === "PENDING" && item.id !== null) {
+      actions.append(actionButton("Tomar handoff", () => takeHandoff(item.id), "primary"));
+    }
     if (item.handoffStatus === "TAKEN" && item.id !== null) {
       actions.append(actionButton("Responder", () => openHandoffAndFocus(item.id)));
       actions.append(actionButton("Devolver", () => returnHandoff(item.id), "danger"));
@@ -334,7 +385,7 @@ function openHandoffAndFocus(handoffId) {
 }
 
 function showSummary(item) {
-  alert(item.summary || "Sin resumen disponible");
+  logEvent(item.summary ? `Resumen conversación ${item.conversationId}: ${item.summary}` : "Sin resumen disponible.");
 }
 
 function priorityClass(priority) {
@@ -394,13 +445,22 @@ function actionButton(label, onClick, className = "") {
 
 async function takeHandoff(handoffId) {
   saveConfig();
+  if (!state.agentToken && !state.adminToken) {
+    logEvent("Configura un token para tomar handoffs.");
+    return;
+  }
   try {
-    await requestJson(`/api/admin/handoffs/${handoffId}/take`, {
+    const options = {
       method: "POST",
-      headers: headers(),
-      body: JSON.stringify({ agent: state.agentName }),
+      headers: operationHeaders(),
+    };
+    if (!state.agentToken && state.adminToken) {
+      options.body = JSON.stringify({ agent: "ADMIN" });
+    }
+    await requestJson(`/api/admin/handoffs/${handoffId}/take`, {
+      ...options,
     });
-    logEvent(`Handoff ${handoffId} tomado por ${state.agentName}.`);
+    logEvent(`Handoff ${handoffId} tomado.`);
     await refreshAll();
     await loadHandoffs("TAKEN");
   } catch (error) {
@@ -410,13 +470,16 @@ async function takeHandoff(handoffId) {
 
 async function takeConversation(conversationId) {
   saveConfig();
+  if (!state.agentToken) {
+    logEvent("La toma directa requiere token de agente.");
+    return;
+  }
   try {
     const handoff = await requestJson(`/api/admin/conversations/${conversationId}/take`, {
       method: "POST",
-      headers: headers(),
-      body: JSON.stringify({ agent: state.agentName }),
+      headers: agentHeaders(),
     });
-    logEvent(`Conversación ${conversationId} tomada por ${state.agentName}.`);
+    logEvent(`Conversación ${conversationId} tomada por ${state.agent?.name || "asesor"}.`);
     await refreshAll();
     await loadHandoffs("TAKEN");
     openHandoffAndFocus(handoff.id);
@@ -433,7 +496,7 @@ async function sendAgentMessage(conversationId, text) {
   try {
     await requestJson(`/api/admin/conversations/${conversationId}/messages`, {
       method: "POST",
-      headers: headers(),
+      headers: operationHeaders(),
       body: JSON.stringify({ text }),
     });
     logEvent(`Respuesta encolada para conversación ${conversationId}.`);
@@ -445,7 +508,7 @@ async function sendAgentMessage(conversationId, text) {
 }
 
 async function refreshVisibleHandoffMessages() {
-  if (!state.adminToken || state.visibleConversationIds.size === 0) return;
+  if (!hasOperationToken() || state.visibleConversationIds.size === 0) return;
   await Promise.all(
     Array.from(state.visibleConversationIds).map((conversationId) =>
       refreshConversationMessages(conversationId)
@@ -459,7 +522,7 @@ async function refreshConversationMessages(conversationId) {
 
   try {
     const messages = await requestJson(`/api/admin/conversations/${conversationId}/messages`, {
-      headers: headers(),
+      headers: operationHeaders(),
     });
     for (const thread of threads) {
       renderChatThread(thread, messages);
@@ -514,12 +577,11 @@ function chatMetaText(message) {
 }
 
 async function returnHandoff(handoffId) {
-  const resolution = prompt("Resolución para devolver la conversación al bot:", "Cliente atendido y devuelto al bot.");
-  if (!resolution) return;
+  const resolution = "Cliente atendido y devuelto al bot.";
   try {
     await requestJson(`/api/admin/handoffs/${handoffId}/return`, {
       method: "POST",
-      headers: headers(),
+      headers: operationHeaders(),
       body: JSON.stringify({ resolution }),
     });
     logEvent(`Handoff ${handoffId} devuelto al bot.`);
@@ -531,7 +593,8 @@ async function returnHandoff(handoffId) {
 
 async function refreshAll() {
   await checkHealth();
-  if (!state.adminToken) {
+  await resolveAgentIdentity();
+  if (!hasOperationToken()) {
     renderAdminTokenRequired();
     return;
   }
@@ -571,6 +634,14 @@ function bindUi() {
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);
   $("#caseSearch").addEventListener("input", renderAdminCases);
+  $("#conversationStateFilter").addEventListener("change", (event) => {
+    state.conversationState = event.target.value;
+    loadAllAdminCases();
+  });
+  $("#assignedToMeFilter").addEventListener("change", (event) => {
+    state.assignedToMe = event.target.checked;
+    loadAllAdminCases();
+  });
   $("#refreshAll").addEventListener("click", refreshAll);
   $("#clearLog").addEventListener("click", () => {
     $("#eventLog").innerHTML = "";

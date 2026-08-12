@@ -45,6 +45,8 @@ solo las que ya tienen handoff:
 - motivo;
 - última actividad;
 - acción `Tomar` disponible para cualquier conversación.
+- filtro por estado conversacional;
+- filtro `Mis conversaciones` cuando se usa token de agente.
 
 El panel también cubre estas superficies actuales del backend:
 
@@ -52,21 +54,29 @@ El panel también cubre estas superficies actuales del backend:
 - simulación de webhook WhatsApp firmado;
 - reenvío duplicado del último webhook;
 - listado de conversaciones;
-- toma manual de cualquier conversación;
+- toma directa de conversaciones elegibles con token individual de agente;
 - listado de handoffs por estado;
 - tomar handoff;
-- reasignar un caso ya tomado al asesor configurado;
 - chat de handoff con polling AJAX;
 - enviar respuesta humana vía outbox;
 - devolver conversación al bot.
 
-El token admin se guarda en `sessionStorage` bajo `ceiba.adminToken`: no persiste
-entre sesiones del navegador. Si existe un valor antiguo en `localStorage`, el
-panel lo migra a `sessionStorage` y elimina la copia persistente al cargar.
+## Autenticación
+
+El panel separa dos credenciales:
+
+- `Token agente`: token individual creado con `POST /admin/agents`. Se guarda en
+  `sessionStorage` bajo `ceiba.agentToken`, se valida con `GET /admin/me` y define
+  la identidad usada para tomar conversaciones, tomar handoffs, responder y
+  devolver.
+- `Token admin`: `ADMIN_API_TOKEN`, reservado para vistas y acciones de gestión.
+  Se guarda en `sessionStorage` bajo `ceiba.adminToken`. Si existe un valor antiguo
+  en `localStorage`, el panel lo migra a `sessionStorage` y elimina la copia
+  persistente al cargar.
 
 ## Vistas operativas
 
-### Clientes
+### Conversaciones
 
 Lista conversaciones de `GET /admin/conversations`. Esta vista sirve como bandeja
 general de operación:
@@ -74,10 +84,12 @@ general de operación:
 - conversaciones sin handoff aparecen con su estado conversacional actual;
 - conversaciones con handoff muestran estado `Pendiente`, `Asignado` o `Devuelto`;
 - el botón `Tomar` llama `POST /admin/conversations/{conversation_id}/take`;
-- tomar una conversación crea o toma un handoff, pausa el bot y la mueve a
-  `HUMAN_ACTIVE`;
-- si el caso ya está tomado, el botón funciona como reasignación explícita al
-  asesor configurado en el campo `Agente`;
+- tomar una conversación elegible crea un `Handoff(reason=MANUAL_TAKEOVER)`,
+  pausa el bot y mueve la conversación a `HUMAN_ACTIVE`;
+- la toma directa requiere token individual de agente y no envía mensaje
+  automático al cliente;
+- si la conversación está en `WAITING_FOR_HUMAN`, se debe tomar el handoff
+  pendiente existente;
 - el botón `Responder` abre la bandeja `Tomados` y enfoca el handoff cuando aplica.
 
 ### Handoffs

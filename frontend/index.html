@@ -16,8 +16,8 @@
         </div>
       </div>
       <nav class="nav">
-        <button class="navItem active" data-view="admin" title="Clientes">
-          <span class="icon">▦</span><span>Clientes</span>
+        <button class="navItem active" data-view="admin" title="Conversaciones">
+          <span class="icon">▦</span><span>Conversaciones</span>
         </button>
         <button class="navItem" data-view="handoffs" title="Handoffs">
           <span class="icon">↔</span><span>Handoffs</span>
@@ -38,6 +38,7 @@
           <p>Clientes, estado, asignaciones y casos humanos con lo disponible hoy.</p>
         </div>
         <div class="statusStrip">
+          <span id="agentState" class="pill neutral">Sin asesor</span>
           <span id="apiState" class="pill neutral">API sin verificar</span>
           <button id="refreshAll" class="iconButton" title="Actualizar">↻</button>
         </div>
@@ -70,16 +71,16 @@
           </div>
           <div class="formGrid">
             <label>
+              Token agente
+              <input id="agentToken" type="password" autocomplete="off" placeholder="Token individual del asesor" />
+            </label>
+            <label>
               Token admin
               <input id="adminToken" type="password" autocomplete="off" placeholder="ADMIN_API_TOKEN" />
             </label>
             <label>
               Filtro de clientes
               <input id="caseSearch" type="search" autocomplete="off" placeholder="Nombre, teléfono, motivo o conversación" />
-            </label>
-            <label>
-              Agente
-              <input id="agentName" type="text" autocomplete="off" placeholder="Nombre del asesor" />
             </label>
           </div>
           <div class="actions">
@@ -91,13 +92,36 @@
 
         <section class="panel">
           <div class="panelHeader">
-            <h2>Clientes y asignaciones</h2>
+            <h2>Conversaciones</h2>
             <div class="segmented caseFilters">
               <button class="caseFilter active" data-case-status="ALL">Todos</button>
               <button class="caseFilter" data-case-status="PENDING">Pendientes</button>
               <button class="caseFilter" data-case-status="TAKEN">Asignados</button>
               <button class="caseFilter" data-case-status="RETURNED">Devueltos</button>
             </div>
+          </div>
+          <div class="caseToolbar">
+            <label>
+              Estado
+              <select id="conversationStateFilter">
+                <option value="">Todos</option>
+                <option value="BOT_ACTIVE">BOT_ACTIVE</option>
+                <option value="ANSWERING_INFORMATION">ANSWERING_INFORMATION</option>
+                <option value="COLLECTING_EVENT_DATA">COLLECTING_EVENT_DATA</option>
+                <option value="WAITING_FOR_APPOINTMENT_DATE">WAITING_FOR_APPOINTMENT_DATE</option>
+                <option value="WAITING_FOR_APPOINTMENT_SELECTION">WAITING_FOR_APPOINTMENT_SELECTION</option>
+                <option value="APPOINTMENT_PENDING_CONFIRMATION">APPOINTMENT_PENDING_CONFIRMATION</option>
+                <option value="APPOINTMENT_CONFIRMED">APPOINTMENT_CONFIRMED</option>
+                <option value="WAITING_FOR_HUMAN">WAITING_FOR_HUMAN</option>
+                <option value="HUMAN_ACTIVE">HUMAN_ACTIVE</option>
+                <option value="RESOLVED">RESOLVED</option>
+                <option value="CLOSED">CLOSED</option>
+              </select>
+            </label>
+            <label class="checkLabel">
+              <input id="assignedToMeFilter" type="checkbox" />
+              Mis conversaciones
+            </label>
           </div>
           <div class="caseTable" role="table" aria-label="Seguimiento de clientes">
             <div class="caseRow caseHead" role="row">
