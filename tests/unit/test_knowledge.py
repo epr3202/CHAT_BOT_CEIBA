@@ -4,10 +4,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-import app.models_registry  # noqa: F401
-from app.config.database import Base
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.knowledge import (
     KnowledgeRenderError,
@@ -17,17 +15,12 @@ from app.conversation.knowledge import (
 from app.conversation.models import KnowledgeEntry
 from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries
-from tests.integration.helpers import DATABASE_URL
+from tests.integration.helpers import reset_test_database
 
 
 @pytest.fixture
 async def sessionmaker_fixture() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine(DATABASE_URL)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
+    yield await reset_test_database()
 
 
 async def add_entry(

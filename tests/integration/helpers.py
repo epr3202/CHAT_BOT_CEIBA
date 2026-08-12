@@ -6,8 +6,10 @@ import json
 import os
 from collections.abc import AsyncIterator
 
+import asyncpg
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models_registry  # noqa: F401
@@ -23,7 +25,56 @@ APP_SECRET = "test-app-secret"
 VERIFY_TOKEN = "test-verify-token"
 PHONE_NUMBER_ID = "123456789"
 ADMIN_API_TOKEN = "test-admin-token"
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba")
+DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test",
+)
+
+
+def assert_safe_test_database_url(database_url: str = DATABASE_URL) -> None:
+    database_name = make_url(database_url).database or ""
+    if "test" not in database_name.lower():
+        raise RuntimeError(
+            "Refusing to reset a non-test database. Set TEST_DATABASE_URL to a database "
+            "whose name includes 'test'."
+        )
+
+
+async def ensure_test_database_exists(database_url: str = DATABASE_URL) -> None:
+    assert_safe_test_database_url(database_url)
+    parsed = make_url(database_url)
+    database_name = parsed.database
+    if database_name is None:
+        raise RuntimeError("TEST_DATABASE_URL must include a database name")
+
+    connection = await asyncpg.connect(
+        user=parsed.username,
+        password=parsed.password,
+        host=parsed.host or "localhost",
+        port=parsed.port or 5432,
+        database="postgres",
+    )
+    try:
+        exists = await connection.fetchval(
+            "SELECT 1 FROM pg_database WHERE datname = $1",
+            database_name,
+        )
+        if exists is None:
+            quoted_name = '"' + database_name.replace('"', '""') + '"'
+            await connection.execute(f"CREATE DATABASE {quoted_name}")
+    finally:
+        await connection.close()
+
+
+async def reset_test_database(database_url: str = DATABASE_URL) -> async_sessionmaker[AsyncSession]:
+    await ensure_test_database_exists(database_url)
+    engine = create_async_engine(database_url)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.drop_all)
+        await connection.run_sync(Base.metadata.create_all)
+    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    await engine.dispose()
+    return sessionmaker
 
 
 async def configure_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -57,13 +108,8 @@ async def configure_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HUMAN_HOURS_END", "23:59")
     get_settings.cache_clear()
 
-    engine = create_async_engine(DATABASE_URL)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
-    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    sessionmaker = await reset_test_database()
     await load_knowledge_entries(sessionmaker, list(iter_seed_entries()))
-    await engine.dispose()
 
     async def classify_as_greeting(
         self: OpenRouterIntentClient,
@@ -102,6 +148,7 @@ async def app_client() -> AsyncIterator[AsyncClient]:
 
 
 async def database_sessionmaker() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    assert_safe_test_database_url()
     engine = create_async_engine(DATABASE_URL)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()

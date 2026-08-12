@@ -405,6 +405,45 @@ async def test_tc_take_007_008_webhook_during_human_active_is_visible_and_idempo
 
 
 @pytest.mark.asyncio
+async def test_taken_conversation_survives_client_restart_and_new_customer_message() -> None:
+    async for first_client in app_client():
+        agent = await create_agent(first_client, "Persistente", document_id="11223344")
+        await post_whatsapp(first_client, "wamid.persist.initial", phone="573155827006")
+        conversation = await latest_conversation()
+        take = await first_client.post(
+            f"/admin/conversations/{conversation.id}/take",
+            headers=agent_headers(agent["token"]),
+        )
+        assert take.status_code == 200
+
+    async for second_client in app_client():
+        await post_whatsapp(
+            second_client,
+            "wamid.persist.after-restart",
+            phone="573155827006",
+            text="Sigo aquí",
+        )
+        mine = await second_client.get(
+            "/admin/conversations?assigned_to_me=true",
+            headers=agent_headers("11223344"),
+        )
+        assert mine.status_code == 200
+        payload = mine.json()
+        assert [row["id"] for row in payload] == [conversation.id]
+        assert payload[0]["state"] == "HUMAN_ACTIVE"
+        assert payload[0]["assigned_agent"] == {"id": agent["id"], "name": "Persistente"}
+        assert payload[0]["last_message_preview"] == "Sigo aquí"
+
+        async with app.state.db_sessionmaker() as session:
+            conversation_count = await session.scalar(
+                select(func.count())
+                .select_from(Conversation)
+                .where(Conversation.customer_id == conversation.customer_id)
+            )
+        assert conversation_count == 1
+
+
+@pytest.mark.asyncio
 async def test_tc_take_009_return_direct_take_handoff_releases_agent(client: AsyncClient) -> None:
     agent = await create_agent(client)
     await post_whatsapp(client, "wamid.take.return")

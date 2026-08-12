@@ -5,15 +5,13 @@ from dataclasses import dataclass
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-import app.models_registry  # noqa: F401
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.schemas import IntentClassification
 from app.audit.models import AuditEvent
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
-from app.config.database import Base
 from app.config.settings import Settings
 from app.conversation.models import Conversation
 from app.conversation.states import ConversationState
@@ -22,7 +20,7 @@ from app.handoff.models import Handoff
 from app.orchestrator.service import OrchestrationInput, orchestrate_inbound_message
 from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries
-from tests.integration.helpers import DATABASE_URL
+from tests.integration.helpers import DATABASE_URL, reset_test_database
 
 
 @dataclass
@@ -42,14 +40,9 @@ class StaticClassifier:
 
 @pytest.fixture
 async def sessionmaker_fixture() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine(DATABASE_URL)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
-    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    sessionmaker = await reset_test_database()
     await load_knowledge_entries(sessionmaker, list(iter_seed_entries()))
     yield sessionmaker
-    await engine.dispose()
 
 
 @pytest.fixture

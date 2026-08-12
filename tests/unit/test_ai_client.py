@@ -8,26 +8,19 @@ import httpx
 import pytest
 import respx
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-import app.models_registry  # noqa: F401
 from app.ai.client import OpenRouterIntentClient
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.models import AIExecution
 from app.ai.schemas import IntentClassification
-from app.config.database import Base
 from app.config.settings import Settings
-from tests.integration.helpers import DATABASE_URL
+from tests.integration.helpers import DATABASE_URL, reset_test_database
 
 
 @pytest.fixture
 async def sessionmaker_fixture() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine(DATABASE_URL)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
+    yield await reset_test_database()
 
 
 @pytest.fixture

@@ -53,6 +53,16 @@ pip install -e ".[dev]"
 pytest -x -q
 ```
 
+La suite usa `TEST_DATABASE_URL` y por defecto apunta a:
+
+```text
+postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test
+```
+
+Los helpers de test se niegan a resetear una base cuyo nombre no incluya `test`.
+No usar la base operativa `ceiba` para `pytest`; ahí viven las conversaciones,
+handoffs, agentes, mensajes y auditoría del entorno local.
+
 ## Simular webhook local
 
 Con la app local arriba y `META_APP_SECRET` definido:
