@@ -65,14 +65,27 @@ El panel también cubre estas superficies actuales del backend:
 
 El panel separa dos credenciales:
 
-- `Token agente`: token individual creado con `POST /admin/agents`. Se guarda en
-  `sessionStorage` bajo `ceiba.agentToken`, se valida con `GET /admin/me` y define
-  la identidad usada para tomar conversaciones, tomar handoffs, responder y
-  devolver.
+- `Cédula agente`: cédula registrada para el asesor con `POST /admin/agents`.
+  Se guarda en `localStorage` bajo `ceiba.agentDocumentId`, se valida con
+  `GET /admin/me` y define la identidad usada para tomar conversaciones, tomar
+  handoffs, responder y devolver. En Postgres no se guarda la cédula en claro:
+  solo se persiste su `token_hash`.
 - `Token admin`: `ADMIN_API_TOKEN`, reservado para vistas y acciones de gestión.
   Se guarda en `sessionStorage` bajo `ceiba.adminToken`. Si existe un valor antiguo
   en `localStorage`, el panel lo migra a `sessionStorage` y elimina la copia
   persistente al cargar.
+
+Crear o actualizar un asesor para que use su cédula como credencial:
+
+```bash
+curl -X POST http://127.0.0.1:8000/admin/agents \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Emerson","document_id":"1020304050"}'
+```
+
+La respuesta devuelve `token` con esa cédula una sola vez por compatibilidad con el
+flujo de tokens, pero la base solo conserva el hash.
 
 ## Vistas operativas
 

@@ -6,10 +6,10 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from app.agent.models import Agent
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
+from app.agent.models import Agent
 from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import IntentClassification
 from app.audit.models import AuditEvent
@@ -95,8 +95,15 @@ async def post_whatsapp(
     assert response.status_code == 200
 
 
-async def create_agent(client: AsyncClient, name: str = "Alexandra") -> dict[str, Any]:
-    response = await client.post("/admin/agents", headers=admin_headers(), json={"name": name})
+async def create_agent(
+    client: AsyncClient,
+    name: str = "Alexandra",
+    document_id: str | None = None,
+) -> dict[str, Any]:
+    body = {"name": name}
+    if document_id is not None:
+        body["document_id"] = document_id
+    response = await client.post("/admin/agents", headers=admin_headers(), json=body)
     assert response.status_code == 200
     return response.json()
 
@@ -144,6 +151,28 @@ async def test_tc_agent_002_invalid_agent_token_returns_401(client: AsyncClient)
     response = await client.get("/admin/me", headers=agent_headers("invalid-token"))
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tc_agent_create_with_document_id_uses_document_as_agent_token(
+    client: AsyncClient,
+) -> None:
+    document_id = "1020304050"
+
+    payload = await create_agent(client, "Emerson", document_id=document_id)
+
+    assert payload["token"] == document_id
+
+    async with app.state.db_sessionmaker() as session:
+        agent = await session.get(Agent, payload["id"])
+
+    assert agent is not None
+    assert agent.token_hash == hashlib.sha256(document_id.encode()).hexdigest()
+    assert agent.token_hash != document_id
+
+    me = await client.get("/admin/me", headers=agent_headers(document_id))
+    assert me.status_code == 200
+    assert me.json() == {"id": payload["id"], "name": "Emerson"}
 
 
 @pytest.mark.asyncio

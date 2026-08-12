@@ -86,16 +86,18 @@ def test_admin_token_uses_session_storage_with_legacy_migration() -> None:
     assert 'localStorage.setItem("ceiba.adminToken"' not in app_js
 
 
-def test_agent_token_uses_session_storage_and_resolves_identity() -> None:
+def test_agent_document_id_uses_local_storage_and_resolves_identity() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
     index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
 
     assert 'const agentTokenStorageKey = "ceiba.agentToken"' in app_js
-    assert "sessionStorage.getItem(agentTokenStorageKey)" in app_js
-    assert "sessionStorage.setItem(agentTokenStorageKey, state.agentToken)" in app_js
+    assert 'const agentDocumentIdStorageKey = "ceiba.agentDocumentId"' in app_js
+    assert "localStorage.getItem(agentDocumentIdStorageKey)" in app_js
+    assert "localStorage.setItem(agentDocumentIdStorageKey, state.agentDocumentId)" in app_js
+    assert "sessionStorage.removeItem(agentTokenStorageKey)" in app_js
     assert "/api/admin/me" in app_js
     assert 'id="agentState"' in index_html
-    assert 'id="agentToken"' in index_html
+    assert 'id="agentDocumentId"' in index_html
 
 
 def test_agent_message_refreshes_handoff_view() -> None:

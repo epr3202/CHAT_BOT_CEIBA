@@ -1,5 +1,6 @@
 const adminTokenStorageKey = "ceiba.adminToken";
 const agentTokenStorageKey = "ceiba.agentToken";
+const agentDocumentIdStorageKey = "ceiba.agentDocumentId";
 const directTakeEligibleStates = new Set([
   "BOT_ACTIVE",
   "ANSWERING_INFORMATION",
@@ -25,9 +26,23 @@ function loadAdminToken() {
   return "";
 }
 
+function loadAgentDocumentId() {
+  const persistentDocumentId = localStorage.getItem(agentDocumentIdStorageKey);
+  if (persistentDocumentId !== null) {
+    return persistentDocumentId;
+  }
+  const legacyToken = sessionStorage.getItem(agentTokenStorageKey);
+  if (legacyToken !== null) {
+    localStorage.setItem(agentDocumentIdStorageKey, legacyToken);
+    sessionStorage.removeItem(agentTokenStorageKey);
+    return legacyToken;
+  }
+  return "";
+}
+
 const state = {
   adminToken: loadAdminToken(),
-  agentToken: sessionStorage.getItem(agentTokenStorageKey) || "",
+  agentDocumentId: loadAgentDocumentId(),
   agent: null,
   metaSecret: sessionStorage.getItem("ceiba.metaSecret") || "",
   currentStatus: "PENDING",
@@ -49,7 +64,7 @@ function setText(id, value) {
 }
 
 function agentHeaders() {
-  return state.agentToken ? { Authorization: `Bearer ${state.agentToken}` } : {};
+  return state.agentDocumentId ? { Authorization: `Bearer ${state.agentDocumentId}` } : {};
 }
 
 function adminHeaders() {
@@ -57,11 +72,11 @@ function adminHeaders() {
 }
 
 function operationHeaders() {
-  return state.agentToken ? agentHeaders() : adminHeaders();
+  return state.agentDocumentId ? agentHeaders() : adminHeaders();
 }
 
 function hasOperationToken() {
-  return Boolean(state.agentToken || state.adminToken);
+  return Boolean(state.agentDocumentId || state.adminToken);
 }
 
 function resetAdminMetrics() {
@@ -98,16 +113,17 @@ async function requestJson(path, options = {}) {
 
 function applyConfigToForm() {
   $("#adminToken").value = state.adminToken;
-  $("#agentToken").value = state.agentToken;
+  $("#agentDocumentId").value = state.agentDocumentId;
   $("#metaSecret").value = state.metaSecret;
 }
 
 function saveConfig() {
   state.adminToken = $("#adminToken").value.trim();
-  state.agentToken = $("#agentToken").value.trim();
+  state.agentDocumentId = $("#agentDocumentId").value.trim();
   state.metaSecret = $("#metaSecret").value;
   sessionStorage.setItem(adminTokenStorageKey, state.adminToken);
-  sessionStorage.setItem(agentTokenStorageKey, state.agentToken);
+  localStorage.setItem(agentDocumentIdStorageKey, state.agentDocumentId);
+  sessionStorage.removeItem(agentTokenStorageKey);
   localStorage.removeItem(adminTokenStorageKey);
   localStorage.removeItem("ceiba.agentName");
   sessionStorage.setItem("ceiba.metaSecret", state.metaSecret);
@@ -115,7 +131,7 @@ function saveConfig() {
 }
 
 async function resolveAgentIdentity() {
-  if (!state.agentToken) {
+  if (!state.agentDocumentId) {
     state.agent = null;
     setText("agentState", "Sin asesor");
     return;
@@ -125,7 +141,7 @@ async function resolveAgentIdentity() {
     setText("agentState", `Asesor: ${state.agent.name}`);
   } catch (error) {
     state.agent = null;
-    setText("agentState", "Token agente inválido");
+    setText("agentState", "Cédula no registrada");
     logEvent(`Identidad de asesor falló: ${error.message}`);
   }
 }
@@ -445,7 +461,7 @@ function actionButton(label, onClick, className = "") {
 
 async function takeHandoff(handoffId) {
   saveConfig();
-  if (!state.agentToken && !state.adminToken) {
+  if (!state.agentDocumentId && !state.adminToken) {
     logEvent("Configura un token para tomar handoffs.");
     return;
   }
@@ -454,7 +470,7 @@ async function takeHandoff(handoffId) {
       method: "POST",
       headers: operationHeaders(),
     };
-    if (!state.agentToken && state.adminToken) {
+    if (!state.agentDocumentId && state.adminToken) {
       options.body = JSON.stringify({ agent: "ADMIN" });
     }
     await requestJson(`/api/admin/handoffs/${handoffId}/take`, {
@@ -470,8 +486,8 @@ async function takeHandoff(handoffId) {
 
 async function takeConversation(conversationId) {
   saveConfig();
-  if (!state.agentToken) {
-    logEvent("La toma directa requiere token de agente.");
+  if (!state.agentDocumentId) {
+    logEvent("La toma directa requiere cédula de agente.");
     return;
   }
   try {

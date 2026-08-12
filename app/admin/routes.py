@@ -51,6 +51,7 @@ class AgentMessageRequest(BaseModel):
 
 class CreateAgentRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
+    document_id: str | None = Field(default=None, min_length=4, max_length=64)
 
 
 class AgentPayload(BaseModel):
@@ -150,7 +151,7 @@ async def create_agent(
     _auth: AdminAuth,
     session: DbSession,
 ) -> CreatedAgentPayload:
-    token = secrets.token_urlsafe(32)
+    token = body.document_id.strip() if body.document_id is not None else secrets.token_urlsafe(32)
     token_hash = hash_agent_token(token)
     async with session.begin():
         agent = Agent(name=body.name, token_hash=token_hash, active=True)
