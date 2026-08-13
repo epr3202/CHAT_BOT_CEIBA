@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from app.channel.models import Outbox
 
 CATALOG_SEND_TRIGGERS = ("PROACTIVE", "EXPLICIT_REQUEST")
+CATALOG_SEND_MODES = ("PROACTIVE", "ON_REQUEST")
 
 
 class CatalogAsset(Base):
@@ -81,6 +82,10 @@ class CatalogEventTypeMap(Base):
             "'PRIVATE_DINNER', 'OTHER')",
             name="ck_catalog_event_type_map_event_type",
         ),
+        CheckConstraint(
+            "send_mode IN ('PROACTIVE', 'ON_REQUEST')",
+            name="ck_catalog_event_type_map_send_mode",
+        ),
         UniqueConstraint("catalog_asset_id", "event_type", name="uq_catalog_asset_event_type"),
     )
 
@@ -89,6 +94,9 @@ class CatalogEventTypeMap(Base):
         UUID(as_uuid=True), ForeignKey("catalog_asset.catalog_asset_id"), nullable=False, index=True
     )
     event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    send_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="ON_REQUEST", server_default=text("'ON_REQUEST'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -99,6 +107,12 @@ class CatalogEventTypeMap(Base):
     def validate_event_type(self, key: str, value: str) -> str:
         if value not in EVENT_TYPES:
             raise ValueError(f"Invalid event_type: {value}")
+        return value
+
+    @validates("send_mode")
+    def validate_send_mode(self, key: str, value: str) -> str:
+        if value not in CATALOG_SEND_MODES:
+            raise ValueError(f"Invalid catalog send_mode: {value}")
         return value
 
 

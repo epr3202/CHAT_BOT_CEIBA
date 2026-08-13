@@ -117,7 +117,7 @@ async def enqueue_catalogs_for_event_type(
     trigger: str,
     request_id: str | None,
 ) -> int:
-    assets = await active_assets_for_event_type(session, event_type)
+    assets = await active_assets_for_event_type(session, event_type, send_mode="PROACTIVE")
     if not assets:
         audit_catalog_event(
             session,
@@ -201,14 +201,18 @@ async def enqueue_catalogs_for_event_type(
 
 
 async def active_assets_for_event_type(
-    session: AsyncSession, event_type: str
+    session: AsyncSession, event_type: str, send_mode: str = "PROACTIVE"
 ) -> list[CatalogAsset]:
     return list(
         (
             await session.scalars(
                 select(CatalogAsset)
                 .join(CatalogEventTypeMap)
-                .where(CatalogEventTypeMap.event_type == event_type, CatalogAsset.active.is_(True))
+                .where(
+                    CatalogEventTypeMap.event_type == event_type,
+                    CatalogEventTypeMap.send_mode == send_mode,
+                    CatalogAsset.active.is_(True),
+                )
                 .order_by(CatalogAsset.created_at, CatalogAsset.catalog_asset_id)
             )
         ).all()

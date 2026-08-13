@@ -33,7 +33,12 @@ DATABASE_URL = os.getenv(
 )
 
 
-def assert_safe_test_database_url(database_url: str = DATABASE_URL) -> None:
+def current_test_database_url() -> str:
+    return os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL") or DATABASE_URL
+
+
+def assert_safe_test_database_url(database_url: str | None = None) -> None:
+    database_url = database_url or current_test_database_url()
     database_name = make_url(database_url).database or ""
     if "test" not in database_name.lower():
         raise RuntimeError(
@@ -42,7 +47,8 @@ def assert_safe_test_database_url(database_url: str = DATABASE_URL) -> None:
         )
 
 
-async def ensure_test_database_exists(database_url: str = DATABASE_URL) -> None:
+async def ensure_test_database_exists(database_url: str | None = None) -> str:
+    database_url = database_url or current_test_database_url()
     assert_safe_test_database_url(database_url)
     parsed = make_url(database_url)
     database_name = parsed.database
@@ -66,10 +72,11 @@ async def ensure_test_database_exists(database_url: str = DATABASE_URL) -> None:
             await connection.execute(f"CREATE DATABASE {quoted_name}")
     finally:
         await connection.close()
+    return database_url
 
 
-async def reset_test_database(database_url: str = DATABASE_URL) -> async_sessionmaker[AsyncSession]:
-    await ensure_test_database_exists(database_url)
+async def reset_test_database(database_url: str | None = None) -> async_sessionmaker[AsyncSession]:
+    database_url = await ensure_test_database_exists(database_url)
     engine = create_async_engine(database_url)
     async with engine.begin() as connection:
         await connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
@@ -153,8 +160,9 @@ async def app_client() -> AsyncIterator[AsyncClient]:
 
 
 async def database_sessionmaker() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    assert_safe_test_database_url()
-    engine = create_async_engine(DATABASE_URL)
+    database_url = current_test_database_url()
+    assert_safe_test_database_url(database_url)
+    engine = create_async_engine(database_url)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
 
@@ -166,7 +174,9 @@ async def bootstrap_agent(
     role: str = "ADMIN",
     active: bool = True,
 ) -> Agent:
-    engine = create_async_engine(DATABASE_URL)
+    database_url = current_test_database_url()
+    assert_safe_test_database_url(database_url)
+    engine = create_async_engine(database_url)
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     async with sessionmaker() as session:
         async with session.begin():
