@@ -2135,6 +2135,60 @@ pending_action = NONE
 
 Entonces el bot deberá pedir aclaración.
 
+## 38.1 Resolución determinística de `CONFIRM` / `DENY`
+
+La regla anterior se operacionaliza así: cuando `pending_action` empiece por
+`CONFIRM_`, el sistema deberá evaluar primero el mensaje entrante con un matcher
+determinístico de confirmación contextual, antes de consultar al clasificador.
+
+El matcher no crea una categoría nueva. Resuelve el turno a las intenciones
+contextuales ya definidas en `intents.md`:
+
+```text
+CONFIRM
+DENY
+```
+
+Afirmaciones normalizadas:
+
+```text
+si
+sí
+correcto
+exacto
+así es
+dale
+confirmo
+de acuerdo
+ok
+listo
+perfecto
+claro
+sip
+👍
+```
+
+Negaciones o correcciones normalizadas:
+
+```text
+no
+incorrecto
+cambiar
+corregir
+está mal
+modificar
+```
+
+Si el matcher resuelve `CONFIRM`, el backend ejecuta la transición asociada al
+`pending_action` y limpia la acción pendiente. Si resuelve `DENY`, el backend
+vuelve al flujo de corrección correspondiente o solicita el dato corregido según
+el estado actual. Si no hay match determinístico, se consulta al clasificador
+con el contexto de `pending_action` y `last_question_code`.
+
+El bot no deberá emitir la misma plantilla de confirmación dos veces seguidas
+para la misma acción pendiente sin transición; ante repetición, deberá cambiar
+de estrategia o escalar.
+
 ---
 
 # 39. Bloqueos e invariantes críticos
