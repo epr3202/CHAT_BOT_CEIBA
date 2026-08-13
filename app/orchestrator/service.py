@@ -593,6 +593,7 @@ async def handle_collecting_event_data(
         orchestration_input.message_text,
         orchestration_input.request_id,
     )
+    entities = normalized_entities(classification)
     if not handled_name_confirmation:
         await apply_extracted_entities(
             session,
@@ -600,9 +601,11 @@ async def handle_collecting_event_data(
             customer,
             lead,
             event,
-            normalized_entities(classification),
+            entities,
             orchestration_input.request_id,
         )
+    if should_mark_budget_declined_by_evasion(lead, entities):
+        apply_budget_declined(session, lead, orchestration_input.request_id)
 
     progress = await capture_progress(session, customer, lead, event, conversation)
     conversation.pending_fields = pending_fields_for(progress)
@@ -1093,6 +1096,12 @@ def apply_budget_declined(session: AsyncSession, lead: Lead, request_id: str | N
         "Customer declined to share budget",
         request_id,
     )
+
+
+def should_mark_budget_declined_by_evasion(lead: Lead, entities: list[ExtractedEntity]) -> bool:
+    if lead.budget_data_status != "ASKED_PENDING":
+        return False
+    return not any(entity.entity in {"estimated_budget", "budget_declined"} for entity in entities)
 
 
 def apply_requested_services(

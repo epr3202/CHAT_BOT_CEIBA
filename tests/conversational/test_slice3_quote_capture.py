@@ -538,6 +538,64 @@ async def test_tc_collect_010_below_reference_is_invisible(
 
 
 @pytest.mark.asyncio
+async def test_tc_collect_019_budget_evasion_is_declined_deterministically(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            customer, conversation = await seed_conversation(session)
+
+    setup_entities = [
+        entity("full_name", "Soy Natalia", "Natalia"),
+        entity("event_type", "boda", "WEDDING"),
+        entity("guest_count", "45 personas", 45),
+        date_entity("12 de diciembre", "2026-12-12", None, "EXACT"),
+    ]
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "setup",
+        classification(entities=setup_entities),
+        "wamid.tc.collect.019a",
+    )
+    _customer, conversation, lead, _event = await capture_models(sessionmaker_fixture)
+    assert lead.budget_data_status == "ASKED_PENDING"
+    assert conversation.pending_action == "COLLECT_BUDGET"
+
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "Mejor quiero gastronomía.",
+        classification(
+            "EVENT_INFORMATION",
+            [entity("requested_services", "gastronomía", ["gastronomía"])],
+        ),
+        "wamid.tc.collect.019b",
+    )
+    _customer, conversation, lead, _event = await capture_models(sessionmaker_fixture)
+    assert lead.budget_data_status == "DECLINED"
+    assert conversation.state == "QUOTE_REQUEST_READY"
+    assert "presupuesto" not in (await latest_outbox_body(sessionmaker_fixture)).casefold()
+
+    for index in range(3):
+        await run_turn(
+            sessionmaker_fixture,
+            settings,
+            conversation.id,
+            customer.id,
+            f"Dato adicional {index}",
+            classification("MODIFY_EVENT_DATA", []),
+            f"wamid.tc.collect.019c{index}",
+        )
+        assert "presupuesto" not in (await latest_outbox_body(sessionmaker_fixture)).casefold()
+
+
+@pytest.mark.asyncio
 async def test_tc_collect_011_faq_preserves_pending_action(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
     settings: Settings,

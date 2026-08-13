@@ -1746,6 +1746,29 @@ La función de selección:
 
 ---
 
+## TC-COLLECT-019 — Evasión de presupuesto no se re-pregunta
+
+**Precondición:**
+
+```text
+COLLECTING_EVENT_DATA
+budget_data_status = ASKED_PENDING
+pending_action = COLLECT_BUDGET
+```
+
+**Entrada:**
+
+> Mejor quiero gastronomía.
+
+**Resultado esperado:**
+
+* si el clasificador no emite `estimated_budget` ni `budget_declined`,
+  `budget_data_status = DECLINED`;
+* el saliente no contiene la pregunta de presupuesto;
+* en tres turnos posteriores el bot no vuelve a preguntar presupuesto.
+
+---
+
 # 14. Suite E — Cambio temporal y múltiples intenciones
 
 ## TC-CTX-001 — FAQ durante cotización
