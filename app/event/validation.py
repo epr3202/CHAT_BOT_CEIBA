@@ -69,8 +69,6 @@ def parse_customer_date_expression(raw_value: str, today: date) -> EventDateTrip
     normalized = raw_value.strip().casefold()
     if not normalized:
         raise ValueError("INVALID_DATE")
-    if "31 de febrero" in normalized:
-        raise ValueError("INVALID_CALENDAR_DATE")
     if "todavía no" in normalized or "todavia no" in normalized or "no sé" in normalized:
         return validate_event_date_triplet(None, None, "UNKNOWN", raw_value)
 
