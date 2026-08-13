@@ -459,6 +459,46 @@ async def test_tc_collect_001_multiple_fields_persist_in_one_turn(
 
 
 @pytest.mark.asyncio
+async def test_p2_collect_services_from_pending_action_without_generic_summary_fill(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            customer, conversation = await seed_conversation(session)
+
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "Soy Natalia, boda para 45 personas el 12 de diciembre, tengo 10 millones.",
+        classification(entities=complete_entities()),
+        "wamid.p2.setup",
+    )
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "Solo el espacio",
+        classification("QUOTE_REQUEST", []),
+        "wamid.p2.services",
+    )
+
+    body = await latest_outbox_body(sessionmaker_fixture)
+    async with sessionmaker_fixture() as session:
+        service_requests = (await session.scalars(select(EventServiceRequest))).all()
+        conversation = await session.scalar(select(Conversation))
+
+    assert [service.service_name for service in service_requests] == ["el espacio"]
+    assert conversation is not None
+    assert conversation.state == "QUOTE_REQUEST_READY"
+    assert "con interés en el espacio" in body
+    assert "los servicios solicitados" not in body
+
+
+@pytest.mark.asyncio
 async def test_tc_collect_002_approximate_date_triplet(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
     settings: Settings,

@@ -614,7 +614,11 @@ async def handle_collecting_event_data(
         orchestration_input.message_text,
         orchestration_input.request_id,
     )
-    entities = normalized_entities(classification)
+    entities = contextual_requested_service_entities(
+        conversation,
+        orchestration_input.message_text,
+        normalized_entities(classification),
+    )
     if not handled_name_confirmation:
         await apply_extracted_entities(
             session,
@@ -1279,7 +1283,7 @@ async def transition_to_quote_request_ready(
         customer,
         inbound_message,
         quote_summary_response_code(event),
-        quote_summary_variables(event),
+        await quote_summary_variables(session, event),
     )
     audit_domain_change(
         session,
@@ -1324,6 +1328,42 @@ def normalized_entities(classification: IntentClassification) -> list[ExtractedE
             )
         )
     return entities
+
+
+def contextual_requested_service_entities(
+    conversation: Conversation,
+    message_text: str,
+    entities: list[ExtractedEntity],
+) -> list[ExtractedEntity]:
+    if conversation.pending_action != "COLLECT_SERVICES":
+        return entities
+    if any(entity.entity == "requested_services" for entity in entities):
+        return entities
+    service_text = normalize_requested_service_text(message_text)
+    if not service_text:
+        return entities
+    return [
+        *entities,
+        ExtractedEntity(
+            entity="requested_services",
+            raw_value=message_text,
+            normalized_value=[service_text],
+            quality_status="PROVIDED",
+            confidence=1.0,
+            needs_confirmation=False,
+            validation_errors=[],
+        ),
+    ]
+
+
+def normalize_requested_service_text(message_text: str) -> str | None:
+    service_text = " ".join(message_text.strip().casefold().split())
+    if not service_text:
+        return None
+    for prefix in ("solo ", "solamente "):
+        if service_text.startswith(prefix):
+            service_text = service_text.removeprefix(prefix).strip()
+    return service_text or None
 
 
 def resolve_contextual_confirmation_classification(
@@ -1420,7 +1460,7 @@ def quote_summary_response_code(event: Event) -> str:
     return "RESP-QUOTE-002"
 
 
-def quote_summary_variables(event: Event) -> dict[str, Any]:
+async def quote_summary_variables(session: AsyncSession, event: Event) -> dict[str, Any]:
     if date_pending(event):
         return {
             "event_type": format_event_type(event.event_type),
@@ -1434,7 +1474,7 @@ def quote_summary_variables(event: Event) -> dict[str, Any]:
         "event_date": format_date_natural(event.event_date)
         if event.event_date
         else format_month_natural(event.event_month),
-        "requested_services_summary": "los servicios solicitados",
+        "requested_services_summary": await requested_services_summary(session, event),
     }
 
 
@@ -1444,6 +1484,24 @@ def guest_count_text(event: Event) -> str:
     if event.guest_count_min is not None and event.guest_count_max is not None:
         return f"entre {event.guest_count_min} y {event.guest_count_max}"
     return "por definir"
+
+
+async def requested_services_summary(session: AsyncSession, event: Event) -> str:
+    services = (
+        await session.scalars(
+            select(EventServiceRequest.service_name)
+            .where(
+                EventServiceRequest.event_id == event.event_id,
+                EventServiceRequest.status == "REQUESTED",
+            )
+            .order_by(EventServiceRequest.created_at, EventServiceRequest.id)
+        )
+    ).all()
+    if not services:
+        raise ValueError("Missing requested services for quote summary")
+    if len(services) == 1:
+        return services[0]
+    return ", ".join(services[:-1]) + f" y {services[-1]}"
 
 
 def summary_snapshot(customer: Customer, lead: Lead, event: Event) -> dict[str, Any]:
