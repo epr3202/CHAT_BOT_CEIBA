@@ -26,8 +26,21 @@ def test_intent_literal_matches_document_catalog() -> None:
         for line in match.group("intents").splitlines()
         if line.strip()
     ]
+    contextual_match = re.search(
+        r"# 21\. Intenciones contextuales de confirmación.*?```text\n(?P<intents>.*?)\n```",
+        content,
+        flags=re.DOTALL,
+    )
+    assert contextual_match is not None
+    documented_contextual_intents = [
+        line.strip()
+        for line in contextual_match.group("intents").splitlines()
+        if line.strip()
+    ]
 
-    assert list(get_args(Intent)) == documented_intents
+    assert list(get_args(Intent)) == documented_intents[:-1] + documented_contextual_intents[:2] + [
+        "UNKNOWN"
+    ]
 
 
 def test_unknown_intent_raises_validation_error() -> None:

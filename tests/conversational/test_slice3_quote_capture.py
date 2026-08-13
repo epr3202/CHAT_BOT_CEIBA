@@ -20,7 +20,7 @@ from app.config.settings import Settings
 from app.conversation.models import Conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
-from app.event.models import Event
+from app.event.models import Event, EventServiceRequest
 from app.lead.models import Lead
 from app.orchestrator.service import OrchestrationInput, orchestrate_inbound_message
 from app.quote.models import QuoteRequest
@@ -186,6 +186,63 @@ async def capture_models(
     return customer, conversation, lead, event
 
 
+async def seed_quote_ready(
+    session: AsyncSession,
+    *,
+    last_question_code: str = "RESP-QUOTE-002",
+) -> tuple[Customer, Conversation]:
+    customer = Customer(phone_number="+573001112233", full_name="Natalia")
+    session.add(customer)
+    await session.flush()
+    lead = Lead(
+        customer_id=customer.id,
+        channel=Channel.WHATSAPP,
+        lead_status="QUALIFYING",
+        budget_data_status="PROVIDED",
+    )
+    session.add(lead)
+    await session.flush()
+    event = Event(
+        lead_id=lead.lead_id,
+        event_type="WEDDING",
+        event_date=date(2026, 9, 13),
+        event_date_type="EXACT",
+        event_date_raw="13 de septiembre",
+        guest_count=45,
+        guest_count_status="PROVIDED",
+    )
+    session.add(event)
+    await session.flush()
+    session.add(
+        EventServiceRequest(
+            event_id=event.event_id,
+            service_name="espacio",
+            status="REQUESTED",
+        )
+    )
+    quote_request = QuoteRequest(
+        lead_id=lead.lead_id,
+        event_id=event.event_id,
+        request_status="DRAFT",
+        minimum_data_complete=True,
+        missing_fields=[],
+        date_pending=False,
+        summary_snapshot={"event_date_raw": "13 de septiembre"},
+    )
+    session.add(quote_request)
+    conversation = Conversation(
+        customer_id=customer.id,
+        channel=Channel.WHATSAPP,
+        state=ConversationState.QUOTE_REQUEST_READY,
+        pending_action="CONFIRM_QUOTE_REQUEST",
+        last_question_code=last_question_code,
+        active_lead_id=lead.lead_id,
+    )
+    session.add(conversation)
+    await session.flush()
+    return customer, conversation
+
+
 def complete_entities(date_value: str = "2026-12-12") -> list[ExtractedEntity]:
     return [
         entity("full_name", "Soy Natalia", "Natalia"),
@@ -194,6 +251,181 @@ def complete_entities(date_value: str = "2026-12-12") -> list[ExtractedEntity]:
         date_entity("12 de diciembre", date_value, None, "EXACT"),
         entity("estimated_budget", "10 millones", 10000000),
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message_text", ["Si", "Correcto", "Dale", "sí.", "SI", "👍"])
+async def test_p0a_confirm_quote_request_resolves_deterministically_without_repeating_summary(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    message_text: str,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            customer, conversation = await seed_quote_ready(session)
+
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        message_text,
+        classification("MODIFY_EVENT_DATA", []),
+        f"wamid.p0a.confirm.{message_text}",
+    )
+
+    async with sessionmaker_fixture() as session:
+        conversation = await session.get(Conversation, conversation.id)
+        quote_request = await session.scalar(select(QuoteRequest))
+        bodies = [
+            row.payload["text"]["body"] for row in (await session.scalars(select(Outbox))).all()
+        ]
+    assert conversation is not None
+    assert conversation.state == "WAITING_FOR_HUMAN"
+    assert conversation.pending_action == "WAIT_FOR_HUMAN"
+    assert quote_request is not None
+    assert quote_request.request_status == "READY"
+    assert not any("Para confirmar:" in body for body in bodies)
+
+
+@pytest.mark.asyncio
+async def test_p0a_plain_no_returns_to_capture_without_repeating_summary(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            customer, conversation = await seed_quote_ready(session)
+
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "No",
+        classification("QUOTE_REQUEST", []),
+        "wamid.p0a.deny",
+    )
+
+    async with sessionmaker_fixture() as session:
+        conversation = await session.get(Conversation, conversation.id)
+        quote_request = await session.scalar(select(QuoteRequest))
+        bodies = [
+            row.payload["text"]["body"] for row in (await session.scalars(select(Outbox))).all()
+        ]
+    assert conversation is not None
+    assert conversation.state == "COLLECTING_EVENT_DATA"
+    assert conversation.pending_action != "CONFIRM_QUOTE_REQUEST"
+    assert quote_request is not None
+    assert quote_request.request_status == "DRAFT"
+    assert not any("Para confirmar:" in body for body in bodies)
+
+
+@pytest.mark.asyncio
+async def test_p0a_denial_with_content_goes_to_classifier_and_applies_correction(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            customer, conversation = await seed_quote_ready(session)
+
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "no, son 40 personas",
+        classification("MODIFY_EVENT_DATA", [entity("guest_count", "40 personas", 40)]),
+        "wamid.p0a.deny.content",
+    )
+
+    _customer, conversation, _lead, event = await capture_models(sessionmaker_fixture)
+    assert event.guest_count == 40
+    assert conversation.state == "QUOTE_REQUEST_READY"
+
+
+@pytest.mark.asyncio
+async def test_p0a_confirmation_template_cannot_be_emitted_twice_in_a_row(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            customer, conversation = await seed_quote_ready(session)
+            previous_message = Message(
+                external_message_id="wamid.p0a.previous",
+                conversation_id=conversation.id,
+                customer_id=customer.id,
+                channel=Channel.WHATSAPP,
+                direction="INBOUND",
+                message_type="text",
+                content={"text": {"body": "setup"}},
+                provider_timestamp=None,
+            )
+            session.add(previous_message)
+            await session.flush()
+            session.add(
+                Outbox(
+                    conversation_id=conversation.id,
+                    message_id=previous_message.id,
+                    channel=Channel.WHATSAPP,
+                    recipient_phone_number=customer.phone_number,
+                    payload={
+                        "type": "text",
+                        "text": {"body": "Para confirmar: resumen previo. ¿Está correcto?"},
+                    },
+                )
+            )
+
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "Correcto",
+        classification("MODIFY_EVENT_DATA", []),
+        "wamid.p0a.antiloop",
+    )
+    async with sessionmaker_fixture() as session:
+        bodies = [
+            row.payload["text"]["body"]
+            for row in (await session.scalars(select(Outbox).order_by(Outbox.id))).all()
+        ]
+    assert len([body for body in bodies if body.startswith("Para confirmar:")]) == 1
+
+
+@pytest.mark.asyncio
+async def test_p0a_confirm_pending_action_is_resolved_before_llm(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            await seed_quote_ready(session)
+
+    async def fail_if_called(
+        self: OpenRouterIntentClient,
+        message_text: str,
+        context: dict[str, object],
+        conversation_id: int | None = None,
+    ) -> IntentClassification:
+        raise AssertionError("LLM classifier must not run for deterministic CONFIRM")
+
+    monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", fail_if_called)
+    payload = json.loads(
+        whatsapp_message_payload("wamid.p0a.before-llm", text="Si").decode()
+    )
+
+    await process_whatsapp_webhook(payload, sessionmaker_fixture, "req-p0a-before-llm")
+
+    async with sessionmaker_fixture() as session:
+        conversation = await session.scalar(select(Conversation))
+        quote_request = await session.scalar(select(QuoteRequest))
+    assert conversation is not None
+    assert conversation.state == "WAITING_FOR_HUMAN"
+    assert quote_request is not None
+    assert quote_request.request_status == "READY"
 
 
 @pytest.mark.asyncio

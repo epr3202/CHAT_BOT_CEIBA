@@ -11,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.client import OpenRouterIntentClient
 from app.ai.errors import AIErrorReason, AIUnavailable
+from app.ai.schemas import IntentClassification
 from app.audit.models import AuditEvent
 from app.channel.models import Message, MessageProviderStatus, Outbox, WebhookEvent
 from app.channel.states import Channel
 from app.config.settings import get_settings
+from app.conversation.confirmation import resolve_contextual_confirmation
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
@@ -248,17 +250,21 @@ async def classify_and_orchestrate_phase_b_c(
         if await message_already_orchestrated(sessionmaker, persisted.message_id):
             continue
 
-        classification = None
+        classification = deterministic_confirmation_classification(
+            persisted.message_text,
+            persisted.context,
+        )
         ai_error_reason: AIErrorReason | None = None
-        async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
-            try:
-                classification = await classifier.classify_intent(
-                    persisted.message_text,
-                    context=persisted.context,
-                    conversation_id=persisted.conversation_id,
-                )
-            except AIUnavailable as error:
-                ai_error_reason = error.reason
+        if classification is None:
+            async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
+                try:
+                    classification = await classifier.classify_intent(
+                        persisted.message_text,
+                        context=persisted.context,
+                        conversation_id=persisted.conversation_id,
+                    )
+                except AIUnavailable as error:
+                    ai_error_reason = error.reason
 
         async with sessionmaker() as session:
             async with session.begin():
@@ -449,6 +455,43 @@ def persisted_message_from_models(
             "failed_understanding_count": conversation.failed_understanding_count,
             "pending_confirmation": conversation.pending_confirmation,
         },
+    )
+
+
+def deterministic_confirmation_classification(
+    message_text: str,
+    context: dict[str, Any],
+) -> IntentClassification | None:
+    resolved = resolve_contextual_confirmation(
+        message_text,
+        pending_action=context.get("pending_action")
+        if isinstance(context.get("pending_action"), str)
+        else None,
+        last_question_code=context.get("last_question_code")
+        if isinstance(context.get("last_question_code"), str)
+        else None,
+    )
+    if resolved is None:
+        return None
+    return IntentClassification(
+        primary_intent=resolved,
+        secondary_intents=[],
+        sub_intent=None,
+        confidence=1.0,
+        information_category=None,
+        entities={},
+        extracted_entities=[],
+        requested_action="RESOLVE_CONTEXTUAL_CONFIRMATION",
+        missing_fields=[],
+        needs_confirmation=False,
+        needs_human=False,
+        handoff_reason=None,
+        priority="NORMAL",
+        context_reference={
+            "pending_action": context.get("pending_action"),
+            "last_question_code": context.get("last_question_code"),
+        },
+        reasoning_code=f"DETERMINISTIC_{resolved}",
     )
 
 

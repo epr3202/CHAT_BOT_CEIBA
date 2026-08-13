@@ -25,6 +25,8 @@ Intent = Literal[
     "COMPLAINT",
     "EMERGENCY",
     "FAREWELL",
+    "CONFIRM",
+    "DENY",
     "UNKNOWN",
 ]
 

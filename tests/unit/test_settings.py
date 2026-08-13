@@ -28,7 +28,7 @@ def test_settings_loads_technical_defaults_for_testing() -> None:
     assert settings.openrouter_model_intent is None
     assert settings.openrouter_timeout_seconds == 15
     assert settings.openrouter_max_retries == 1
-    assert settings.ai_prompt_version == "intent_v3"
+    assert settings.ai_prompt_version == "intent_v4"
     assert settings.ai_confidence_safe == 0.85
 
 

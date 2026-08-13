@@ -16,6 +16,7 @@ from app.audit.models import AuditEvent
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings
+from app.conversation.confirmation import resolve_contextual_confirmation
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.knowledge import KnowledgeRenderError, render_response
 from app.conversation.models import Conversation
@@ -144,6 +145,11 @@ async def orchestrate_inbound_message(
     if classification is None:
         raise ValueError("classification or ai_error_reason is required")
 
+    classification = resolve_contextual_confirmation_classification(
+        conversation,
+        orchestration_input.message_text,
+        classification,
+    )
     classification = await resolve_pending_confirmation(
         session,
         conversation,
@@ -334,6 +340,16 @@ async def route_classification(
 
     if intent == "UNKNOWN":
         await handle_unknown(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
+    if intent == "DENY" and state == ConversationState.QUOTE_REQUEST_READY:
+        await handle_quote_request_ready(
             session,
             settings,
             knowledge_sessionmaker,
@@ -664,6 +680,23 @@ async def handle_quote_request_ready(
         )
         return
 
+    if classification.primary_intent == "DENY":
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.COLLECTING_EVENT_DATA,
+            actor=SYSTEM_ACTOR,
+            reason="Customer denied quote summary",
+        )
+        set_pending_action(conversation, None)
+        conversation.pending_confirmation = {
+            "resolved_intent": "DENY",
+            "previous_pending_action": "CONFIRM_QUOTE_REQUEST",
+            "last_question_code": conversation.last_question_code,
+        }
+        persist_classification_context(conversation, classification)
+        return
+
     if classification.primary_intent == "MODIFY_EVENT_DATA":
         await apply_extracted_entities(
             session,
@@ -690,7 +723,9 @@ async def handle_quote_request_ready(
         )
         return
 
-    if not is_affirmative(orchestration_input.message_text):
+    if classification.primary_intent != "CONFIRM" and not is_affirmative(
+        orchestration_input.message_text
+    ):
         set_pending_action(conversation, "CONFIRM_QUOTE_REQUEST")
         await enqueue_template(
             session,
@@ -743,6 +778,12 @@ async def handle_quote_request_ready(
     quote_request.due_at = add_business_days_bogota(now, 3)
     quote_request.summary_snapshot = summary_snapshot(customer, lead, event)
     lead.lead_status = "QUOTE_REQUESTED"
+    previous_pending_action = conversation.pending_action
+    conversation.pending_confirmation = {
+        "resolved_intent": "CONFIRM",
+        "previous_pending_action": previous_pending_action,
+        "last_question_code": conversation.last_question_code,
+    }
     audit_domain_change(
         session,
         "QUOTE_REQUEST_READY",
@@ -1280,6 +1321,40 @@ def normalized_entities(classification: IntentClassification) -> list[ExtractedE
     return entities
 
 
+def resolve_contextual_confirmation_classification(
+    conversation: Conversation,
+    message_text: str,
+    fallback: IntentClassification,
+) -> IntentClassification:
+    resolved = resolve_contextual_confirmation(
+        message_text,
+        conversation.pending_action,
+        conversation.last_question_code,
+    )
+    if resolved is None:
+        return fallback
+    return IntentClassification(
+        primary_intent=resolved,
+        secondary_intents=[],
+        sub_intent=None,
+        confidence=1.0,
+        information_category=None,
+        entities={},
+        extracted_entities=[],
+        requested_action="RESOLVE_CONTEXTUAL_CONFIRMATION",
+        missing_fields=[],
+        needs_confirmation=False,
+        needs_human=False,
+        handoff_reason=None,
+        priority="NORMAL",
+        context_reference={
+            "pending_action": conversation.pending_action,
+            "last_question_code": conversation.last_question_code,
+        },
+        reasoning_code=f"DETERMINISTIC_{resolved}",
+    )
+
+
 def triplet_from_entity(entity: ExtractedEntity) -> EventDateTriplet:
     value = entity.normalized_value
     if isinstance(value, dict):
@@ -1628,6 +1703,12 @@ def is_action_allowed_for_slice(
             ConversationState.COLLECTING_EVENT_DATA,
             ConversationState.QUOTE_REQUEST_READY,
         }
+    if classification.primary_intent in {"CONFIRM", "DENY"}:
+        return bool(
+            conversation.pending_action
+            and conversation.pending_action.startswith("CONFIRM_")
+            and conversation.last_question_code
+        )
     if classification.primary_intent in SENSITIVE_HANDOFF_INTENTS | TRANSIENT_UNSUPPORTED_INTENTS:
         return (
             ConversationState.WAITING_FOR_HUMAN

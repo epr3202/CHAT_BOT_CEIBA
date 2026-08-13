@@ -99,6 +99,32 @@ async def test_valid_json_returns_intent_classification(
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_prompt_includes_pending_action_and_last_question_code_context(
+    settings: Settings,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=completion_payload(valid_classification()))
+    )
+
+    async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
+        await client.classify_intent(
+            "Correcto",
+            context={
+                "pending_action": "CONFIRM_QUOTE_REQUEST",
+                "last_question_code": "RESP-QUOTE-002",
+            },
+        )
+
+    request = route.calls.last.request
+    payload = json.loads(request.content)
+    user_content = payload["messages"][1]["content"]
+    assert '"pending_action": "CONFIRM_QUOTE_REQUEST"' in user_content
+    assert '"last_question_code": "RESP-QUOTE-002"' in user_content
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_unknown_intent_becomes_schema_violation(
     settings: Settings,
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
