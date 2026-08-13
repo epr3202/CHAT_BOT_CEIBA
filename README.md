@@ -63,6 +63,45 @@ Los helpers de test se niegan a resetear una base cuyo nombre no incluya `test`.
 No usar la base operativa `ceiba` para `pytest`; ahí viven las conversaciones,
 handoffs, agentes, mensajes y auditoría del entorno local.
 
+## Despliegue continuo
+
+Cada push a `main` dispara GitHub Actions:
+
+1. CI levanta PostgreSQL 16, crea `ceiba_test`, instala `pip install -e ".[dev]"`,
+   ejecuta `ruff check .` y luego `pytest -x -q`.
+2. Si CI pasa y el evento no es un pull request, el job de deploy entra por SSH al VPS.
+3. El servidor ejecuta `./deploy.sh`: actualiza el checkout a `origin/main`, construye
+   `app` y `worker`, corre `alembic upgrade head` en un contenedor efímero, recarga la
+   base de conocimiento, reinicia `app` y `worker`, y valida `GET /health`.
+
+Secrets requeridos en GitHub:
+
+| Secret | Contenido |
+| --- | --- |
+| `DEPLOY_SSH_KEY` | Llave privada SSH con permiso para entrar al VPS y leer el repo. |
+| `DEPLOY_HOST` | Host o IP del VPS. |
+| `DEPLOY_USER` | Usuario SSH que ejecuta el despliegue. |
+| `DEPLOY_PATH` | Ruta absoluta del checkout productivo en el servidor. |
+
+El `.env` de producción vive solo en el servidor y lo consume Docker Compose; no se
+sube al repositorio ni a GitHub Actions.
+
+Rollback operativo:
+
+```bash
+ssh <DEPLOY_USER>@<DEPLOY_HOST>
+cd <DEPLOY_PATH>
+git reset --hard <tag-o-sha>
+./deploy.sh
+```
+
+Las migraciones no se revierten automáticamente. Un rollback que cruce una migración
+destructiva requiere un `alembic downgrade` manual, revisado caso por caso antes de
+volver a levantar la versión anterior.
+
+Un downtime de aproximadamente 10-30 segundos por deploy es tolerable: Meta reintenta
+webhooks y el dedup por `external_message_id` evita duplicados.
+
 ## Simular webhook local
 
 Con la app local arriba y `META_APP_SECRET` definido:
