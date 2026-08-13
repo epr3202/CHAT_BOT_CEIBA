@@ -23,7 +23,7 @@ async def load_knowledge_entries(
 ) -> int:
     """Load approved-response knowledge entries idempotently.
 
-    The stable identity is ``code`` + ``version``. Existing rows for the same
+    The stable identity is code+version. Existing rows for the same
     identity are left unchanged, so a repeated deploy does not duplicate seed
     entries or overwrite production edits on an already-loaded version. When a
     newer seed version is inserted, older active versions for that code are

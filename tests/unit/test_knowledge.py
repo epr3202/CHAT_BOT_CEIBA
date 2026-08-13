@@ -44,6 +44,29 @@ async def add_entry(
             )
 
 
+async def knowledge_snapshot(
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> list[tuple[str, str, str, str, list[str], int, str]]:
+    async with sessionmaker() as session:
+        return (
+            (
+                await session.execute(
+                    select(
+                        KnowledgeEntry.code,
+                        KnowledgeEntry.category,
+                        KnowledgeEntry.question_summary,
+                        KnowledgeEntry.answer_template,
+                        KnowledgeEntry.allowed_variables,
+                        KnowledgeEntry.version,
+                        KnowledgeEntry.status,
+                    ).order_by(KnowledgeEntry.code, KnowledgeEntry.version)
+                )
+            )
+            .tuples()
+            .all()
+        )
+
+
 @pytest.mark.asyncio
 async def test_render_response_with_complete_variables(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
@@ -99,46 +122,13 @@ async def test_seed_loader_is_idempotent(
     entries = list(iter_seed_entries())
 
     first_count = await load_knowledge_entries(sessionmaker_fixture, entries)
-    async with sessionmaker_fixture() as session:
-        first_snapshot = (
-            (
-                await session.execute(
-                    select(
-                        KnowledgeEntry.code,
-                        KnowledgeEntry.category,
-                        KnowledgeEntry.question_summary,
-                        KnowledgeEntry.answer_template,
-                        KnowledgeEntry.allowed_variables,
-                        KnowledgeEntry.version,
-                        KnowledgeEntry.status,
-                    ).order_by(KnowledgeEntry.code, KnowledgeEntry.version)
-                )
-            )
-            .tuples()
-            .all()
-        )
+    first_snapshot = await knowledge_snapshot(sessionmaker_fixture)
 
     second_count = await load_knowledge_entries(sessionmaker_fixture, entries)
 
     async with sessionmaker_fixture() as session:
         total = await session.scalar(select(func.count()).select_from(KnowledgeEntry))
-        second_snapshot = (
-            (
-                await session.execute(
-                    select(
-                        KnowledgeEntry.code,
-                        KnowledgeEntry.category,
-                        KnowledgeEntry.question_summary,
-                        KnowledgeEntry.answer_template,
-                        KnowledgeEntry.allowed_variables,
-                        KnowledgeEntry.version,
-                        KnowledgeEntry.status,
-                    ).order_by(KnowledgeEntry.code, KnowledgeEntry.version)
-                )
-            )
-            .tuples()
-            .all()
-        )
+    second_snapshot = await knowledge_snapshot(sessionmaker_fixture)
 
     assert first_count == len(entries)
     assert second_count == 0
