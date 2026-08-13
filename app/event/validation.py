@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 MONTHS = {
     "enero": 1,
@@ -18,6 +18,17 @@ MONTHS = {
     "octubre": 10,
     "noviembre": 11,
     "diciembre": 12,
+}
+WEEKDAYS = {
+    "lunes": 0,
+    "martes": 1,
+    "miercoles": 2,
+    "miércoles": 2,
+    "jueves": 3,
+    "viernes": 4,
+    "sabado": 5,
+    "sábado": 5,
+    "domingo": 6,
 }
 
 
@@ -73,17 +84,29 @@ def parse_customer_date_expression(raw_value: str, today: date) -> EventDateTrip
         return validate_event_date_triplet(None, None, "UNKNOWN", raw_value)
 
     month = next((month for name, month in MONTHS.items() if name in normalized), None)
+    explicit_year_match = re.search(r"\b(20\d{2})\b", normalized)
+    day_match = re.search(r"\b(\d{1,2})\b", normalized)
+    if month is None and (weekday := _weekday_in(normalized)):
+        days_ahead = (weekday - today.weekday()) % 7
+        if days_ahead == 0 or "proximo" in _strip_accents(normalized):
+            days_ahead = 7 if days_ahead == 0 else days_ahead
+        parsed = today + timedelta(days=days_ahead)
+        return validate_event_date_triplet(parsed, None, "EXACT", raw_value)
+    if month is None and day_match:
+        day = int(day_match.group(1))
+        parsed = _next_future_date_for_day(day, today)
+        return validate_event_date_triplet(parsed, None, "EXACT", raw_value)
     if month is None:
         raise ValueError("INVALID_DATE")
-    explicit_year_match = re.search(r"\b(20\d{2})\b", normalized)
     year = int(explicit_year_match.group(1)) if explicit_year_match else _infer_year(month, today)
-    day_match = re.search(r"\b(\d{1,2})\b", normalized)
     if day_match:
         day = int(day_match.group(1))
         try:
             parsed = date(year, month, day)
         except ValueError as error:
             raise ValueError("INVALID_CALENDAR_DATE") from error
+        if not explicit_year_match and parsed < today:
+            parsed = date(year + 1, month, day)
         validate_event_date_not_past(parsed, today)
         return validate_event_date_triplet(parsed, None, "EXACT", raw_value)
 
@@ -98,3 +121,41 @@ def _infer_year(month: int, today: date) -> int:
     if month < today.month:
         return today.year + 1
     return today.year
+
+
+def _weekday_in(normalized: str) -> int | None:
+    normalized_without_accents = _strip_accents(normalized)
+    for name, weekday in WEEKDAYS.items():
+        if _strip_accents(name) in normalized_without_accents:
+            return weekday
+    return None
+
+
+def _next_future_date_for_day(day: int, today: date) -> date:
+    month = today.month
+    year = today.year
+    while True:
+        try:
+            candidate = date(year, month, day)
+        except ValueError:
+            month += 1
+            if month == 13:
+                month = 1
+                year += 1
+            continue
+        if candidate >= today:
+            return candidate
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
+
+
+def _strip_accents(value: str) -> str:
+    import unicodedata
+
+    return "".join(
+        char
+        for char in unicodedata.normalize("NFD", value)
+        if unicodedata.category(char) != "Mn"
+    )

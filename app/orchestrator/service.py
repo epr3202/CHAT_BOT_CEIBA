@@ -1357,6 +1357,11 @@ def resolve_contextual_confirmation_classification(
 
 def triplet_from_entity(entity: ExtractedEntity) -> EventDateTriplet:
     value = entity.normalized_value
+    if not raw_value_has_explicit_year(entity.raw_value):
+        return parse_customer_date_expression(
+            entity.raw_value,
+            datetime.now(ZoneInfo("America/Bogota")).date(),
+        )
     if isinstance(value, dict):
         parsed_date = value.get("event_date")
         return validate_event_date_triplet(
@@ -1378,6 +1383,12 @@ def triplet_from_entity(entity: ExtractedEntity) -> EventDateTriplet:
         entity.raw_value,
         datetime.now(ZoneInfo("America/Bogota")).date(),
     )
+
+
+def raw_value_has_explicit_year(raw_value: str) -> bool:
+    import re
+
+    return re.search(r"\b20\d{2}\b", raw_value) is not None
 
 
 def date_resolved(event: Event) -> bool:

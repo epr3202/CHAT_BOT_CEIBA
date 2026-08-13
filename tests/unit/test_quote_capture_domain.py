@@ -179,3 +179,45 @@ def test_date_parser_respects_explicit_year_for_exact_date() -> None:
 def test_date_parser_rejects_explicit_past_year() -> None:
     with pytest.raises(ValueError, match="PAST_DATE"):
         parse_customer_date_expression("marzo de 2020", today=date(2026, 8, 13))
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "today", "expected"),
+    [
+        ("13 de septiembre", date(2026, 8, 13), date(2026, 9, 13)),
+        ("13 de agosto", date(2026, 8, 13), date(2026, 8, 13)),
+        ("13 de julio", date(2026, 8, 13), date(2027, 7, 13)),
+        ("el 20", date(2026, 8, 13), date(2026, 8, 20)),
+    ],
+)
+def test_date_parser_resolves_yearless_exact_dates_to_next_future_occurrence(
+    raw_value: str,
+    today: date,
+    expected: date,
+) -> None:
+    exact = parse_customer_date_expression(raw_value, today=today)
+
+    assert exact.event_date == expected
+    assert exact.event_date_type == "EXACT"
+
+
+def test_date_parser_resolves_next_saturday_from_bogota_anchor() -> None:
+    exact = parse_customer_date_expression("el próximo sábado", today=date(2026, 8, 13))
+
+    assert exact.event_date == date(2026, 8, 15)
+    assert exact.event_date_type == "EXACT"
+
+
+def test_date_parser_never_resolves_yearless_date_to_past() -> None:
+    values = [
+        "13 de septiembre",
+        "13 de agosto",
+        "13 de julio",
+        "el próximo sábado",
+        "el 20",
+    ]
+
+    for raw_value in values:
+        triplet = parse_customer_date_expression(raw_value, today=date(2026, 8, 13))
+        if triplet.event_date is not None:
+            assert triplet.event_date >= date(2026, 8, 13)

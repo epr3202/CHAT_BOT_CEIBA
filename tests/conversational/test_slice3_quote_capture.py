@@ -489,6 +489,37 @@ async def test_tc_collect_002_approximate_date_triplet(
 
 
 @pytest.mark.asyncio
+async def test_p0b_llm_past_year_for_yearless_raw_date_is_reanchored_to_future(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with sessionmaker_fixture() as session:
+        async with session.begin():
+            customer, conversation = await seed_conversation(session)
+
+    await run_turn(
+        sessionmaker_fixture,
+        settings,
+        conversation.id,
+        customer.id,
+        "Soy Natalia, boda para 45 personas el 13 de septiembre.",
+        classification(
+            entities=[
+                entity("full_name", "Soy Natalia", "Natalia"),
+                entity("event_type", "boda", "WEDDING"),
+                entity("guest_count", "45 personas", 45),
+                date_entity("13 de septiembre", "2024-09-13", None, "EXACT"),
+            ]
+        ),
+        "wamid.p0b.past-llm-date",
+    )
+    _customer, _conversation, _lead, event = await capture_models(sessionmaker_fixture)
+
+    assert event.event_date == date(2026, 9, 13)
+    assert event.event_date_raw == "13 de septiembre"
+
+
+@pytest.mark.asyncio
 async def test_tc_collect_003_flexible_date_triplet_with_month(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
     settings: Settings,
