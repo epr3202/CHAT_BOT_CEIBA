@@ -39,7 +39,7 @@ async def test_environment(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Non
 
 
 @pytest.fixture
-async def client() -> AsyncIterator[AsyncClient]:
+async def client(test_environment: None) -> AsyncIterator[AsyncClient]:
     async for test_client in app_client():
         yield test_client
 
