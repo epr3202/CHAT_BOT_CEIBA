@@ -731,9 +731,11 @@ COLLECTING_EVENT_DATA
 full_name
 phone_number
 event_type
-event_date OR event_month
+date_resolved (fecha, mes, o tipo FLEXIBLE/UNKNOWN declarado)
 guest_count OR guest_count_range
 ```
+
+El silencio del cliente sobre la fecha no cuenta como `UNKNOWN`; si no se pronunció, `COLLECT_EVENT_DATE` sigue pendiente.
 
 ## Flujo principal
 
@@ -2527,4 +2529,3 @@ Su aprobación implica que:
 * las operaciones críticas tienen controles;
 * los errores tienen rutas de recuperación;
 * el MVP puede pasar a requerimientos funcionales y arquitectura sin redefinir la experiencia conversacional.
-

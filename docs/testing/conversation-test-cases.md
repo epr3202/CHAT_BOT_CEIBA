@@ -1456,6 +1456,296 @@ Consultar estado real y utilizar la plantilla correspondiente.
 
 ---
 
+## TC-COLLECT-001 — Datos múltiples en un mensaje
+
+**Entrada:**
+
+> Soy Natalia, boda para 45 personas el 12 de diciembre, tengo 10 millones.
+
+**Resultado esperado:**
+
+* persistir en un turno `full_name`, `event_type`, `total_guest_count`, `event_date` y `estimated_budget`;
+* no repetir ninguna de esas preguntas;
+* siguiente pregunta = `COLLECT_SERVICES`.
+
+---
+
+## TC-COLLECT-002 — Triplete APPROXIMATE
+
+**Entrada:**
+
+> En diciembre.
+
+**Resultado esperado:**
+
+```text
+event_month = 2026-12
+event_date = null
+event_date_type = APPROXIMATE
+event_date_raw = "en diciembre"
+```
+
+Verificar el invariante completo del triplete de fecha. No se inventa día.
+
+---
+
+## TC-COLLECT-003 — Triplete FLEXIBLE con mes
+
+**Entrada:**
+
+> Cualquier sábado de febrero.
+
+**Resultado esperado:**
+
+```text
+event_month = 2027-02
+event_date_type = FLEXIBLE
+preferred_weekday = SATURDAY
+event_date = null
+```
+
+Cumple mínimos de cotización por `date_resolved`.
+
+---
+
+## TC-COLLECT-004 — UNKNOWN declarado habilita READY
+
+**Entrada:**
+
+> Todavía no sé la fecha.
+
+**Precondición:** Todos los demás mínimos de cotización están completos.
+
+**Resultado esperado:**
+
+```text
+event_date_type = UNKNOWN
+event_date = null
+event_month = null
+event_date_raw = "Todavía no sé la fecha"
+date_pending = true
+```
+
+La fecha se remueve de `pending_fields` y la transición a `QUOTE_REQUEST_READY` procede.
+
+---
+
+## TC-COLLECT-005 — Corrección de fecha a mitad de captura
+
+**Precondición:** El cliente ya informó `event_date = 2026-12-12`.
+
+**Entrada:**
+
+> Mejor déjalo para enero.
+
+**Resultado esperado:**
+
+* el triplete pasa de `EXACT` a `APPROXIMATE` atómicamente;
+* `event_month` queda poblado y `event_date = null`;
+* calidad = `CORRECTED`;
+* `event_date_raw` queda actualizado;
+* `audit_event` conserva valor anterior;
+* no se vuelve a preguntar la fecha.
+
+---
+
+## TC-COLLECT-006 — Tercero nombrado no es el cliente
+
+**Entrada:**
+
+> La novia se llama Natalia.
+
+**Resultado esperado:**
+
+* `full_name` no se llena con "Natalia";
+* `COLLECT_CUSTOMER_NAME` sigue pendiente.
+
+---
+
+## TC-COLLECT-007 — Nombre inferido requiere confirmación
+
+**Precondición:** Nombre extraído con `needs_confirmation = true`.
+
+**Resultado esperado:**
+
+* el nombre no cuenta para mínimos hasta confirmarse;
+* el bot confirma el nombre antes de `QUOTE_REQUEST_READY`.
+
+---
+
+## TC-COLLECT-008 — Presupuesto declinado una vez
+
+**Precondición:** `pending_action = COLLECT_BUDGET`.
+
+**Entrada:**
+
+> Prefiero no decirlo.
+
+**Resultado esperado:**
+
+```text
+budget_data_status = DECLINED
+```
+
+* respuesta = fallback aprobado;
+* presupuesto fuera de `pending_fields`;
+* el flujo continúa;
+* en cinco turnos posteriores el bot nunca vuelve a preguntar presupuesto.
+
+---
+
+## TC-COLLECT-009 — Presupuesto espontáneo tras declinar
+
+**Precondición:** `budget_data_status = DECLINED`.
+
+**Entrada:**
+
+> Bueno, tengo unos 6 millones.
+
+**Resultado esperado:**
+
+```text
+budget_data_status = PROVIDED
+estimated_budget = 6000000
+```
+
+No se menciona la negativa previa.
+
+---
+
+## TC-COLLECT-010 — BELOW_REFERENCE invisible
+
+**Entrada:**
+
+> Tengo dos millones y medio.
+
+**Resultado esperado:**
+
+```text
+budget_range = BELOW_REFERENCE
+```
+
+* la clasificación permanece interna;
+* ningún mensaje saliente contiene `BELOW_REFERENCE`;
+* la respuesta saliente es neutra y aprobada;
+* el flujo visible no cambia.
+
+---
+
+## TC-COLLECT-011 — FAQ intermedia conserva pending_action
+
+**Precondición:**
+
+```text
+COLLECTING_EVENT_DATA
+pending_action = COLLECT_EVENT_DATE
+```
+
+**Entrada:**
+
+> ¿Tienen parqueadero?
+
+**Resultado esperado:**
+
+* `ANSWERING_INFORMATION` responde con plantilla aprobada;
+* retorna a `COLLECTING_EVENT_DATA`;
+* conserva `pending_action = COLLECT_EVENT_DATE`.
+
+---
+
+## TC-COLLECT-012 — Gating determinista de READY
+
+**Precondición:** Mínimos incompletos.
+
+**Entrada:**
+
+> Sí, cotízame ya.
+
+**Resultado esperado:**
+
+* no produce `QUOTE_REQUEST_READY`;
+* el orquestador responde con la siguiente pregunta pendiente;
+* la transición solo ocurre con `minimum_data_complete = true`.
+
+---
+
+## TC-COLLECT-013 — Idempotencia de webhook duplicado durante captura
+
+**Entrada:** Mismo mensaje entrante entregado dos veces con el mismo `external_message_id`.
+
+**Resultado esperado:**
+
+* entidades persistidas una sola vez;
+* no se repite la pregunta saliente;
+* no se crea segundo lead ni segunda solicitud.
+
+---
+
+## TC-COLLECT-014 — Una pregunta por turno
+
+**Precondición:** Faltan cuatro campos de captura.
+
+**Resultado esperado:**
+
+La respuesta saliente contiene exactamente una pregunta.
+
+---
+
+## TC-COLLECT-015 — select_next_question puro
+
+**Tipo:** Unitario sin IA ni base de datos.
+
+**Resultado esperado:**
+
+La función de selección:
+
+* respeta el orden tipo → invitados → fecha → nombre → presupuesto → servicios;
+* salta campos provistos;
+* excluye presupuesto si `budget_data_status = DECLINED`;
+* excluye fecha si `date_resolved = true`, incluidos `FLEXIBLE`/`UNKNOWN` declarados.
+
+---
+
+## TC-COLLECT-016 — El silencio NO es UNKNOWN
+
+**Entrada:**
+
+> Soy Andrés, quiero una boda para 40 personas.
+
+**Resultado esperado:**
+
+* `event_date_type` no toma valor `FLEXIBLE` ni `UNKNOWN`;
+* la fecha permanece en `pending_fields`;
+* `pending_action = COLLECT_EVENT_DATE`;
+* "sí, cotízame" no produce `READY` hasta que la fecha se declare o se informe.
+
+---
+
+## TC-COLLECT-017 — Resumen sin fecha usa plantilla variante
+
+**Precondición:** Solicitud con `date_pending = true`.
+
+**Resultado esperado:**
+
+* el resumen de confirmación saliente usa la plantilla aprobada de fecha por definir;
+* ningún mensaje saliente contiene "None", "null", placeholder vacío ni `{event_date}` sin resolver;
+* `summary_snapshot` incluye `event_date_raw`.
+
+---
+
+## TC-COLLECT-018 — INV-ST-009 intacto
+
+**Entrada:**
+
+> Quiero agendar una visita el otro sábado.
+
+**Resultado esperado:**
+
+* la relajación de mínimos de cotización no aplica a visitas;
+* el flujo de agendamiento exige confirmación de fecha absoluta antes de crear la cita.
+
+---
+
 # 14. Suite E — Cambio temporal y múltiples intenciones
 
 ## TC-CTX-001 — FAQ durante cotización

@@ -463,7 +463,20 @@ Valor de referencia inicial:
 4.000.000 COP
 ```
 
-## 7.5 Reglas
+## 7.5 Estados de captura de presupuesto
+
+`budget_data_status` usa el siguiente catálogo específico:
+
+```text
+NOT_ASKED
+ASKED_PENDING
+PROVIDED
+DECLINED
+RANGE_PROVIDED
+CORRECTED
+```
+
+## 7.6 Reglas
 
 * Un presupuesto inferior al referente no cierra el lead.
 * No debe mostrarse al cliente la clasificación `BELOW_REFERENCE`.
@@ -489,6 +502,7 @@ Representar el evento que el cliente desea realizar.
 | `event_date`                 | Fecha           | Obligatorio o sustituible por mes | Cliente             | Personal             | Fecha válida            | Planeación            |
 | `event_month`                | Año-mes         | Alternativa a fecha               | Cliente             | Personal             | Mes válido              | Cotización aproximada |
 | `event_date_type`            | Enum            | Obligatorio                       | Sistema             | Interno              | Catálogo válido         | Calidad               |
+| `event_date_raw`             | Texto           | Automático                        | Cliente             | Personal             | 1–200 caracteres        | Evidencia y resumen   |
 | `date_flexibility`           | Enum            | Opcional                          | Cliente             | Personal             | Catálogo válido         | Alternativas          |
 | `preferred_weekday`          | Enum            | Opcional                          | Cliente             | Personal             | Día válido              | Preferencia           |
 | `alternative_dates`          | Lista de fechas | Opcional                          | Cliente             | Personal             | Fechas válidas          | Disponibilidad        |
@@ -553,6 +567,7 @@ UNKNOWN
 * Los niños y bebés deberán considerarse en el aforo.
 * Más de 60 invitados activará revisión.
 * Un rango de invitados no se convertirá automáticamente en cifra confirmada.
+* `event_date_raw` almacena la última expresión textual del cliente sobre la fecha; se actualiza en cada corrección; el historial completo queda en `audit_event` y en los registros de extracción, nunca se pierde.
 
 ---
 
@@ -837,6 +852,7 @@ Representar una solicitud estructurada para que un asesor prepare una cotizació
 | `request_status`        | Enum        | Automático/restringido | Sistema/asesor | Interno      | Estado válido      | Seguimiento    |
 | `minimum_data_complete` | Booleano    | Calculado              | Sistema        | Interno      | Booleano           | Preparación    |
 | `missing_fields`        | Lista       | Calculado              | Sistema        | Interno      | Campos válidos     | Captura        |
+| `date_pending`          | Booleano    | Calculado              | Sistema        | Interno      | Booleano           | Bandeja y priorización |
 | `requested_at`          | Fecha/hora  | Automático             | Sistema        | Técnica      | No editable        | SLA            |
 | `assigned_agent_id`     | UUID        | Restringido            | Sistema/asesor | Interno      | Usuario activo     | Responsable    |
 | `assigned_at`           | Fecha/hora  | Automático             | Sistema        | Técnica      | No editable        | SLA            |
@@ -867,15 +883,28 @@ Para pasar a `READY`:
 full_name
 phone_number
 event_type
-event_date OR event_month
+date_resolved (fecha, mes, o tipo FLEXIBLE/UNKNOWN declarado)
 total_guest_count OR guest_count_range
 ```
+
+Donde:
+
+```text
+date_resolved =
+     event_date != null
+  OR event_month != null
+  OR event_date_type IN (FLEXIBLE, UNKNOWN)
+```
+
+El silencio del cliente sobre la fecha no cuenta como `UNKNOWN`.
 
 ## 14.5 Reglas
 
 * El presupuesto no bloquea la solicitud.
+* `date_pending = (event_date = null AND event_month = null AND event_date_type IN (FLEXIBLE, UNKNOWN))`.
 * `due_at` se calculará con máximo tres días hábiles.
 * El resumen deberá ser una fotografía del momento, no una referencia dinámica.
+* El `summary_snapshot` incluye siempre `event_date_raw` junto al valor normalizado, por ejemplo: `Fecha: 2026-12 (aproximada) — cliente dijo: "en diciembre, todavía no tenemos día"`.
 * La solicitud no contendrá precios calculados por IA.
 
 ---

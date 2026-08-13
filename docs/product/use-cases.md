@@ -814,8 +814,10 @@ Se marcan `PENDING_CONFIRMATION`.
 * BR-CON-001.
 * BR-CON-002.
 * BR-LEAD-004 a BR-LEAD-009.
+* BR-LEAD-011.
 * BR-EVT-003 a BR-EVT-016.
 * BR-QREQ-002.
+* BR-QREQ-012.
 * BR-QREQ-003.
 
 ## Resultado esperado
@@ -1048,7 +1050,7 @@ La solicitud queda en `DRAFT`.
 
 ## Reglas relacionadas
 
-* BR-QREQ-001 a BR-QREQ-011.
+* BR-QREQ-001 a BR-QREQ-012.
 * BR-SLA-001.
 
 ## Resultado esperado
@@ -2683,7 +2685,7 @@ La conversación se cierra, pero los datos permanecen disponibles.
 | UC-006 | BR-CON-001, BR-CON-002, BR-EVT-003 a BR-EVT-016 |
 | UC-007 | BR-CUS-006, BR-QUOTE-003, BR-AUD-001            |
 | UC-008 | BR-CON-003, BR-CON-005                          |
-| UC-009 | BR-QREQ-001 a BR-QREQ-011                       |
+| UC-009 | BR-QREQ-001 a BR-QREQ-012                       |
 | UC-010 | BR-LEAD-010, BR-HAND-003 a BR-HAND-005          |
 | UC-011 | BR-QUOTE-001 a BR-QUOTE-006                     |
 | UC-012 | BR-QUOTE-001 a BR-QUOTE-003                     |

@@ -806,6 +806,23 @@ SUNDAY
 
 ---
 
+## 8.7 Invariante de consistencia del triplete de fecha
+
+```text
+event_date != null              → event_date_type = EXACT
+event_date_type = EXACT         → event_date != null
+event_date_type = APPROXIMATE   → event_date = null AND event_month != null
+event_date_type = FLEXIBLE      → event_date = null (event_month opcional)
+event_date_type = UNKNOWN       → event_date = null AND event_month = null
+event_date_raw != null en todo caso donde el cliente haya mencionado fecha
+```
+
+Este invariante se valida en el orquestador al persistir, no en el clasificador.
+
+Toda escritura de fecha actualiza `event_date`, `event_month`, `event_date_type` y `event_date_raw` de forma atómica; nunca campos sueltos.
+
+---
+
 # 9. Entidades de horario del evento
 
 ## 9.1 `event_start_time`
@@ -1635,9 +1652,11 @@ SYSTEM_CALCULATION
 full_name
 phone_number
 event_type
-event_date OR event_month
+date_resolved
 guest_count OR guest_count_range
 ```
+
+Donde `date_resolved` significa fecha exacta, mes aproximado o tipo `FLEXIBLE`/`UNKNOWN` declarado explícitamente por el cliente.
 
 ---
 

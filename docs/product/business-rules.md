@@ -761,6 +761,16 @@ La asignación se realizará cuando un asesor seleccione:
 
 ---
 
+## BR-LEAD-011 — Pregunta única de presupuesto
+
+1. El presupuesto se pregunta máximo una vez por lead, en la posición del orden de FL-005, usando exclusivamente la plantilla aprobada de vision.md §12.3.
+2. Si el cliente declina o evade, se registra `budget_data_status = DECLINED`, el campo se remueve de `pending_fields` y no vuelve a preguntarse en el mismo lead, ni por el bot ni por seguimientos automáticos.
+3. Si el cliente lo informa espontáneamente después de declinar, se registra normalmente (`DECLINED → PROVIDED`) sin comentario sobre la negativa previa.
+4. `budget_range = BELOW_REFERENCE` es clasificación estrictamente interna: nunca se comunica al cliente, nunca altera el tono ni el flujo visible, y no bloquea ninguna transición.
+5. La ausencia de presupuesto nunca bloquea `QUOTE_REQUEST_READY`.
+
+---
+
 # 8. Reglas de eventos
 
 ## BR-EVT-001 — Tipos de evento
@@ -975,9 +985,20 @@ Para crear una solicitud lista se requiere:
 full_name
 phone_number
 event_type
-event_date OR event_month
+date_resolved (fecha, mes, o tipo FLEXIBLE/UNKNOWN declarado)
 total_guest_count OR guest_count_range
 ```
+
+Donde:
+
+```text
+date_resolved =
+     event_date != null
+  OR event_month != null
+  OR event_date_type IN (FLEXIBLE, UNKNOWN)
+```
+
+El silencio del cliente sobre la fecha no cuenta como `UNKNOWN`.
 
 ---
 
@@ -1068,6 +1089,15 @@ sin una regla aprobada y motor activo.
 Respuesta autorizada:
 
 > Cada evento en La Ceiba se diseña de manera personalizada. El valor depende principalmente de la fecha, la cantidad de invitados y los servicios que quieras incluir. ¿Qué tipo de celebración estás planeando y para cuántas personas aproximadamente?
+
+---
+
+## BR-QREQ-012 — Solicitud lista con fecha por definir
+
+1. Una solicitud puede pasar a `READY` con `date_pending = true` solo si el cliente declaró explícitamente flexibilidad o desconocimiento de fecha.
+2. `date_pending` debe ser visible para el asesor en bandeja y en el `summary_snapshot`, que incluirá siempre `event_date_raw`, por ejemplo: `Fecha: por definir — cliente dijo: "todavía no sabemos"`.
+3. La ausencia de fecha en la solicitud no relaja INV-ST-009: las citas de visita siguen exigiendo fecha absoluta confirmada. Esta regla aplica únicamente a solicitudes de cotización.
+4. El seguimiento de fecha posterior a `READY` queda a criterio del asesor; no se automatiza en este slice.
 
 ---
 

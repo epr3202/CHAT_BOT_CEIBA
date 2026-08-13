@@ -2422,3 +2422,50 @@ Estamos en la Calle 71 #52-34, Lagos del Cacique, Bucaramanga. Puedes encontrarn
 - **Respuesta aprobada:**
 
 Estamos ubicados en Lagos del Cacique, en la Calle 71 #52-34. Puedo compartirte el enlace de Google Maps para que consultes la ruta desde tu ubicación.
+
+---
+
+# Pendientes de aprobación — Fase 0 captura de datos
+
+## Verificación D5 — preguntas de slot filling
+
+| `pending_action` | Plantilla verificada | Estado |
+| ---------------- | -------------------- | ------ |
+| `COLLECT_EVENT_TYPE` | No hay plantilla específica aprobada para primera pregunta de tipo de evento FL-005 | `MISSING` |
+| `COLLECT_GUEST_COUNT` | `RESP-EVENT-DATA-004` | `APPROVED` |
+| `COLLECT_EVENT_DATE` | `RESP-EVENT-DATA-001` | `APPROVED` |
+| `COLLECT_CUSTOMER_NAME` | `RESP-CUSTOMER-001` | `APPROVED` |
+| `COLLECT_BUDGET` | `RESP-BUDGET-001` y fallback `RESP-BUDGET-002` | `APPROVED` |
+| `COLLECT_SERVICES` | `RESP-EVENT-DATA-006` | `APPROVED` |
+
+La base sembrada se deriva de `docs/conversation/approved-responses.md` mediante `data/knowledge_seed.py`; por tanto las plantillas aprobadas verificadas arriba quedan incluidas en seed. Las entradas `MISSING` o `DRAFT` no pertenecen al camino feliz hasta aprobación de Leandro.
+
+## RESP-EVENT-DATA-013
+
+- **Status:** DRAFT
+- **Pregunta/resumen:** Primera pregunta de tipo de evento
+- **Variables requeridas:** Ninguna
+- **Motivo de revisión:** Brecha D5 para `COLLECT_EVENT_TYPE`.
+- **Respuesta propuesta:**
+
+¿Qué tipo de celebración estás planeando?
+
+## RESP-QUOTE-008
+
+- **Status:** DRAFT
+- **Pregunta/resumen:** Resumen de confirmación con fecha por definir
+- **Variables requeridas:** event_type, guest_count
+- **Motivo de revisión:** D2 permite `READY` con fecha declarada como flexible o desconocida; `RESP-QUOTE-002/003` requieren `{event_date}`.
+- **Respuesta propuesta:**
+
+Para confirmar: estás planeando {event_type} para aproximadamente {guest_count} personas, con la fecha aún por definir. ¿Está correcto?
+
+## RESP-QUOTE-009
+
+- **Status:** DRAFT
+- **Pregunta/resumen:** Solicitud registrada con fecha por definir
+- **Variables requeridas:** Ninguna
+- **Motivo de revisión:** D2 requiere respuesta sin placeholder de fecha para `date_pending = true`.
+- **Respuesta propuesta:**
+
+Perfecto, la solicitud quedó registrada con la fecha por definir. Nuestro equipo preparará la propuesta y podremos ajustar la fecha cuando la tengas.

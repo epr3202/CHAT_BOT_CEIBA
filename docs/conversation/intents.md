@@ -942,9 +942,11 @@ COLLECT_EVENT_TYPE
 full_name
 phone_number
 event_type
-event_date OR event_month
+date_resolved (fecha, mes, o tipo FLEXIBLE/UNKNOWN declarado)
 total_guest_count OR guest_count_range
 ```
+
+El silencio del cliente sobre la fecha no cuenta como `UNKNOWN`.
 
 ---
 
