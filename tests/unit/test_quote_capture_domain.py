@@ -157,3 +157,25 @@ def test_date_parser_infers_year_only_from_clear_context() -> None:
     assert approximate.event_date_type == "APPROXIMATE"
     assert flexible.event_month == "2027-02"
     assert flexible.event_date_type == "FLEXIBLE"
+
+
+def test_date_parser_respects_explicit_year_for_approximate_month() -> None:
+    approximate = parse_customer_date_expression("marzo de 2027", today=date(2026, 8, 13))
+
+    assert approximate.event_month == "2027-03"
+    assert approximate.event_date_type == "APPROXIMATE"
+
+
+def test_date_parser_respects_explicit_year_for_exact_date() -> None:
+    exact = parse_customer_date_expression(
+        "12 de diciembre de 2027",
+        today=date(2026, 8, 13),
+    )
+
+    assert exact.event_date == date(2027, 12, 12)
+    assert exact.event_date_type == "EXACT"
+
+
+def test_date_parser_rejects_explicit_past_year() -> None:
+    with pytest.raises(ValueError, match="PAST_DATE"):
+        parse_customer_date_expression("marzo de 2020", today=date(2026, 8, 13))

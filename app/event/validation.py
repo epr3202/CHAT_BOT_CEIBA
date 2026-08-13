@@ -77,11 +77,11 @@ def parse_customer_date_expression(raw_value: str, today: date) -> EventDateTrip
     month = next((month for name, month in MONTHS.items() if name in normalized), None)
     if month is None:
         raise ValueError("INVALID_DATE")
-    year = _infer_year(
-        month, today, has_explicit_context=bool(re.search(r"\b20\d{2}\b", normalized))
-    )
-    if match := re.search(r"\b(\d{1,2})\b", normalized):
-        day = int(match.group(1))
+    explicit_year_match = re.search(r"\b(20\d{2})\b", normalized)
+    year = int(explicit_year_match.group(1)) if explicit_year_match else _infer_year(month, today)
+    day_match = re.search(r"\b(\d{1,2})\b", normalized)
+    if day_match:
+        day = int(day_match.group(1))
         try:
             parsed = date(year, month, day)
         except ValueError as error:
@@ -90,13 +90,13 @@ def parse_customer_date_expression(raw_value: str, today: date) -> EventDateTrip
         return validate_event_date_triplet(parsed, None, "EXACT", raw_value)
 
     event_month = f"{year:04d}-{month:02d}"
+    if explicit_year_match and event_month < f"{today.year:04d}-{today.month:02d}":
+        raise ValueError("PAST_DATE")
     date_type = "FLEXIBLE" if "cualquier" in normalized else "APPROXIMATE"
     return validate_event_date_triplet(None, event_month, date_type, raw_value)
 
 
-def _infer_year(month: int, today: date, has_explicit_context: bool) -> int:
-    if has_explicit_context:
-        return today.year
+def _infer_year(month: int, today: date) -> int:
     if month < today.month:
         return today.year + 1
     return today.year
