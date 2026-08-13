@@ -21,6 +21,11 @@ from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_c
 from app.conversation.knowledge import KnowledgeRenderError, render_response
 from app.conversation.models import Conversation
 from app.conversation.pending_actions import validate_pending_action
+from app.conversation.presentation import (
+    format_date_natural,
+    format_event_type,
+    format_month_natural,
+)
 from app.conversation.service import ALLOWED_TRANSITIONS, transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
@@ -1418,15 +1423,17 @@ def quote_summary_response_code(event: Event) -> str:
 def quote_summary_variables(event: Event) -> dict[str, Any]:
     if date_pending(event):
         return {
-            "event_type": event.event_type or "tu celebración",
+            "event_type": format_event_type(event.event_type),
             "guest_count": guest_count_text(event),
         }
     if event.event_month is not None and event.event_date is None:
-        return {"event_month": event.event_month}
+        return {"event_month": format_month_natural(event.event_month)}
     return {
-        "event_type": event.event_type or "tu celebración",
+        "event_type": format_event_type(event.event_type),
         "guest_count": guest_count_text(event),
-        "event_date": event.event_date.isoformat() if event.event_date else event.event_month,
+        "event_date": format_date_natural(event.event_date)
+        if event.event_date
+        else format_month_natural(event.event_month),
         "requested_services_summary": "los servicios solicitados",
     }
 

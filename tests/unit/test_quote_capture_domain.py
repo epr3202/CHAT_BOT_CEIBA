@@ -5,12 +5,14 @@ from decimal import Decimal
 
 import pytest
 
+from app.event.models import EVENT_TYPES, Event
 from app.event.validation import (
     parse_customer_date_expression,
     validate_event_date_not_past,
     validate_event_date_triplet,
 )
 from app.lead.budget import calculate_budget_range, parse_cop_amount
+from app.orchestrator.service import quote_summary_variables
 from app.orchestrator.slot_filling import CaptureProgress, select_next_question
 
 
@@ -221,3 +223,36 @@ def test_date_parser_never_resolves_yearless_date_to_past() -> None:
         triplet = parse_customer_date_expression(raw_value, today=date(2026, 8, 13))
         if triplet.event_date is not None:
             assert triplet.event_date >= date(2026, 8, 13)
+
+
+def test_quote_summary_variables_present_event_type_and_date_in_natural_spanish() -> None:
+    event = Event(
+        lead_id=None,  # type: ignore[arg-type]
+        event_type="WEDDING",
+        event_date=date(2026, 9, 13),
+        event_date_type="EXACT",
+        guest_count=45,
+    )
+
+    variables = quote_summary_variables(event)
+
+    assert variables["event_type"] == "una boda"
+    assert variables["event_date"] == "13 de septiembre de 2026"
+    assert variables["event_type"] not in EVENT_TYPES
+    assert variables["event_date"] != "2026-09-13"
+
+
+@pytest.mark.parametrize("event_type", EVENT_TYPES)
+def test_every_event_type_has_natural_spanish_presentation(event_type: str) -> None:
+    event = Event(
+        lead_id=None,  # type: ignore[arg-type]
+        event_type=event_type,
+        event_date=date(2026, 9, 13),
+        event_date_type="EXACT",
+        guest_count=45,
+    )
+
+    variables = quote_summary_variables(event)
+
+    assert variables["event_type"] != event_type
+    assert "_" not in variables["event_type"]

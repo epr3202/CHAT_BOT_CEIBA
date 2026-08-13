@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 
 import pytest
@@ -134,3 +135,47 @@ async def test_seed_loader_is_idempotent(
     assert second_count == 0
     assert total == len(entries)
     assert second_snapshot == first_snapshot
+
+
+@pytest.mark.asyncio
+async def test_approved_templates_render_without_internal_enums_or_iso_dates(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    entries = list(iter_seed_entries())
+    await load_knowledge_entries(sessionmaker_fixture, entries)
+    safe_values = {
+        "adult_guest_count": "40",
+        "advisor_name": "Natalia",
+        "appointment_options": "martes 18 de agosto a las 08:00",
+        "child_guest_count": "5",
+        "customer_name": "Natalia",
+        "email": "natalia@example.com",
+        "event_date": "13 de septiembre de 2026",
+        "event_month": "septiembre de 2026",
+        "event_type": "una boda",
+        "guest_count": "45",
+        "guest_count_range": "entre 40 y 50",
+        "map_url": "https://example.com/mapa",
+        "missing_field": "la fecha del evento",
+        "new_visit_date": "18 de agosto de 2026",
+        "new_visit_time": "08:00",
+        "pending_topic": "los servicios",
+        "requested_services_summary": "el espacio",
+        "resolved_date": "13 de septiembre de 2026",
+        "service_name": "gastronomía",
+        "total_guest_count": "45",
+        "visit_attendee_count": "2",
+        "visit_date": "18 de agosto de 2026",
+        "visit_time": "08:00",
+    }
+    unsafe_enum = re.compile(r"\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b")
+    iso_date = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
+
+    for entry in entries:
+        if entry.status != "APPROVED":
+            continue
+        variables = {name: safe_values[name] for name in entry.allowed_variables}
+        rendered = await render_response(sessionmaker_fixture, entry.code, variables)
+
+        assert unsafe_enum.search(rendered) is None, entry.code
+        assert iso_date.search(rendered) is None, entry.code
