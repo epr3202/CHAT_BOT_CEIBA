@@ -6,6 +6,7 @@ git reset --hard origin/main
 
 docker compose build app worker
 docker compose run --rm app alembic upgrade head
+docker compose run --rm app python scripts/load_knowledge.py
 docker compose up -d app worker
 
 deadline=$((SECONDS + 30))

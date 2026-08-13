@@ -99,11 +99,48 @@ async def test_seed_loader_is_idempotent(
     entries = list(iter_seed_entries())
 
     first_count = await load_knowledge_entries(sessionmaker_fixture, entries)
+    async with sessionmaker_fixture() as session:
+        first_snapshot = (
+            (
+                await session.execute(
+                    select(
+                        KnowledgeEntry.code,
+                        KnowledgeEntry.category,
+                        KnowledgeEntry.question_summary,
+                        KnowledgeEntry.answer_template,
+                        KnowledgeEntry.allowed_variables,
+                        KnowledgeEntry.version,
+                        KnowledgeEntry.status,
+                    ).order_by(KnowledgeEntry.code, KnowledgeEntry.version)
+                )
+            )
+            .tuples()
+            .all()
+        )
+
     second_count = await load_knowledge_entries(sessionmaker_fixture, entries)
 
     async with sessionmaker_fixture() as session:
         total = await session.scalar(select(func.count()).select_from(KnowledgeEntry))
+        second_snapshot = (
+            (
+                await session.execute(
+                    select(
+                        KnowledgeEntry.code,
+                        KnowledgeEntry.category,
+                        KnowledgeEntry.question_summary,
+                        KnowledgeEntry.answer_template,
+                        KnowledgeEntry.allowed_variables,
+                        KnowledgeEntry.version,
+                        KnowledgeEntry.status,
+                    ).order_by(KnowledgeEntry.code, KnowledgeEntry.version)
+                )
+            )
+            .tuples()
+            .all()
+        )
 
     assert first_count == len(entries)
     assert second_count == 0
     assert total == len(entries)
+    assert second_snapshot == first_snapshot
