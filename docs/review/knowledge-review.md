@@ -2431,7 +2431,7 @@ Estamos ubicados en Lagos del Cacique, en la Calle 71 #52-34. Puedo compartirte 
 
 | `pending_action` | Plantilla verificada | Estado |
 | ---------------- | -------------------- | ------ |
-| `COLLECT_EVENT_TYPE` | No hay plantilla específica aprobada para primera pregunta de tipo de evento FL-005 | `MISSING` |
+| `COLLECT_EVENT_TYPE` | `RESP-EVENT-DATA-013` | `APPROVED` |
 | `COLLECT_GUEST_COUNT` | `RESP-EVENT-DATA-004` | `APPROVED` |
 | `COLLECT_EVENT_DATE` | `RESP-EVENT-DATA-001` | `APPROVED` |
 | `COLLECT_CUSTOMER_NAME` | `RESP-CUSTOMER-001` | `APPROVED` |
@@ -2442,30 +2442,30 @@ La base sembrada se deriva de `docs/conversation/approved-responses.md` mediante
 
 ## RESP-EVENT-DATA-013
 
-- **Status:** DRAFT
-- **Pregunta/resumen:** Primera pregunta de tipo de evento
+- **Status:** APPROVED
+- **Pregunta/resumen:** Pregunta de tipo de celebración
 - **Variables requeridas:** Ninguna
-- **Motivo de revisión:** Brecha D5 para `COLLECT_EVENT_TYPE`.
-- **Respuesta propuesta:**
+- **Nota:** Movida a `docs/conversation/approved-responses.md` el 2026-08-13.
+- **Respuesta aprobada:**
 
-¿Qué tipo de celebración estás planeando?
+Para orientarte mejor, cuéntame qué tipo de celebración estás planeando y para cuántas personas aproximadamente.
 
 ## RESP-QUOTE-008
 
-- **Status:** DRAFT
+- **Status:** APPROVED
 - **Pregunta/resumen:** Resumen de confirmación con fecha por definir
 - **Variables requeridas:** event_type, guest_count
-- **Motivo de revisión:** D2 permite `READY` con fecha declarada como flexible o desconocida; `RESP-QUOTE-002/003` requieren `{event_date}`.
-- **Respuesta propuesta:**
+- **Nota:** Movida a `docs/conversation/approved-responses.md` el 2026-08-13.
+- **Respuesta aprobada:**
 
 Para confirmar: estás planeando {event_type} para aproximadamente {guest_count} personas, con la fecha aún por definir. ¿Está correcto?
 
 ## RESP-QUOTE-009
 
-- **Status:** DRAFT
+- **Status:** APPROVED
 - **Pregunta/resumen:** Solicitud registrada con fecha por definir
 - **Variables requeridas:** Ninguna
-- **Motivo de revisión:** D2 requiere respuesta sin placeholder de fecha para `date_pending = true`.
-- **Respuesta propuesta:**
+- **Nota:** Movida a `docs/conversation/approved-responses.md` el 2026-08-13.
+- **Respuesta aprobada:**
 
 Perfecto, la solicitud quedó registrada con la fecha por definir. Nuestro equipo preparará la propuesta y podremos ajustar la fecha cuando la tengas.

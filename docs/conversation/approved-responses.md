@@ -1032,6 +1032,12 @@ El bot no podrá responder:
 
 ---
 
+## RESP-EVENT-DATA-013 — Pregunta de tipo de celebración
+
+> Para orientarte mejor, cuéntame qué tipo de celebración estás planeando y para cuántas personas aproximadamente.
+
+---
+
 # 26. Solicitud de cotización
 
 ## RESP-QUOTE-001 — Datos mínimos pendientes
@@ -1084,6 +1090,23 @@ El bot no podrá responder:
 ## RESP-QUOTE-007 — Solicitud duplicada
 
 > Ya tenemos una solicitud activa para este evento. Continuaremos trabajando sobre la información registrada para evitar duplicados.
+
+---
+
+## RESP-QUOTE-008 — Resumen de confirmación con fecha por definir
+
+### Variables
+
+* `{event_type}`
+* `{guest_count}`
+
+> Para confirmar: estás planeando {event_type} para aproximadamente {guest_count} personas, con la fecha aún por definir. ¿Está correcto?
+
+---
+
+## RESP-QUOTE-009 — Solicitud registrada con fecha por definir
+
+> Perfecto, la solicitud quedó registrada con la fecha por definir. Nuestro equipo preparará la propuesta y podremos ajustar la fecha cuando la tengas.
 
 ---
 
