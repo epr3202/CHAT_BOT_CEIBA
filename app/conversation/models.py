@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.channel.states import Channel
@@ -59,13 +60,15 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    last_message_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pending_action: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    pending_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     pending_confirmation: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     last_question_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    active_lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead.lead_id"), index=True, nullable=True
+    )
     failed_understanding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     bot_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     assigned_agent_id: Mapped[int | None] = mapped_column(

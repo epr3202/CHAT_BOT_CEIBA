@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Literal, NamedTuple
 
-from app.ai.prompts import intent_v1, intent_v2
+from app.ai.prompts import intent_v1, intent_v2, intent_v3
 
-IntentPromptVersion = Literal["intent_v1", "intent_v2"]
+IntentPromptVersion = Literal["intent_v1", "intent_v2", "intent_v3"]
 
 
 class IntentPrompt(NamedTuple):
@@ -22,6 +22,10 @@ _INTENT_PROMPTS: dict[IntentPromptVersion, IntentPrompt] = {
     "intent_v2": IntentPrompt(
         version="intent_v2",
         content=intent_v2.INTENT_CLASSIFICATION_PROMPT,
+    ),
+    "intent_v3": IntentPrompt(
+        version="intent_v3",
+        content=intent_v3.INTENT_CLASSIFICATION_PROMPT,
     ),
 }
 

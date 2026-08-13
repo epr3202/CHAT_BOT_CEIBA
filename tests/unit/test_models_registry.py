@@ -12,11 +12,15 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
             "audit_event",
         "conversation",
         "customer",
+        "event",
+        "event_service_request",
         "handoff",
         "knowledge_entry",
+        "lead",
         "message",
         "message_provider_status",
         "outbox",
+        "quote_request",
         "webhook_event",
     }
 

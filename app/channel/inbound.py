@@ -26,6 +26,7 @@ logger = structlog.get_logger(__name__)
 ACTIVE_CONVERSATION_EXCLUDED_STATUSES = ("RESOLVED", "CLOSED")
 SYSTEM_ACTOR = "SYSTEM"
 
+
 @dataclass(frozen=True)
 class InboundWhatsAppMessage:
     external_message_id: str
@@ -428,17 +429,7 @@ async def persist_inbound_message_in_session(
             external_message_id=inbound_message.external_message_id,
             request_id=request_id,
         )
-        existing = await session.scalar(
-            select(Message).where(
-                Message.external_message_id == inbound_message.external_message_id
-            )
-        )
-        if existing is None:
-            return None
-        conversation = await session.get(Conversation, existing.conversation_id)
-        if conversation is None:
-            return None
-        return persisted_message_from_models(existing, conversation)
+        return None
 
 
 def persisted_message_from_models(

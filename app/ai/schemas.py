@@ -30,6 +30,35 @@ Intent = Literal[
 
 Priority = Literal["NORMAL", "URGENT", "CRITICAL"]
 FAQCategory = Literal[*FAQ_CATEGORY_VALUES]
+EntityName = Literal[
+    "full_name",
+    "event_type",
+    "event_date",
+    "guest_count",
+    "guest_count_range",
+    "estimated_budget",
+    "budget_declined",
+    "requested_services",
+    "special_requests",
+]
+EntityQualityStatus = Literal[
+    "PROVIDED",
+    "PENDING_CONFIRMATION",
+    "CORRECTED",
+    "INVALID",
+]
+
+
+class ExtractedEntity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entity: EntityName
+    raw_value: str
+    normalized_value: Any = None
+    quality_status: EntityQualityStatus
+    confidence: float = Field(ge=0, le=1)
+    needs_confirmation: bool = False
+    validation_errors: list[str] = Field(default_factory=list)
 
 
 class IntentClassification(BaseModel):
@@ -41,6 +70,7 @@ class IntentClassification(BaseModel):
     confidence: float = Field(ge=0, le=1)
     information_category: FAQCategory | None = None
     entities: dict[str, Any] = Field(default_factory=dict)
+    extracted_entities: list[ExtractedEntity] = Field(default_factory=list)
     requested_action: str | None
     missing_fields: list[str] = Field(default_factory=list)
     needs_confirmation: bool

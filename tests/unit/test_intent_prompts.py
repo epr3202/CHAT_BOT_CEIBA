@@ -9,7 +9,7 @@ from app.conversation.faq_catalog import CATEGORY_RESPONSE_CODES
 
 
 def test_both_intent_prompt_versions_render_contract() -> None:
-    versions: tuple[IntentPromptVersion, ...] = ("intent_v1", "intent_v2")
+    versions: tuple[IntentPromptVersion, ...] = ("intent_v1", "intent_v2", "intent_v3")
 
     for version in versions:
         prompt = get_intent_prompt(version)
@@ -35,9 +35,18 @@ def test_faq_categories_match_literal_catalog_and_both_prompts() -> None:
     expected = tuple(CATEGORY_RESPONSE_CODES.keys())
 
     assert tuple(get_args(FAQCategory)) == expected
-    for version in ("intent_v1", "intent_v2"):
+    for version in ("intent_v1", "intent_v2", "intent_v3"):
         prompt = get_intent_prompt(version)
         assert extract_faq_categories_from_prompt(prompt.content) == expected
+
+
+def test_intent_v3_adds_event_entity_contract() -> None:
+    prompt = get_intent_prompt("intent_v3")
+
+    assert '"extracted_entities"' in prompt.content
+    assert "La novia se llama Natalia" in prompt.content
+    assert "event_date_type" in prompt.content
+    assert "Silencio sobre la fecha no es UNKNOWN" in prompt.content
 
 
 def extract_faq_categories_from_prompt(prompt: str) -> tuple[str, ...]:

@@ -11,4 +11,7 @@ from app.audit import models as audit_models  # noqa: F401
 from app.channel import models as channel_models  # noqa: F401
 from app.conversation import models as conversation_models  # noqa: F401
 from app.customer import models as customer_models  # noqa: F401
+from app.event import models as event_models  # noqa: F401
 from app.handoff import models as handoff_models  # noqa: F401
+from app.lead import models as lead_models  # noqa: F401
+from app.quote import models as quote_models  # noqa: F401

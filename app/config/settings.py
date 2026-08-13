@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     openrouter_model_summary: str | None = Field(default=None, alias="OPENROUTER_MODEL_SUMMARY")
     openrouter_timeout_seconds: float = Field(default=15.0, alias="OPENROUTER_TIMEOUT_SECONDS")
     openrouter_max_retries: int = Field(default=1, alias="OPENROUTER_MAX_RETRIES")
-    ai_prompt_version: Literal["intent_v1", "intent_v2"] = Field(
-        default="intent_v1",
+    ai_prompt_version: Literal["intent_v1", "intent_v2", "intent_v3"] = Field(
+        default="intent_v3",
         alias="AI_PROMPT_VERSION",
     )
     ai_confidence_safe: float = Field(default=0.85, alias="AI_CONFIDENCE_SAFE")
@@ -82,9 +82,7 @@ class Settings(BaseSettings):
             if not value.strip()
         ]
         if missing:
-            raise ValueError(
-                "Missing required production settings: " + ", ".join(sorted(missing))
-            )
+            raise ValueError("Missing required production settings: " + ", ".join(sorted(missing)))
         return self
 
 
