@@ -42,6 +42,12 @@ Las tareas específicas llegan por prompt; estas reglas aplican SIEMPRE.
 8. **Auditoría.** Toda acción crítica (cita, cambio de fecha, cambio de invitados,
    asignación, pago, reserva, cancelación, pausa del bot) inserta un `audit_event` con:
    actor, acción, entidad, valor anterior, valor nuevo, motivo, fecha, request_id.
+9. **Catálogos PDF.** Los PDFs se envían como documentos de WhatsApp subidos a Meta,
+   nunca mediante URL pública. `media_id` es solo caché con TTL configurable
+   (`CATALOG_MEDIA_TTL_DAYS`, default 25); el outbox referencia `catalog_asset_id`, no
+   `media_id`. Los envíos proactivos se deduplican con constraint parcial
+   `(lead_id, catalog_asset_id)` para `trigger = PROACTIVE`. El caption siempre sale de
+   `KnowledgeEntry` aprobada y se valida antes de encolar.
 
 ## 3. Reglas de negocio críticas (resumen operativo)
 

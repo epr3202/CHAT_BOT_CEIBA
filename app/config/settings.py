@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     outbox_sending_timeout_seconds: int = Field(default=120, alias="OUTBOX_SENDING_TIMEOUT_SECONDS")
     outbox_max_attempts: int = Field(default=5, alias="OUTBOX_MAX_ATTEMPTS")
     outbox_max_backoff_seconds: int = Field(default=300, alias="OUTBOX_MAX_BACKOFF_SECONDS")
+    catalog_storage_dir: str = Field(default="catalogs", alias="CATALOG_STORAGE_DIR")
+    catalog_media_ttl_days: int = Field(default=25, alias="CATALOG_MEDIA_TTL_DAYS")
+    catalog_max_file_mb: int = Field(default=16, alias="CATALOG_MAX_FILE_MB")
 
     openrouter_api_key: str = Field(alias="OPENROUTER_API_KEY")
     openrouter_base_url: str = Field(

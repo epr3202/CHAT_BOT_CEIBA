@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from uuid import UUID
 
 import structlog
 from sqlalchemy import or_, select
@@ -11,8 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.models_registry  # noqa: F401
 from app.audit.models import AuditEvent
+from app.channel.media import MediaService, PermanentCatalogMediaError
 from app.channel.models import Message, Outbox
-from app.channel.outbound import WhatsAppOutboundClient
+from app.channel.outbound import WhatsAppInvalidMediaError, WhatsAppOutboundClient
 from app.config.database import create_engine, create_sessionmaker
 from app.config.logging import configure_logging
 from app.config.settings import get_settings
@@ -20,8 +22,11 @@ from app.config.settings import get_settings
 logger = structlog.get_logger(__name__)
 
 
-class TextSender(Protocol):
+class OutboundSender(Protocol):
     async def send_text(self, to: str, body: str) -> str:
+        pass
+
+    async def send_document(self, to: str, media_id: str, filename: str, caption: str) -> str:
         pass
 
 
@@ -100,7 +105,7 @@ async def recover_stale_sending_outbox(
 
 async def process_outbox_once(
     sessionmaker: async_sessionmaker[AsyncSession],
-    sender: TextSender,
+    sender: OutboundSender,
     now: datetime | None = None,
     batch_size: int | None = None,
     sending_timeout_seconds: int | None = None,
@@ -152,11 +157,20 @@ async def process_outbox_once(
 async def process_claimed_outbox_item(
     sessionmaker: async_sessionmaker[AsyncSession],
     outbox_item: Outbox,
-    sender: TextSender,
+    sender: OutboundSender,
     max_attempts: int,
     max_backoff_seconds: int,
 ) -> None:
     try:
+        if outbox_item.message_kind == "DOCUMENT":
+            await process_claimed_document_outbox_item(
+                sessionmaker,
+                outbox_item,
+                sender,
+                max_attempts=max_attempts,
+                max_backoff_seconds=max_backoff_seconds,
+            )
+            return
         body = extract_text_body(outbox_item)
         sent_at = datetime.now(UTC)
         provider_message_id = await sender.send_text(outbox_item.recipient_phone_number, body)
@@ -182,6 +196,80 @@ async def process_claimed_outbox_item(
     )
 
 
+async def process_claimed_document_outbox_item(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    outbox_item: Outbox,
+    sender: OutboundSender,
+    max_attempts: int,
+    max_backoff_seconds: int,
+) -> None:
+    media_service = MediaService(sessionmaker, get_settings(), sender)
+    try:
+        caption = extract_document_caption(outbox_item)
+        asset_id = document_catalog_asset_id(outbox_item)
+        document = await media_service.resolve_document(asset_id)
+        sent_at = datetime.now(UTC)
+        try:
+            provider_message_id = await sender.send_document(
+                outbox_item.recipient_phone_number,
+                document.media_id,
+                document.filename,
+                caption,
+            )
+        except WhatsAppInvalidMediaError:
+            await media_service.invalidate_media_cache(
+                asset_id,
+                "Meta rejected cached media_id during document send",
+            )
+            document = await media_service.resolve_document(asset_id)
+            provider_message_id = await sender.send_document(
+                outbox_item.recipient_phone_number,
+                document.media_id,
+                document.filename,
+                caption,
+            )
+            sent_at = datetime.now(UTC)
+    except PermanentCatalogMediaError as error:
+        await settle_outbox_failure(
+            sessionmaker,
+            outbox_item.id,
+            error,
+            datetime.now(UTC),
+            max_attempts=max_attempts,
+            max_backoff_seconds=max_backoff_seconds,
+            permanent=True,
+        )
+        return
+    except Exception as error:
+        await settle_outbox_failure(
+            sessionmaker,
+            outbox_item.id,
+            error,
+            datetime.now(UTC),
+            max_attempts=max_attempts,
+            max_backoff_seconds=max_backoff_seconds,
+        )
+        return
+
+    await settle_outbox_success(
+        sessionmaker,
+        outbox_id=outbox_item.id,
+        body=caption,
+        provider_message_id=provider_message_id,
+        sent_at=sent_at,
+        max_attempts=max_attempts,
+        max_backoff_seconds=max_backoff_seconds,
+        message_type="document",
+        content={
+            "document": {
+                "catalog_asset_id": str(asset_id),
+                "filename": document.filename,
+                "caption": caption,
+            }
+        },
+    )
+
+
 async def settle_outbox_success(
     sessionmaker: async_sessionmaker[AsyncSession],
     outbox_id: int,
@@ -190,6 +278,8 @@ async def settle_outbox_success(
     sent_at: datetime,
     max_attempts: int,
     max_backoff_seconds: int,
+    message_type: str = "text",
+    content: dict[str, object] | None = None,
 ) -> None:
     async with sessionmaker() as session:
         async with session.begin():
@@ -227,8 +317,8 @@ async def settle_outbox_success(
                         customer_id=inbound_message.customer_id,
                         channel=outbox_item.channel,
                         direction="OUTBOUND",
-                        message_type="text",
-                        content={"text": {"body": body}},
+                        message_type=message_type,
+                        content=content or {"text": {"body": body}},
                         provider_timestamp=None,
                     )
                 )
@@ -241,6 +331,7 @@ async def settle_outbox_failure(
     failed_at: datetime,
     max_attempts: int,
     max_backoff_seconds: int,
+    permanent: bool = False,
 ) -> None:
     async with sessionmaker() as session:
         async with session.begin():
@@ -255,6 +346,7 @@ async def settle_outbox_failure(
                 failed_at,
                 max_attempts=max_attempts,
                 max_backoff_seconds=max_backoff_seconds,
+                permanent=permanent,
             )
 
 
@@ -265,12 +357,13 @@ async def mark_outbox_failure(
     now: datetime,
     max_attempts: int,
     max_backoff_seconds: int,
+    permanent: bool = False,
 ) -> None:
     outbox_item.attempts += 1
     outbox_item.last_error = str(error)[:1000]
     outbox_item.claimed_at = None
 
-    if outbox_item.attempts >= max_attempts:
+    if permanent or outbox_item.attempts >= max_attempts:
         outbox_item.status = "FAILED"
         outbox_item.next_attempt_at = None
         session.add(
@@ -313,6 +406,21 @@ def extract_text_body(outbox_item: Outbox) -> str:
         if isinstance(body, str):
             return body
     raise ValueError(f"Outbox {outbox_item.id} does not contain text.body")
+
+
+def extract_document_caption(outbox_item: Outbox) -> str:
+    document = outbox_item.payload.get("document")
+    if isinstance(document, dict):
+        caption = document.get("caption")
+        if isinstance(caption, str) and caption:
+            return caption
+    raise ValueError(f"Outbox {outbox_item.id} does not contain document.caption")
+
+
+def document_catalog_asset_id(outbox_item: Outbox) -> UUID:
+    if outbox_item.catalog_asset_id is None:
+        raise ValueError(f"Outbox {outbox_item.id} does not reference a catalog asset")
+    return outbox_item.catalog_asset_id
 
 
 async def run_worker() -> None:

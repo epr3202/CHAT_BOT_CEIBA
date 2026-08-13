@@ -13,6 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.errors import AIErrorReason
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
+from app.catalog.service import (
+    CatalogCaptionTooLong,
+    enqueue_proactive_catalogs_for_event_type,
+    handle_explicit_catalog_request,
+    is_catalog_request_category,
+)
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings
@@ -492,6 +498,25 @@ async def handle_general_information(
         return
 
     response_code = response_code_for_category(category)
+    if is_catalog_request_category(category):
+        lead = await active_lead(session, conversation)
+        event = await active_event(session, lead)
+        set_pending_action(conversation, "SEND_CATALOG")
+        await handle_explicit_catalog_request(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            lead.lead_id if lead is not None else None,
+            event.event_type if event is not None else None,
+            orchestration_input.request_id,
+        )
+        persist_classification_context(conversation, classification)
+        conversation.failed_understanding_count = 0
+        conversation.pending_confirmation = None
+        conversation.pending_action = previous_pending_action
+        return
     if response_code == "RESP-LOCATION-001" and wants_location_link(
         orchestration_input.message_text
     ):
@@ -624,6 +649,17 @@ async def handle_collecting_event_data(
             session,
             conversation,
             customer,
+            lead,
+            event,
+            entities,
+            orchestration_input.request_id,
+        )
+        await maybe_enqueue_proactive_catalogs(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            customer,
+            inbound_message,
             lead,
             event,
             entities,
@@ -931,6 +967,21 @@ async def apply_extracted_entities(
                 request_id,
             )
             continue
+        if entity.entity == "event_type" and entity.quality_status == "INFERRED":
+            audit_domain_change(
+                session,
+                "EVENT_TYPE_INFERRED_IGNORED",
+                "event",
+                {"event_type": event.event_type},
+                {
+                    "event_id": str(event.event_id),
+                    "raw_value": entity.raw_value,
+                    "normalized_value": entity.normalized_value,
+                },
+                "Inferred event_type is not treated as confirmed",
+                request_id,
+            )
+            continue
         if entity.entity == "full_name":
             await apply_full_name(session, conversation, customer, entity, request_id)
         elif entity.entity == "event_type":
@@ -1025,6 +1076,45 @@ def apply_event_type(
         "Event type captured during quote data collection",
         request_id,
     )
+
+
+async def maybe_enqueue_proactive_catalogs(
+    session: AsyncSession,
+    knowledge_sessionmaker: Any,
+    conversation: Conversation,
+    customer: Customer,
+    inbound_message: Message,
+    lead: Lead,
+    event: Event,
+    entities: list[ExtractedEntity],
+    request_id: str | None,
+) -> None:
+    confirmed_event_type = any(
+        entity.entity == "event_type"
+        and entity.quality_status in {"PROVIDED", "CORRECTED"}
+        and not entity.needs_confirmation
+        for entity in entities
+    )
+    if not confirmed_event_type:
+        return
+    try:
+        await enqueue_proactive_catalogs_for_event_type(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            customer,
+            inbound_message,
+            lead.lead_id,
+            event.event_type,
+            request_id,
+        )
+    except CatalogCaptionTooLong:
+        logger.warning(
+            "catalog_caption_too_long",
+            conversation_id=conversation.id,
+            lead_id=str(lead.lead_id),
+            event_type=event.event_type,
+        )
 
 
 def apply_guest_count(

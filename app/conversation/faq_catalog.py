@@ -45,6 +45,11 @@ CATEGORY_RESPONSE_CODES: dict[str, str] = {
     "fallos tecnicos": "RESP-AI-ERROR-001",
     "fallos técnicos": "RESP-AI-ERROR-001",
     "seguridad": "RESP-SECURITY-001",
+    "catalogo": "RESP-CATALOG-001",
+    "catálogo": "RESP-CATALOG-001",
+    "brochure": "RESP-CATALOG-001",
+    "pdf": "RESP-CATALOG-001",
+    "catalog_request": "RESP-CATALOG-001",
 }
 
 FAQ_CATEGORY_VALUES = tuple(CATEGORY_RESPONSE_CODES.keys())

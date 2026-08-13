@@ -45,6 +45,7 @@ EntityName = Literal[
 ]
 EntityQualityStatus = Literal[
     "PROVIDED",
+    "INFERRED",
     "PENDING_CONFIRMATION",
     "CORRECTED",
     "INVALID",

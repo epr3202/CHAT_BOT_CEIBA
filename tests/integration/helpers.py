@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 import asyncpg
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -71,7 +72,8 @@ async def reset_test_database(database_url: str = DATABASE_URL) -> async_session
     await ensure_test_database_exists(database_url)
     engine = create_async_engine(database_url)
     async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
+        await connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        await connection.execute(text("CREATE SCHEMA public"))
         await connection.run_sync(Base.metadata.create_all)
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
@@ -96,6 +98,9 @@ async def configure_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OUTBOX_SENDING_TIMEOUT_SECONDS", "120")
     monkeypatch.setenv("OUTBOX_MAX_ATTEMPTS", "5")
     monkeypatch.setenv("OUTBOX_MAX_BACKOFF_SECONDS", "300")
+    monkeypatch.setenv("CATALOG_STORAGE_DIR", "/tmp/chat_bot_ceiba_catalogs")
+    monkeypatch.setenv("CATALOG_MEDIA_TTL_DAYS", "25")
+    monkeypatch.setenv("CATALOG_MAX_FILE_MB", "16")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     monkeypatch.setenv("OPENROUTER_TIMEOUT_SECONDS", "15")

@@ -3,7 +3,9 @@ from __future__ import annotations
 import secrets
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -25,12 +27,15 @@ from app.agent.auth import (
 )
 from app.agent.models import Agent, AgentSession
 from app.audit.models import AuditEvent
+from app.catalog.models import CatalogAsset, CatalogEventTypeMap
+from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
+from app.event.models import EVENT_TYPES
 from app.handoff.models import Handoff
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -126,6 +131,38 @@ class ConversationPayload(BaseModel):
     last_message_at: datetime | None
 
 
+class CatalogCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    file_path: str = Field(min_length=1, max_length=1000)
+    event_types: list[str] = Field(default_factory=list)
+
+
+class CatalogPatchRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=180)
+    file_path: str | None = Field(default=None, min_length=1, max_length=1000)
+    active: bool | None = None
+
+
+class CatalogEventTypesRequest(BaseModel):
+    event_types: list[str] = Field(default_factory=list)
+
+
+class CatalogPayload(BaseModel):
+    catalog_asset_id: UUID
+    name: str
+    file_path: str
+    file_hash: str
+    mime_type: str
+    file_size: int
+    media_cached: bool
+    media_uploaded_at: datetime | None
+    active: bool
+    version: int
+    event_types: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     sessionmaker = request.app.state.db_sessionmaker
     async with sessionmaker() as session:
@@ -144,6 +181,158 @@ async def authenticated_admin(session: AsyncSession, authorization: str | None) 
     agent = await authenticated_agent(session, authorization)
     require_admin(agent)
     return agent
+
+
+@router.post("/catalogs")
+async def create_catalog(
+    body: CatalogCreateRequest,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> CatalogPayload:
+    agent = await authenticated_admin(session, authorization)
+    file_path = resolve_catalog_file_path(request, body.file_path)
+    file_size = validate_catalog_admin_file(request, file_path)
+    validate_event_types(body.event_types)
+    asset = CatalogAsset(
+        name=body.name.strip(),
+        file_path=body.file_path.strip(),
+        file_hash=sha256_file(file_path),
+        mime_type="application/pdf",
+        file_size=file_size,
+        active=True,
+        version=1,
+    )
+    session.add(asset)
+    await session.flush()
+    for event_type in body.event_types:
+        session.add(
+            CatalogEventTypeMap(catalog_asset_id=asset.catalog_asset_id, event_type=event_type)
+        )
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="CATALOG_ASSET_CREATED",
+            entity="catalog_asset",
+            old_value=None,
+            new_value={
+                "catalog_asset_id": str(asset.catalog_asset_id),
+                "event_types": body.event_types,
+            },
+            reason="Admin registered catalog asset",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    await session.refresh(asset)
+    return await catalog_payload(session, asset)
+
+
+@router.get("/catalogs")
+async def list_catalogs(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[CatalogPayload]:
+    await authenticated_admin(session, authorization)
+    assets = (
+        await session.scalars(
+            select(CatalogAsset).order_by(CatalogAsset.created_at, CatalogAsset.name)
+        )
+    ).all()
+    return [await catalog_payload(session, asset) for asset in assets]
+
+
+@router.patch("/catalogs/{catalog_asset_id}")
+async def patch_catalog(
+    catalog_asset_id: UUID,
+    body: CatalogPatchRequest,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> CatalogPayload:
+    agent = await authenticated_admin(session, authorization)
+    asset = await session.get(CatalogAsset, catalog_asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog not found")
+    old_value = {
+        "name": asset.name,
+        "file_path": asset.file_path,
+        "active": asset.active,
+        "version": asset.version,
+        "media_id": asset.media_id,
+    }
+    if body.name is not None:
+        asset.name = body.name.strip()
+    if body.active is not None:
+        asset.active = body.active
+    if body.file_path is not None:
+        file_path = resolve_catalog_file_path(request, body.file_path)
+        asset.file_size = validate_catalog_admin_file(request, file_path)
+        asset.file_path = body.file_path.strip()
+        asset.file_hash = sha256_file(file_path)
+        asset.version += 1
+        asset.media_id = None
+        asset.media_uploaded_at = None
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="CATALOG_ASSET_UPDATED",
+            entity="catalog_asset",
+            old_value=old_value,
+            new_value={
+                "catalog_asset_id": str(asset.catalog_asset_id),
+                "name": asset.name,
+                "file_path": asset.file_path,
+                "active": asset.active,
+                "version": asset.version,
+            },
+            reason="Admin updated catalog asset",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    await session.refresh(asset)
+    return await catalog_payload(session, asset)
+
+
+@router.put("/catalogs/{catalog_asset_id}/event-types")
+async def replace_catalog_event_types(
+    catalog_asset_id: UUID,
+    body: CatalogEventTypesRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> CatalogPayload:
+    agent = await authenticated_admin(session, authorization)
+    validate_event_types(body.event_types)
+    asset = await session.get(CatalogAsset, catalog_asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog not found")
+    old_event_types = await catalog_event_types(session, asset.catalog_asset_id)
+    existing = (
+        await session.scalars(
+            select(CatalogEventTypeMap).where(
+                CatalogEventTypeMap.catalog_asset_id == catalog_asset_id
+            )
+        )
+    ).all()
+    for row in existing:
+        await session.delete(row)
+    for event_type in body.event_types:
+        session.add(CatalogEventTypeMap(catalog_asset_id=catalog_asset_id, event_type=event_type))
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="CATALOG_EVENT_TYPES_REPLACED",
+            entity="catalog_asset",
+            old_value={"event_types": old_event_types},
+            new_value={"catalog_asset_id": str(catalog_asset_id), "event_types": body.event_types},
+            reason="Admin replaced catalog event type mappings",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    await session.refresh(asset)
+    return await catalog_payload(session, asset)
 
 
 @router.post("/login")
@@ -430,9 +619,7 @@ async def list_conversations(
     )
     if filters:
         statement = statement.where(*filters)
-    result = await session.execute(
-        statement
-    )
+    result = await session.execute(statement)
     conversations = result.all()
     payloads: list[ConversationPayload] = []
     for conversation, customer, assigned_agent in conversations:
@@ -1102,3 +1289,73 @@ def handoff_payload(handoff: Handoff, customer: Customer | None = None) -> dict[
         "taken_at": handoff.taken_at,
         "resolved_at": handoff.resolved_at,
     }
+
+
+def resolve_catalog_file_path(request: Request, relative_path: str) -> Path:
+    raw_path = Path(relative_path.strip())
+    if raw_path.is_absolute() or ".." in raw_path.parts:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid path")
+    storage_dir = Path(request.app.state.settings.catalog_storage_dir).resolve()
+    file_path = (storage_dir / raw_path).resolve()
+    if not file_path.is_relative_to(storage_dir):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid path")
+    return file_path
+
+
+def validate_catalog_admin_file(request: Request, file_path: Path) -> int:
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="File not found"
+        )
+    if detect_pdf_mime_type(file_path) != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only application/pdf catalogs are supported",
+        )
+    file_size = file_path.stat().st_size
+    max_bytes = request.app.state.settings.catalog_max_file_mb * 1024 * 1024
+    if file_size > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Catalog file exceeds configured maximum size",
+        )
+    return file_size
+
+
+def validate_event_types(event_types: list[str]) -> None:
+    invalid = [event_type for event_type in event_types if event_type not in EVENT_TYPES]
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"invalid_event_types": invalid},
+        )
+
+
+async def catalog_event_types(session: AsyncSession, catalog_asset_id: UUID) -> list[str]:
+    return list(
+        (
+            await session.scalars(
+                select(CatalogEventTypeMap.event_type)
+                .where(CatalogEventTypeMap.catalog_asset_id == catalog_asset_id)
+                .order_by(CatalogEventTypeMap.event_type)
+            )
+        ).all()
+    )
+
+
+async def catalog_payload(session: AsyncSession, asset: CatalogAsset) -> CatalogPayload:
+    return CatalogPayload(
+        catalog_asset_id=asset.catalog_asset_id,
+        name=asset.name,
+        file_path=asset.file_path,
+        file_hash=asset.file_hash,
+        mime_type=asset.mime_type,
+        file_size=asset.file_size,
+        media_cached=bool(asset.media_id and asset.media_uploaded_at),
+        media_uploaded_at=asset.media_uploaded_at,
+        active=asset.active,
+        version=asset.version,
+        event_types=await catalog_event_types(session, asset.catalog_asset_id),
+        created_at=asset.created_at,
+        updated_at=asset.updated_at,
+    )

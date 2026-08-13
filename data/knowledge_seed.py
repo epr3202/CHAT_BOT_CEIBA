@@ -23,6 +23,9 @@ NON_RENDERABLE_CODES = {
     "RESP-DELIVERY-ERROR-001",
     "RESP-FILE-002",
     "RESP-FOLLOWUP-005",
+    "RESP-CATALOG-001",
+    "RESP-CATALOG-002",
+    "RESP-CATALOG-003",
 }
 
 CONDITIONAL_DRAFT_CODES = {
@@ -91,9 +94,7 @@ def find_category(previous_content: str) -> str | None:
 
 def extract_first_customer_text(block: str) -> str | None:
     quoted_lines = [
-        line.removeprefix("> ").strip()
-        for line in block.splitlines()
-        if line.startswith("> ")
+        line.removeprefix("> ").strip() for line in block.splitlines() if line.startswith("> ")
     ]
     if not quoted_lines:
         return None

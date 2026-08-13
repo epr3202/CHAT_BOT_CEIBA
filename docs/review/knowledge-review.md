@@ -2469,3 +2469,11 @@ Para confirmar: estás planeando {event_type} para aproximadamente {guest_count}
 - **Respuesta aprobada:**
 
 Perfecto, la solicitud quedó registrada con la fecha por definir. Nuestro equipo preparará la propuesta y podremos ajustar la fecha cuando la tengas.
+
+## Pendientes de aprobación — Slice 2A catálogos PDF
+
+| Código | Estado | Variables | Texto propuesto |
+| ------ | ------ | --------- | --------------- |
+| `RESP-CATALOG-001` | `DRAFT` | `event_type` | Te comparto nuestro catálogo para `{event_type}`. Cualquier duda que tengas, con gusto te ayudo. |
+| `RESP-CATALOG-002` | `DRAFT` | Ninguna | Con gusto te comparto nuestro catálogo. ¿Para qué tipo de evento lo necesitas? |
+| `RESP-CATALOG-003` | `DRAFT` | Ninguna | Para ese tipo de evento nuestro equipo te compartirá la información directamente. Ya registré tu solicitud. |

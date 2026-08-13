@@ -2673,6 +2673,35 @@ El sistema deberá medir:
 
 # 74. Criterios de aceptación
 
+## RESP-CATALOG-001 — Caption de catálogo por tipo de evento
+
+- **Status:** DRAFT
+- **Pregunta/resumen:** Caption para envío de catálogo PDF
+- **Variables requeridas:** event_type
+- **Respuesta aprobada:**
+
+> Te comparto nuestro catálogo para {event_type}. Cualquier duda que tengas, con gusto te ayudo.
+
+## RESP-CATALOG-002 — Solicitud de catálogo sin tipo de evento
+
+- **Status:** DRAFT
+- **Pregunta/resumen:** Pregunta tipo de evento antes de enviar catálogo
+- **Variables requeridas:** Ninguna
+- **Respuesta aprobada:**
+
+> Con gusto te comparto nuestro catálogo. ¿Para qué tipo de evento lo necesitas?
+
+## RESP-CATALOG-003 — Catálogo no disponible para el tipo
+
+- **Status:** DRAFT
+- **Pregunta/resumen:** Catálogo no disponible
+- **Variables requeridas:** Ninguna
+- **Respuesta aprobada:**
+
+> Para ese tipo de evento nuestro equipo te compartirá la información directamente. Ya registré tu solicitud.
+
+---
+
 El catálogo se considerará correctamente implementado cuando:
 
 1. Solo se utilicen respuestas aprobadas.
