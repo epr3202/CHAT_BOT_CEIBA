@@ -20,6 +20,10 @@ services:
     env_file:
       - path: .env
         required: false
+# En docker-compose del repo, en los servicios app y worker:
+    volumes:
+      - /opt/ceiba/catalogs:/data/catalogs:ro
+      - /opt/ceiba/secrets:/data/secrets:ro
     environment:
       # Compose environment overrides env_file so containers use the db service host.
       DATABASE_URL: postgresql+asyncpg://ceiba:${POSTGRES_PASSWORD:-ceiba}@db:5432/ceiba
@@ -35,6 +39,10 @@ services:
     env_file:
       - path: .env
         required: false
+# En docker-compose del repo, en los servicios app y worker:
+    volumes:
+      - /opt/ceiba/catalogs:/data/catalogs:ro
+      - /opt/ceiba/secrets:/data/secrets:ro
     environment:
       # Compose environment overrides env_file so containers use the db service host.
       DATABASE_URL: postgresql+asyncpg://ceiba:${POSTGRES_PASSWORD:-ceiba}@db:5432/ceiba
