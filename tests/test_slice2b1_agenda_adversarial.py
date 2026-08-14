@@ -282,7 +282,10 @@ def test_tc_agd_006_dia_siguiente_rechazado_con_resp_visit_005() -> None:
 def test_tc_agd_007_anticipacion_dos_dias_rechazada() -> None:
     availability = availability_module()
     decision = availability.validate_visit_date(
-        TODAY + timedelta(days=2), today=TODAY, holidays=set(), blocked_dates=set()
+        date(2026, 8, 18),
+        today=date(2026, 8, 16),
+        holidays=set(),
+        blocked_dates=set(),
     )
     assert decision.accepted is False
     assert decision.response_code == "RESP-VISIT-004"
