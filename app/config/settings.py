@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     catalog_storage_dir: str = Field(default="catalogs", alias="CATALOG_STORAGE_DIR")
     catalog_media_ttl_days: int = Field(default=25, alias="CATALOG_MEDIA_TTL_DAYS")
     catalog_max_file_mb: int = Field(default=16, alias="CATALOG_MAX_FILE_MB")
+    google_calendar_id: str = Field(default="", alias="GOOGLE_CALENDAR_ID")
+    google_freebusy_calendar_ids: str = Field(default="", alias="GOOGLE_FREEBUSY_CALENDAR_IDS")
+    calendar_adapter: Literal["fake"] = Field(default="fake", alias="CALENDAR_ADAPTER")
 
     openrouter_api_key: str = Field(alias="OPENROUTER_API_KEY")
     openrouter_base_url: str = Field(
