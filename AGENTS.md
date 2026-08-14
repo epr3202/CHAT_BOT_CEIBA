@@ -56,6 +56,16 @@ Las tareas específicas llegan por prompt; estas reglas aplican SIEMPRE.
   máximo 4 visitas/día; máximo 3 asistentes; festivos colombianos bloqueados.
   Validar disponibilidad ANTES de ofrecer horarios Y de nuevo ANTES de crear la cita.
   Constraint único sobre (fecha, hora) para citas activas.
+- **Disponibilidad de visitas:** siempre usar triple intersección:
+  reglas deterministas ∩ citas locales activas ∩ freebusy del `CalendarAdapter`. Las reglas
+  puras no consultan DB, adapter ni reloj implícito; `today` entra como parámetro.
+- **Calendario externo:** el freebusy consulta todos los calendarios de
+  `GOOGLE_FREEBUSY_CALENDAR_IDS` y une sus intervalos. En Slice 2B-1 solo existe
+  `CALENDAR_ADAPTER=fake`; no importar librerías de Google en `app/`.
+- **Identidad de evento externo:** el `event_id` del proveedor de calendario es siempre
+  `appointment_id.hex`. Una cita `CONFIRMED` requiere `external_calendar_id` no nulo.
+- **Festivos de visitas:** runtime lee exclusivamente la tabla `holiday`. La dependencia
+  `holidays` solo puede usarse en scripts de seed, nunca dentro del motor de disponibilidad.
 - **Transiciones de cita:** siempre `PENDING_CONFIRMATION → CONFIRMED`. Nunca crear
   directamente en `CONFIRMED`.
 - **Pagos:** el bot solo registra y escala (`PAYMENT_REVIEW`). La confirmación es
