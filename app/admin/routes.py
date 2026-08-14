@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
@@ -26,6 +26,7 @@ from app.agent.auth import (
     verify_pin,
 )
 from app.agent.models import Agent, AgentSession
+from app.appointment.models import Appointment, BlockedDate, Holiday
 from app.audit.models import AuditEvent
 from app.catalog.models import CatalogAsset, CatalogEventTypeMap
 from app.channel.media import detect_pdf_mime_type, sha256_file
@@ -163,6 +164,51 @@ class CatalogPayload(BaseModel):
     updated_at: datetime
 
 
+class BlockedDateCreateRequest(BaseModel):
+    blocked_date: date
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class BlockedDatePatchRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class BlockedDatePayload(BaseModel):
+    blocked_date: date
+    reason: str
+    actor: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class HolidayCreateRequest(BaseModel):
+    holiday_date: date
+    name: str = Field(min_length=1, max_length=255)
+
+
+class HolidayPayload(BaseModel):
+    holiday_date: date
+    name: str
+    source: Literal["SEEDED", "MANUAL"]
+    created_at: datetime
+    updated_at: datetime
+
+
+class AppointmentDayPayload(BaseModel):
+    appointment_id: UUID
+    customer_id: int
+    lead_id: UUID | None
+    appointment_date: date
+    start_time: time
+    end_time: time
+    timezone: str
+    attendee_count: int
+    visit_reason: str
+    appointment_status: str
+    external_calendar_id: str | None
+    requires_reconciliation: bool
+
+
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     sessionmaker = request.app.state.db_sessionmaker
     async with sessionmaker() as session:
@@ -181,6 +227,173 @@ async def authenticated_admin(session: AsyncSession, authorization: str | None) 
     agent = await authenticated_agent(session, authorization)
     require_admin(agent)
     return agent
+
+
+@router.post("/blocked-dates")
+async def create_blocked_date(
+    body: BlockedDateCreateRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> BlockedDatePayload:
+    agent = await authenticated_admin(session, authorization)
+    existing = await session.get(BlockedDate, body.blocked_date)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Blocked date already exists",
+        )
+    blocked_date = BlockedDate(
+        blocked_date=body.blocked_date,
+        reason=body.reason.strip(),
+        actor=agent.name,
+    )
+    session.add(blocked_date)
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="BLOCKED_DATE_CREATED",
+            entity="blocked_date",
+            old_value=None,
+            new_value={"blocked_date": body.blocked_date.isoformat(), "reason": body.reason},
+            reason="Admin blocked visit date",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    await session.refresh(blocked_date)
+    return blocked_date_payload(blocked_date)
+
+
+@router.get("/blocked-dates")
+async def list_blocked_dates(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[BlockedDatePayload]:
+    await authenticated_admin(session, authorization)
+    rows = (
+        await session.scalars(select(BlockedDate).order_by(BlockedDate.blocked_date))
+    ).all()
+    return [blocked_date_payload(row) for row in rows]
+
+
+@router.patch("/blocked-dates/{blocked_date_value}")
+async def patch_blocked_date(
+    blocked_date_value: date,
+    body: BlockedDatePatchRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> BlockedDatePayload:
+    agent = await authenticated_admin(session, authorization)
+    blocked_date = await session.get(BlockedDate, blocked_date_value)
+    if blocked_date is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blocked date not found")
+    old_value = {
+        "blocked_date": blocked_date.blocked_date.isoformat(),
+        "reason": blocked_date.reason,
+    }
+    blocked_date.reason = body.reason.strip()
+    blocked_date.actor = agent.name
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="BLOCKED_DATE_UPDATED",
+            entity="blocked_date",
+            old_value=old_value,
+            new_value={
+                "blocked_date": blocked_date.blocked_date.isoformat(),
+                "reason": blocked_date.reason,
+            },
+            reason="Admin updated blocked visit date",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    await session.refresh(blocked_date)
+    return blocked_date_payload(blocked_date)
+
+
+@router.delete("/blocked-dates/{blocked_date_value}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_blocked_date(
+    blocked_date_value: date,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    agent = await authenticated_admin(session, authorization)
+    blocked_date = await session.get(BlockedDate, blocked_date_value)
+    if blocked_date is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blocked date not found")
+    old_value = {
+        "blocked_date": blocked_date.blocked_date.isoformat(),
+        "reason": blocked_date.reason,
+    }
+    await session.delete(blocked_date)
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="BLOCKED_DATE_DELETED",
+            entity="blocked_date",
+            old_value=old_value,
+            new_value=None,
+            reason="Admin removed blocked visit date",
+            request_id=None,
+        )
+    )
+    await session.commit()
+
+
+@router.post("/holidays")
+async def create_manual_holiday(
+    body: HolidayCreateRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> HolidayPayload:
+    agent = await authenticated_admin(session, authorization)
+    existing = await session.get(Holiday, body.holiday_date)
+    if existing is not None and existing.source != "MANUAL":
+        existing.name = body.name.strip()
+        existing.source = "MANUAL"
+        holiday = existing
+    elif existing is not None:
+        existing.name = body.name.strip()
+        holiday = existing
+    else:
+        holiday = Holiday(
+            holiday_date=body.holiday_date,
+            name=body.name.strip(),
+            source="MANUAL",
+        )
+        session.add(holiday)
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="HOLIDAY_MANUAL_UPSERTED",
+            entity="holiday",
+            old_value=None,
+            new_value={"holiday_date": body.holiday_date.isoformat(), "name": body.name},
+            reason="Admin registered manual holiday",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    await session.refresh(holiday)
+    return holiday_payload(holiday)
+
+
+@router.get("/appointments")
+async def list_appointments_for_day(
+    appointment_date: date,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[AppointmentDayPayload]:
+    await authenticated_admin(session, authorization)
+    appointments = (
+        await session.scalars(
+            select(Appointment)
+            .where(Appointment.appointment_date == appointment_date)
+            .order_by(Appointment.start_time)
+        )
+    ).all()
+    return [appointment_day_payload(appointment) for appointment in appointments]
 
 
 @router.post("/catalogs")
@@ -1329,6 +1542,43 @@ def validate_event_types(event_types: list[str]) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"invalid_event_types": invalid},
         )
+
+
+def blocked_date_payload(blocked_date: BlockedDate) -> BlockedDatePayload:
+    return BlockedDatePayload(
+        blocked_date=blocked_date.blocked_date,
+        reason=blocked_date.reason,
+        actor=blocked_date.actor,
+        created_at=blocked_date.created_at,
+        updated_at=blocked_date.updated_at,
+    )
+
+
+def holiday_payload(holiday: Holiday) -> HolidayPayload:
+    return HolidayPayload(
+        holiday_date=holiday.holiday_date,
+        name=holiday.name,
+        source=holiday.source,
+        created_at=holiday.created_at,
+        updated_at=holiday.updated_at,
+    )
+
+
+def appointment_day_payload(appointment: Appointment) -> AppointmentDayPayload:
+    return AppointmentDayPayload(
+        appointment_id=appointment.appointment_id,
+        customer_id=appointment.customer_id,
+        lead_id=appointment.lead_id,
+        appointment_date=appointment.appointment_date,
+        start_time=appointment.start_time,
+        end_time=appointment.end_time,
+        timezone=appointment.timezone,
+        attendee_count=appointment.attendee_count,
+        visit_reason=appointment.visit_reason,
+        appointment_status=appointment.appointment_status,
+        external_calendar_id=appointment.external_calendar_id,
+        requires_reconciliation=appointment.requires_reconciliation,
+    )
 
 
 async def catalog_event_types(session: AsyncSession, catalog_asset_id: UUID) -> list[str]:
