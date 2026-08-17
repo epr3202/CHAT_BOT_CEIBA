@@ -51,6 +51,7 @@ async def enqueue_proactive_catalogs_for_event_type(
         lead_id,
         event_type,
         "PROACTIVE",
+        ("PROACTIVE",),
         request_id,
     )
 
@@ -87,6 +88,7 @@ async def handle_explicit_catalog_request(
         lead_id,
         event_type or "OTHER",
         "EXPLICIT_REQUEST",
+        ("ON_REQUEST", "PROACTIVE"),
         request_id,
     )
     if sent > 0:
@@ -115,9 +117,10 @@ async def enqueue_catalogs_for_event_type(
     lead_id: UUID,
     event_type: str,
     trigger: str,
+    modes: tuple[str, ...],
     request_id: str | None,
 ) -> int:
-    assets = await active_assets_for_event_type(session, event_type, send_mode="PROACTIVE")
+    assets = await active_assets_for_event_type(session, event_type, modes=modes)
     if not assets:
         audit_catalog_event(
             session,
@@ -201,7 +204,7 @@ async def enqueue_catalogs_for_event_type(
 
 
 async def active_assets_for_event_type(
-    session: AsyncSession, event_type: str, send_mode: str = "PROACTIVE"
+    session: AsyncSession, event_type: str, *, modes: tuple[str, ...]
 ) -> list[CatalogAsset]:
     return list(
         (
@@ -210,7 +213,7 @@ async def active_assets_for_event_type(
                 .join(CatalogEventTypeMap)
                 .where(
                     CatalogEventTypeMap.event_type == event_type,
-                    CatalogEventTypeMap.send_mode == send_mode,
+                    CatalogEventTypeMap.send_mode.in_(modes),
                     CatalogAsset.active.is_(True),
                 )
                 .order_by(CatalogAsset.created_at, CatalogAsset.catalog_asset_id)
