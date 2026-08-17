@@ -114,6 +114,26 @@ El script genera un payload realista de mensaje entrante de WhatsApp Cloud API,
 lo firma con `X-Hub-Signature-256` usando HMAC-SHA256 y lo envía a
 `http://localhost:8000/webhook`.
 
+## Reiniciar una conversación local de pruebas
+
+Para probar de nuevo con el mismo número sin borrar historial append-only:
+
+```bash
+.venv/bin/python scripts/reset_local_conversation.py --phone +573016976242
+```
+
+Sin `--execute`, el comando solo muestra un dry-run. Para aplicar el reset:
+
+```bash
+.venv/bin/python scripts/reset_local_conversation.py --phone +573016976242 --execute
+```
+
+El script se niega a correr con `ENVIRONMENT=production`. Por diseño no ejecuta
+`DELETE` sobre `message` ni `audit_event`: conserva mensajes y auditoría, cierra las
+conversaciones del cliente, limpia el nombre guardado, resuelve handoffs abiertos,
+desactiva outbox pendiente del teléfono y registra un `audit_event` nuevo. El siguiente
+mensaje entrante de ese número crea una conversación activa nueva.
+
 ## Panel admin (frontend)
 
 1. Crear o actualizar un usuario administrador:
