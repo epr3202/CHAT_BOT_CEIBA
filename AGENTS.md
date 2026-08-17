@@ -61,9 +61,15 @@ Las tareas específicas llegan por prompt; estas reglas aplican SIEMPRE.
   puras no consultan DB, adapter ni reloj implícito; `today` entra como parámetro.
 - **Calendario externo:** el freebusy consulta todos los calendarios de
   `GOOGLE_FREEBUSY_CALENDAR_IDS` y une sus intervalos. En Slice 2B-1 solo existe
-  `CALENDAR_ADAPTER=fake`; no importar librerías de Google en `app/`.
+  `CALENDAR_ADAPTER=fake`; desde Slice 2B-2 el adapter real de Google vive en
+  `app/calendar/google_adapter.py` y `app/calendar/adapter.py` se mantiene libre de
+  dependencias de Google.
+- **Freebusy de Google:** si la respuesta trae `calendars.<id>.errors` o falta un
+  calendario solicitado, siempre es fallo ruidoso; nunca se ignora como calendario libre.
 - **Identidad de evento externo:** el `event_id` del proveedor de calendario es siempre
   `appointment_id.hex`. Una cita `CONFIRMED` requiere `external_calendar_id` no nulo.
+  Los ids de evento de Google derivan del `uuid.hex` del appointment y nunca se reutilizan
+  tras un borrado.
 - **Festivos de visitas:** runtime lee exclusivamente la tabla `holiday`. La dependencia
   `holidays` solo puede usarse en scripts de seed, nunca dentro del motor de disponibilidad.
 - **Transiciones de cita:** siempre `PENDING_CONFIRMATION → CONFIRMED`. Nunca crear
