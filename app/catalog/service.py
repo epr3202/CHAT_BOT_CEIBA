@@ -15,7 +15,11 @@ from app.channel.states import Channel
 from app.conversation.knowledge import KnowledgeRenderError, render_response
 from app.conversation.models import Conversation
 from app.conversation.presentation import format_event_type
+from app.conversation.service import transition_conversation
+from app.conversation.states import ConversationState
 from app.customer.models import Customer
+from app.handoff.models import Handoff
+from app.handoff.service import build_deterministic_summary
 
 CATALOG_CAPTION_MAX_LENGTH = 1024
 CATALOG_CAPTION_RESPONSE_CODE = "RESP-CATALOG-001"
@@ -76,6 +80,8 @@ async def handle_explicit_catalog_request(
             CATALOG_ASK_EVENT_TYPE_RESPONSE_CODE,
             {},
             request_id,
+            fallback_response_codes=(CATALOG_UNAVAILABLE_RESPONSE_CODE,),
+            trigger="EXPLICIT_REQUEST",
         )
         return 0
 
@@ -104,6 +110,8 @@ async def handle_explicit_catalog_request(
         else CATALOG_UNAVAILABLE_RESPONSE_CODE,
         {},
         request_id,
+        fallback_response_codes=(CATALOG_UNAVAILABLE_RESPONSE_CODE,),
+        trigger="EXPLICIT_REQUEST",
     )
     return 0
 
@@ -146,6 +154,13 @@ async def enqueue_catalogs_for_event_type(
                 request_id,
                 {"catalog_asset_id": str(asset.catalog_asset_id), "trigger": trigger},
             )
+            log_catalog_response_suppressed(
+                conversation_id=conversation.id,
+                response_code=CATALOG_CAPTION_RESPONSE_CODE,
+                reason=error.reason.value,
+                request_id=request_id,
+                trigger=trigger,
+            )
             continue
         if len(caption) > CATALOG_CAPTION_MAX_LENGTH:
             audit_catalog_event(
@@ -154,6 +169,13 @@ async def enqueue_catalogs_for_event_type(
                 "Catalog caption exceeds WhatsApp document caption limit",
                 request_id,
                 {"catalog_asset_id": str(asset.catalog_asset_id), "caption_length": len(caption)},
+            )
+            log_catalog_response_suppressed(
+                conversation_id=conversation.id,
+                response_code=CATALOG_CAPTION_RESPONSE_CODE,
+                reason="caption_too_long",
+                request_id=request_id,
+                trigger=trigger,
             )
             raise CatalogCaptionTooLong("Catalog caption exceeds 1024 characters")
         try:
@@ -231,28 +253,113 @@ async def enqueue_template_text(
     response_code: str,
     variables: dict[str, Any],
     request_id: str | None,
-) -> None:
-    try:
-        body = await render_response(knowledge_sessionmaker, response_code, variables)
-    except KnowledgeRenderError:
-        audit_catalog_event(
-            session,
-            "CATALOG_TEXT_RESPONSE_OMITTED",
-            f"Template {response_code} is missing or not approved",
-            request_id,
-            {"response_code": response_code},
+    *,
+    fallback_response_codes: tuple[str, ...] = (),
+    trigger: str | None = None,
+) -> bool:
+    attempted_codes = tuple(dict.fromkeys((response_code, *fallback_response_codes)))
+    for current_response_code in attempted_codes:
+        try:
+            body = await render_response(knowledge_sessionmaker, current_response_code, variables)
+        except KnowledgeRenderError as error:
+            audit_catalog_event(
+                session,
+                "CATALOG_TEXT_RESPONSE_OMITTED",
+                f"Template {current_response_code} is missing or not approved",
+                request_id,
+                {"response_code": current_response_code, "trigger": trigger},
+            )
+            log_catalog_response_suppressed(
+                conversation_id=conversation.id,
+                response_code=current_response_code,
+                reason=error.reason.value,
+                request_id=request_id,
+                trigger=trigger,
+            )
+            continue
+        conversation.last_question_code = current_response_code
+        session.add(
+            Outbox(
+                conversation_id=conversation.id,
+                message_id=inbound_message.id,
+                channel=Channel.WHATSAPP,
+                recipient_phone_number=customer.phone_number,
+                payload={"type": "text", "text": {"body": body}},
+                status="PENDING",
+            )
         )
-        return
-    conversation.last_question_code = response_code
+        return True
+
+    await create_template_unavailable_handoff(
+        session,
+        conversation,
+        customer,
+        response_code,
+        attempted_codes,
+        request_id,
+        trigger,
+    )
+    return False
+
+
+async def create_template_unavailable_handoff(
+    session: AsyncSession,
+    conversation: Conversation,
+    customer: Customer,
+    response_code: str,
+    attempted_codes: tuple[str, ...],
+    request_id: str | None,
+    trigger: str | None,
+) -> None:
+    detail = (
+        f"TEMPLATE_UNAVAILABLE for {response_code}; "
+        f"attempted response codes: {', '.join(attempted_codes)}"
+    )
+    summary = await build_deterministic_summary(
+        session,
+        conversation,
+        customer,
+        "TEMPLATE_UNAVAILABLE",
+        detail=detail,
+        last_messages_limit=5,
+    )
     session.add(
-        Outbox(
+        Handoff(
             conversation_id=conversation.id,
-            message_id=inbound_message.id,
-            channel=Channel.WHATSAPP,
-            recipient_phone_number=customer.phone_number,
-            payload={"type": "text", "text": {"body": body}},
+            reason="OTHER",
+            priority="NORMAL",
+            summary=summary,
             status="PENDING",
         )
+    )
+    conversation.pending_action = "WAIT_FOR_HUMAN"
+    if conversation.state != ConversationState.WAITING_FOR_HUMAN.value:
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.WAITING_FOR_HUMAN,
+            actor="SYSTEM",
+            reason="TEMPLATE_UNAVAILABLE",
+        )
+    audit_catalog_event(
+        session,
+        "CATALOG_HANDOFF_TEMPLATE_UNAVAILABLE",
+        "Catalog response template chain unavailable",
+        request_id,
+        {
+            "conversation_id": conversation.id,
+            "reason": "TEMPLATE_UNAVAILABLE",
+            "response_code": response_code,
+            "attempted_response_codes": list(attempted_codes),
+            "trigger": trigger,
+        },
+    )
+    log_catalog_response_suppressed(
+        conversation_id=conversation.id,
+        response_code=response_code,
+        reason="TEMPLATE_UNAVAILABLE",
+        request_id=request_id,
+        trigger=trigger,
     )
 
 
@@ -279,4 +386,22 @@ def audit_catalog_event(
             reason=reason,
             request_id=request_id,
         )
+    )
+
+
+def log_catalog_response_suppressed(
+    *,
+    conversation_id: int,
+    response_code: str,
+    reason: str,
+    request_id: str | None,
+    trigger: str | None,
+) -> None:
+    logger.info(
+        "catalog_response_suppressed",
+        conversation_id=conversation_id,
+        response_code=response_code,
+        reason=reason,
+        request_id=request_id,
+        trigger=trigger,
     )
