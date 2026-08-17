@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,9 +13,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import app.catalog.service as catalog_service
+from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
 from app.catalog.models import CatalogAsset, CatalogEventTypeMap, CatalogSend
+from app.channel.inbound import process_whatsapp_webhook
 from app.channel.media import sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.outbound import WhatsAppInvalidMediaError
@@ -25,6 +29,7 @@ from app.conversation.models import Conversation, KnowledgeEntry
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.models import Event
+from app.handoff.models import Handoff
 from app.lead.models import Lead
 from app.orchestrator.service import OrchestrationInput, orchestrate_inbound_message
 from tests.integration.helpers import (
@@ -34,7 +39,16 @@ from tests.integration.helpers import (
     database_sessionmaker,
     login_headers,
     reset_test_database,
+    whatsapp_message_payload,
 )
+
+
+class CapturingLogger:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict[str, object]]] = []
+
+    def info(self, event: str, **fields: object) -> None:
+        self.events.append((event, fields))
 
 
 class FakeWhatsAppAdapter:
@@ -135,7 +149,9 @@ def pdf_file(tmp_path: Path, name: str = "catalogo-bodas.pdf", size: int = 32) -
 async def approve_catalog_templates(
     sessionmaker: async_sessionmaker[AsyncSession],
     caption: str = "Te comparto nuestro catálogo para {event_type}.",
+    statuses: dict[str, str] | None = None,
 ) -> None:
+    statuses = statuses or {}
     async with sessionmaker() as session:
         async with session.begin():
             for code in ("RESP-CATALOG-001", "RESP-CATALOG-002", "RESP-CATALOG-003"):
@@ -153,7 +169,7 @@ async def approve_catalog_templates(
                         answer_template=caption,
                         allowed_variables=["event_type"],
                         version=1,
-                        status="APPROVED",
+                        status=statuses.get("RESP-CATALOG-001", "APPROVED"),
                     ),
                     KnowledgeEntry(
                         code="RESP-CATALOG-002",
@@ -165,7 +181,7 @@ async def approve_catalog_templates(
                         ),
                         allowed_variables=[],
                         version=1,
-                        status="APPROVED",
+                        status=statuses.get("RESP-CATALOG-002", "APPROVED"),
                     ),
                     KnowledgeEntry(
                         code="RESP-CATALOG-003",
@@ -177,7 +193,7 @@ async def approve_catalog_templates(
                         ),
                         allowed_variables=[],
                         version=1,
-                        status="APPROVED",
+                        status=statuses.get("RESP-CATALOG-003", "APPROVED"),
                     ),
                 ]
             )
@@ -290,7 +306,7 @@ async def seed_catalog_asset(
     active: bool = True,
     media_id: str | None = None,
     media_uploaded_at: datetime | None = None,
-    send_mode: str = "PROACTIVE",
+    send_mode: str = "ON_REQUEST",
 ) -> UUID:
     async with sessionmaker() as session:
         async with session.begin():
@@ -462,7 +478,7 @@ async def test_tc_cat_001_confirmed_event_type_enqueues_document_and_audit(
     sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
 ) -> None:
     await approve_catalog_templates(sessionmaker_fixture)
-    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path))
+    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path), send_mode="PROACTIVE")
     conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(sessionmaker_fixture)
 
     await orchestrate(
@@ -503,7 +519,9 @@ async def test_tc_cat_003_proactive_send_is_deduped_by_partial_unique_constraint
     sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
 ) -> None:
     await approve_catalog_templates(sessionmaker_fixture)
-    asset_id = await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path))
+    asset_id = await seed_catalog_asset(
+        sessionmaker_fixture, pdf_file(tmp_path), send_mode="PROACTIVE"
+    )
     conversation_id, lead_id, _event_id, inbound_id = await seed_conversation(sessionmaker_fixture)
 
     await orchestrate(
@@ -537,7 +555,7 @@ async def test_tc_cat_004_explicit_request_resends_after_proactive(
     sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
 ) -> None:
     await approve_catalog_templates(sessionmaker_fixture)
-    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path))
+    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path), send_mode="PROACTIVE")
     conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(sessionmaker_fixture)
 
     await orchestrate(
@@ -553,6 +571,33 @@ async def test_tc_cat_004_explicit_request_resends_after_proactive(
     )
 
     assert await count_outbox(sessionmaker_fixture, "DOCUMENT") == 2
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_004b_explicit_request_sends_on_request_asset(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    await approve_catalog_templates(sessionmaker_fixture)
+    asset_id = await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path))
+    conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(
+        sessionmaker_fixture, event_type="WEDDING"
+    )
+
+    await orchestrate(
+        sessionmaker_fixture,
+        conversation_id,
+        inbound_id,
+        catalog_request_classification(),
+        "envíame el catálogo",
+    )
+
+    async with sessionmaker_fixture() as session:
+        outbox = await session.scalar(select(Outbox).where(Outbox.message_kind == "DOCUMENT"))
+        catalog_send = await session.scalar(select(CatalogSend))
+    assert outbox is not None
+    assert outbox.catalog_asset_id == asset_id
+    assert catalog_send is not None
+    assert catalog_send.trigger == "EXPLICIT_REQUEST"
 
 
 @pytest.mark.asyncio
@@ -711,7 +756,7 @@ async def test_tc_cat_013_caption_over_limit_is_rejected_before_enqueue(
     sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
 ) -> None:
     await approve_catalog_templates(sessionmaker_fixture, caption="x" * 1025)
-    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path))
+    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path), send_mode="PROACTIVE")
     conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(sessionmaker_fixture)
 
     await orchestrate(
@@ -818,7 +863,7 @@ async def test_tc_cat_017_incompatible_classifier_send_catalog_proposal_is_ignor
 async def test_tc_cat_018_missing_or_unapproved_caption_template_prevents_document_send(
     sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
 ) -> None:
-    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path))
+    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path), send_mode="PROACTIVE")
     conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(sessionmaker_fixture)
 
     await orchestrate(
@@ -831,6 +876,108 @@ async def test_tc_cat_018_missing_or_unapproved_caption_template_prevents_docume
         )
     assert await count_outbox(sessionmaker_fixture, "DOCUMENT") == 0
     assert audit is not None
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_018b_unapproved_caption_rejects_document_and_sends_approved_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+) -> None:
+    logger = CapturingLogger()
+    monkeypatch.setattr(catalog_service, "logger", logger)
+    await approve_catalog_templates(
+        sessionmaker_fixture,
+        statuses={"RESP-CATALOG-001": "DRAFT", "RESP-CATALOG-003": "APPROVED"},
+    )
+    await seed_catalog_asset(sessionmaker_fixture, pdf_file(tmp_path), send_mode="PROACTIVE")
+    conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(
+        sessionmaker_fixture, event_type="WEDDING"
+    )
+
+    await orchestrate(
+        sessionmaker_fixture,
+        conversation_id,
+        inbound_id,
+        catalog_request_classification(),
+        "envíame el catálogo",
+    )
+
+    async with sessionmaker_fixture() as session:
+        rejected = await session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "CATALOG_SEND_REJECTED")
+        )
+        text_outbox = await session.scalar(select(Outbox).where(Outbox.message_kind == "TEXT"))
+    assert await count_outbox(sessionmaker_fixture, "DOCUMENT") == 0
+    assert rejected is not None
+    assert text_outbox is not None
+    assert "equipo te compartirá" in text_outbox.payload["text"]["body"]
+    assert (
+        "catalog_response_suppressed",
+        {
+            "conversation_id": conversation_id,
+            "response_code": "RESP-CATALOG-001",
+            "reason": "NOT_APPROVED",
+            "request_id": "req-cat",
+            "trigger": "EXPLICIT_REQUEST",
+        },
+    ) in logger.events
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_018c_unrenderable_template_chain_creates_handoff_and_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    logger = CapturingLogger()
+    monkeypatch.setattr(catalog_service, "logger", logger)
+    await approve_catalog_templates(
+        sessionmaker_fixture,
+        statuses={
+            "RESP-CATALOG-001": "DRAFT",
+            "RESP-CATALOG-002": "DRAFT",
+            "RESP-CATALOG-003": "DRAFT",
+        },
+    )
+    conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(sessionmaker_fixture)
+
+    await orchestrate(
+        sessionmaker_fixture,
+        conversation_id,
+        inbound_id,
+        catalog_request_classification(),
+        "quiero información de planes románticos",
+    )
+
+    async with sessionmaker_fixture() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        handoff = await session.scalar(
+            select(Handoff).where(Handoff.conversation_id == conversation_id)
+        )
+        audit = await session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.action == "CATALOG_HANDOFF_TEMPLATE_UNAVAILABLE"
+            )
+        )
+    assert await count_outbox(sessionmaker_fixture) == 0
+    assert conversation is not None
+    assert conversation.state == ConversationState.WAITING_FOR_HUMAN.value
+    assert handoff is not None
+    assert handoff.status == "PENDING"
+    assert handoff.priority == "NORMAL"
+    assert handoff.reason == "OTHER"
+    assert "TEMPLATE_UNAVAILABLE" in handoff.summary
+    assert "RESP-CATALOG-002" in handoff.summary
+    assert audit is not None
+    assert audit.new_value["reason"] == "TEMPLATE_UNAVAILABLE"
+    assert any(
+        event == "catalog_response_suppressed"
+        and fields["conversation_id"] == conversation_id
+        and fields["response_code"] == "RESP-CATALOG-003"
+        and fields["reason"] == "NOT_APPROVED"
+        and fields["request_id"] == "req-cat"
+        for event, fields in logger.events
+    )
 
 
 @pytest.mark.asyncio
@@ -860,3 +1007,107 @@ async def test_tc_cat_019_proactive_trigger_ignores_on_request_assets(
     )
 
     assert await count_outbox(sessionmaker_fixture, "DOCUMENT") == 1
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_020_duplicate_catalog_webhook_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    await approve_catalog_templates(sessionmaker_fixture)
+
+    async def classify_catalog_request(
+        self: OpenRouterIntentClient,
+        message_text: str,
+        context: dict[str, object],
+        conversation_id: int | None = None,
+    ) -> IntentClassification:
+        return catalog_request_classification()
+
+    monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_catalog_request)
+    payload = json.loads(
+        whatsapp_message_payload(
+            "wamid.tc.cat.020",
+            phone="573001117777",
+            text="quiero el catálogo",
+        ).decode()
+    )
+
+    await asyncio.gather(
+        process_whatsapp_webhook(payload, sessionmaker_fixture, "req-cat-a"),
+        process_whatsapp_webhook(payload, sessionmaker_fixture, "req-cat-b"),
+    )
+
+    async with sessionmaker_fixture() as session:
+        message_count = await session.scalar(select(func.count()).select_from(Message))
+        outbox_count = await session.scalar(select(func.count()).select_from(Outbox))
+    assert message_count == 1
+    assert outbox_count == 1
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_021_admin_catalog_event_types_accept_send_mode_objects(
+    client_fixture: AsyncClient,
+    tmp_path: Path,
+) -> None:
+    await bootstrap_agent()
+    headers = await login_headers(client_fixture)
+    pdf_file(tmp_path, "catalogo-bodas.pdf")
+
+    response = await client_fixture.post(
+        "/admin/catalogs",
+        headers=headers,
+        json={
+            "name": "Bodas",
+            "file_path": "catalogo-bodas.pdf",
+            "event_types": [{"event_type": "WEDDING", "send_mode": "PROACTIVE"}],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["event_types"] == ["WEDDING"]
+    assert payload["event_type_mappings"] == [
+        {"event_type": "WEDDING", "send_mode": "PROACTIVE"}
+    ]
+
+    replace_response = await client_fixture.put(
+        f"/admin/catalogs/{payload['catalog_asset_id']}/event-types",
+        headers=headers,
+        json={
+            "event_types": [
+                "BIRTHDAY",
+                {"event_type": "ROMANTIC_DINNER", "send_mode": "ON_REQUEST"},
+            ]
+        },
+    )
+
+    assert replace_response.status_code == 200, replace_response.text
+    assert replace_response.json()["event_types"] == ["BIRTHDAY", "ROMANTIC_DINNER"]
+    assert replace_response.json()["event_type_mappings"] == [
+        {"event_type": "BIRTHDAY", "send_mode": "ON_REQUEST"},
+        {"event_type": "ROMANTIC_DINNER", "send_mode": "ON_REQUEST"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_022_admin_catalog_event_types_validate_send_mode_at_edge(
+    client_fixture: AsyncClient,
+    tmp_path: Path,
+) -> None:
+    await bootstrap_agent()
+    headers = await login_headers(client_fixture)
+    pdf_file(tmp_path, "catalogo-bodas.pdf")
+
+    response = await client_fixture.post(
+        "/admin/catalogs",
+        headers=headers,
+        json={
+            "name": "Bodas",
+            "file_path": "catalogo-bodas.pdf",
+            "event_types": [{"event_type": "WEDDING", "send_mode": "BOTH"}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == {"invalid_send_modes": ["BOTH"]}
