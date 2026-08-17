@@ -279,7 +279,7 @@ class VisitSchedulingService:
             return VisitServiceResult(response_code="RESP-VISIT-CONFIRM-005")
 
         try:
-            await self._create_or_reconcile_event(
+            await self._update_or_reconcile_event(
                 event_id=appointment_id.hex,
                 summary="Visita comercial La Ceiba Club House",
                 start=slot_datetime(new_date, new_time),
@@ -430,6 +430,29 @@ class VisitSchedulingService:
             except AlreadyExistsError:
                 return
             raise
+
+    async def _update_or_reconcile_event(
+        self,
+        *,
+        event_id: str,
+        summary: str,
+        start: datetime,
+        end: datetime,
+    ) -> None:
+        try:
+            await self.calendar_adapter.update_event(event_id, summary, start, end)
+        except EventNotFoundError:
+            try:
+                await self.calendar_adapter.create_event(event_id, summary, start, end)
+            except AlreadyExistsError as create_exc:
+                raise CalendarUnavailableError(
+                    f"calendar event appeared during reschedule: {event_id}"
+                ) from create_exc
+            except CalendarUnavailableError:
+                raise
+            return
+        except CalendarUnavailableError:
+            await self.calendar_adapter.update_event(event_id, summary, start, end)
 
     async def _confirm_pending_appointment(
         self,

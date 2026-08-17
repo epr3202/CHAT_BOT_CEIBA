@@ -54,6 +54,15 @@ class CalendarAdapter(Protocol):
     ) -> ExternalEventRef:
         ...
 
+    async def update_event(
+        self,
+        event_id: str,
+        summary: str,
+        start: datetime,
+        end: datetime,
+    ) -> ExternalEventRef:
+        ...
+
     async def delete_event(self, event_id: str) -> None:
         ...
 
@@ -67,15 +76,19 @@ class FakeCalendarAdapter:
         busy_by_calendar: dict[str, list[BusyInterval]] | None = None,
         raise_on: set[str] | None = None,
         timeout_after_create: bool = False,
+        fail_update_once: bool = False,
     ) -> None:
         self.busy_by_calendar = busy_by_calendar or {}
         self.raise_on = raise_on or set()
         self.timeout_after_create = timeout_after_create
+        self.fail_update_once = fail_update_once
         self._events: dict[str, ExternalEventRef] = {}
         self.created_event_ids: list[str] = []
+        self.updated_event_ids: list[str] = []
         self.deleted_event_ids: list[str] = []
         self.queried_calendar_ids: list[list[str]] = []
         self.create_call_count = 0
+        self.update_call_count = 0
         self.delete_call_count = 0
         self.query_call_count = 0
 
@@ -121,6 +134,27 @@ class FakeCalendarAdapter:
         if self.timeout_after_create:
             self.timeout_after_create = False
             raise CalendarUnavailableError("fake calendar timed out after create")
+        return event
+
+    async def update_event(
+        self,
+        event_id: str,
+        summary: str,
+        start: datetime,
+        end: datetime,
+    ) -> ExternalEventRef:
+        self.update_call_count += 1
+        if self.fail_update_once:
+            self.fail_update_once = False
+            raise CalendarUnavailableError("fake calendar update failed once")
+        if "update" in self.raise_on:
+            raise CalendarUnavailableError("fake calendar update failed")
+        if event_id not in self._events:
+            raise EventNotFoundError(f"calendar event not found: {event_id}")
+
+        event = ExternalEventRef(event_id=event_id, summary=summary, start=start, end=end)
+        self._events[event_id] = event
+        self.updated_event_ids.append(event_id)
         return event
 
     async def delete_event(self, event_id: str) -> None:
