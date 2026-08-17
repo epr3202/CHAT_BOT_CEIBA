@@ -28,7 +28,7 @@ from app.agent.auth import (
 from app.agent.models import Agent, AgentSession
 from app.appointment.models import Appointment, BlockedDate, Holiday
 from app.audit.models import AuditEvent
-from app.catalog.models import CatalogAsset, CatalogEventTypeMap
+from app.catalog.models import CATALOG_SEND_MODES, CatalogAsset, CatalogEventTypeMap
 from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
@@ -132,10 +132,23 @@ class ConversationPayload(BaseModel):
     last_message_at: datetime | None
 
 
+class CatalogEventTypeMappingRequest(BaseModel):
+    event_type: str = Field(min_length=1, max_length=64)
+    send_mode: str = "ON_REQUEST"
+
+
+CatalogEventTypeInput = str | CatalogEventTypeMappingRequest
+
+
+class CatalogEventTypeMappingPayload(BaseModel):
+    event_type: str
+    send_mode: str
+
+
 class CatalogCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     file_path: str = Field(min_length=1, max_length=1000)
-    event_types: list[str] = Field(default_factory=list)
+    event_types: list[CatalogEventTypeInput] = Field(default_factory=list)
 
 
 class CatalogPatchRequest(BaseModel):
@@ -145,7 +158,7 @@ class CatalogPatchRequest(BaseModel):
 
 
 class CatalogEventTypesRequest(BaseModel):
-    event_types: list[str] = Field(default_factory=list)
+    event_types: list[CatalogEventTypeInput] = Field(default_factory=list)
 
 
 class CatalogPayload(BaseModel):
@@ -160,6 +173,7 @@ class CatalogPayload(BaseModel):
     active: bool
     version: int
     event_types: list[str]
+    event_type_mappings: list[CatalogEventTypeMappingPayload]
     created_at: datetime
     updated_at: datetime
 
@@ -406,7 +420,8 @@ async def create_catalog(
     agent = await authenticated_admin(session, authorization)
     file_path = resolve_catalog_file_path(request, body.file_path)
     file_size = validate_catalog_admin_file(request, file_path)
-    validate_event_types(body.event_types)
+    event_type_mappings = parse_catalog_event_type_mappings(body.event_types)
+    validate_catalog_event_type_mappings(event_type_mappings)
     asset = CatalogAsset(
         name=body.name.strip(),
         file_path=body.file_path.strip(),
@@ -418,9 +433,13 @@ async def create_catalog(
     )
     session.add(asset)
     await session.flush()
-    for event_type in body.event_types:
+    for mapping in event_type_mappings:
         session.add(
-            CatalogEventTypeMap(catalog_asset_id=asset.catalog_asset_id, event_type=event_type)
+            CatalogEventTypeMap(
+                catalog_asset_id=asset.catalog_asset_id,
+                event_type=mapping.event_type,
+                send_mode=mapping.send_mode,
+            )
         )
     session.add(
         AuditEvent(
@@ -430,7 +449,8 @@ async def create_catalog(
             old_value=None,
             new_value={
                 "catalog_asset_id": str(asset.catalog_asset_id),
-                "event_types": body.event_types,
+                "event_types": catalog_event_type_names(event_type_mappings),
+                "event_type_mappings": catalog_event_type_mapping_values(event_type_mappings),
             },
             reason="Admin registered catalog asset",
             request_id=None,
@@ -516,11 +536,13 @@ async def replace_catalog_event_types(
     authorization: Annotated[str | None, Header()] = None,
 ) -> CatalogPayload:
     agent = await authenticated_admin(session, authorization)
-    validate_event_types(body.event_types)
+    event_type_mappings = parse_catalog_event_type_mappings(body.event_types)
+    validate_catalog_event_type_mappings(event_type_mappings)
     asset = await session.get(CatalogAsset, catalog_asset_id)
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog not found")
     old_event_types = await catalog_event_types(session, asset.catalog_asset_id)
+    old_event_type_mappings = await catalog_event_type_mappings(session, asset.catalog_asset_id)
     existing = (
         await session.scalars(
             select(CatalogEventTypeMap).where(
@@ -530,15 +552,30 @@ async def replace_catalog_event_types(
     ).all()
     for row in existing:
         await session.delete(row)
-    for event_type in body.event_types:
-        session.add(CatalogEventTypeMap(catalog_asset_id=catalog_asset_id, event_type=event_type))
+    for mapping in event_type_mappings:
+        session.add(
+            CatalogEventTypeMap(
+                catalog_asset_id=catalog_asset_id,
+                event_type=mapping.event_type,
+                send_mode=mapping.send_mode,
+            )
+        )
     session.add(
         AuditEvent(
             actor=agent.name,
             action="CATALOG_EVENT_TYPES_REPLACED",
             entity="catalog_asset",
-            old_value={"event_types": old_event_types},
-            new_value={"catalog_asset_id": str(catalog_asset_id), "event_types": body.event_types},
+            old_value={
+                "event_types": old_event_types,
+                "event_type_mappings": [
+                    mapping.model_dump() for mapping in old_event_type_mappings
+                ],
+            },
+            new_value={
+                "catalog_asset_id": str(catalog_asset_id),
+                "event_types": catalog_event_type_names(event_type_mappings),
+                "event_type_mappings": catalog_event_type_mapping_values(event_type_mappings),
+            },
             reason="Admin replaced catalog event type mappings",
             request_id=None,
         )
@@ -1535,13 +1572,45 @@ def validate_catalog_admin_file(request: Request, file_path: Path) -> int:
     return file_size
 
 
-def validate_event_types(event_types: list[str]) -> None:
-    invalid = [event_type for event_type in event_types if event_type not in EVENT_TYPES]
+def parse_catalog_event_type_mappings(
+    event_types: list[CatalogEventTypeInput],
+) -> list[CatalogEventTypeMappingRequest]:
+    mappings: list[CatalogEventTypeMappingRequest] = []
+    for entry in event_types:
+        if isinstance(entry, str):
+            mappings.append(CatalogEventTypeMappingRequest(event_type=entry))
+        else:
+            mappings.append(entry)
+    return mappings
+
+
+def validate_catalog_event_type_mappings(
+    mappings: list[CatalogEventTypeMappingRequest],
+) -> None:
+    invalid = [mapping.event_type for mapping in mappings if mapping.event_type not in EVENT_TYPES]
     if invalid:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"invalid_event_types": invalid},
         )
+    invalid_modes = [
+        mapping.send_mode for mapping in mappings if mapping.send_mode not in CATALOG_SEND_MODES
+    ]
+    if invalid_modes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"invalid_send_modes": invalid_modes},
+        )
+
+
+def catalog_event_type_names(mappings: list[CatalogEventTypeMappingRequest]) -> list[str]:
+    return [mapping.event_type for mapping in mappings]
+
+
+def catalog_event_type_mapping_values(
+    mappings: list[CatalogEventTypeMappingRequest],
+) -> list[dict[str, str]]:
+    return [mapping.model_dump() for mapping in mappings]
 
 
 def blocked_date_payload(blocked_date: BlockedDate) -> BlockedDatePayload:
@@ -1593,6 +1662,22 @@ async def catalog_event_types(session: AsyncSession, catalog_asset_id: UUID) -> 
     )
 
 
+async def catalog_event_type_mappings(
+    session: AsyncSession, catalog_asset_id: UUID
+) -> list[CatalogEventTypeMappingPayload]:
+    rows = (
+        await session.execute(
+            select(CatalogEventTypeMap.event_type, CatalogEventTypeMap.send_mode)
+            .where(CatalogEventTypeMap.catalog_asset_id == catalog_asset_id)
+            .order_by(CatalogEventTypeMap.event_type)
+        )
+    ).all()
+    return [
+        CatalogEventTypeMappingPayload(event_type=row.event_type, send_mode=row.send_mode)
+        for row in rows
+    ]
+
+
 async def catalog_payload(session: AsyncSession, asset: CatalogAsset) -> CatalogPayload:
     return CatalogPayload(
         catalog_asset_id=asset.catalog_asset_id,
@@ -1606,6 +1691,7 @@ async def catalog_payload(session: AsyncSession, asset: CatalogAsset) -> Catalog
         active=asset.active,
         version=asset.version,
         event_types=await catalog_event_types(session, asset.catalog_asset_id),
+        event_type_mappings=await catalog_event_type_mappings(session, asset.catalog_asset_id),
         created_at=asset.created_at,
         updated_at=asset.updated_at,
     )
