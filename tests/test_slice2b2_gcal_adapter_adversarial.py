@@ -348,7 +348,7 @@ def test_tc_gcal_017_factory_google_missing_required_setting_names_variable(
     monkeypatch.setenv("CALENDAR_ADAPTER", "google")
     monkeypatch.setenv("GOOGLE_CALENDAR_ID", "visitas")
     monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/tmp/service-account.json")
-    monkeypatch.delenv(missing_var)
+    monkeypatch.setenv(missing_var, "")
     get_settings.cache_clear()
 
     with pytest.raises(ValueError, match=expected_message):

@@ -178,6 +178,17 @@ class FakeCalendarAdapter:
 def get_calendar_adapter(settings: Settings) -> CalendarAdapter:
     if settings.calendar_adapter == "fake":
         return FakeCalendarAdapter()
+    if settings.calendar_adapter == "google":
+        if not settings.google_calendar_id.strip():
+            raise ValueError("Missing required setting: GOOGLE_CALENDAR_ID")
+        if not settings.google_service_account_file.strip():
+            raise ValueError("Missing required setting: GOOGLE_SERVICE_ACCOUNT_FILE")
+        from app.calendar.google_adapter import GoogleCalendarAdapter
+
+        return GoogleCalendarAdapter(
+            calendar_id=settings.google_calendar_id,
+            service_account_file=settings.google_service_account_file,
+        )
     raise ValueError(f"Unsupported calendar adapter: {settings.calendar_adapter}")
 
 
