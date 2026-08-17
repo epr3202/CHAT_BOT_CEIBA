@@ -7,6 +7,7 @@ foreign keys can resolve against the complete metadata graph.
 
 from app.agent import models as agent_models  # noqa: F401
 from app.ai import models as ai_models  # noqa: F401
+from app.appointment import models as appointment_models  # noqa: F401
 from app.audit import models as audit_models  # noqa: F401
 from app.catalog import models as catalog_models  # noqa: F401
 from app.channel import models as channel_models  # noqa: F401

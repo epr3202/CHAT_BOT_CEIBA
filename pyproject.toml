@@ -12,8 +12,10 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "httpx",
+    "google-auth",
     "structlog",
     "bcrypt",
+    "holidays",
 ]
 
 [project.optional-dependencies]
