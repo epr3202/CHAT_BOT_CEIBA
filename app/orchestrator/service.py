@@ -614,6 +614,55 @@ async def handle_appointment_flow_state(
     orchestration_input: OrchestrationInput,
     classification: IntentClassification,
 ) -> None:
+    state = ConversationState(orchestration_input.conversation.state)
+    if state == ConversationState.WAITING_FOR_APPOINTMENT_DATE:
+        date_decision = resolve_visit_date_text(
+            orchestration_input.message_text,
+            today=current_bogota_datetime().date(),
+            require_absolute_confirmation=True,
+        )
+        if date_decision.interpretation != "NO_INTERPRETABLE":
+            await handle_waiting_for_appointment_date(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
+            )
+            return
+    elif state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION:
+        draft = require_visit_draft(orchestration_input.conversation)
+        offered_slots = [time.fromisoformat(value) for value in draft.get("offered_slots", [])]
+        time_decision = interpret_visit_time(orchestration_input.message_text, offered_slots)
+        if time_decision.interpretation != "NO_INTERPRETABLE":
+            await handle_waiting_for_appointment_selection(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
+            )
+            return
+    else:
+        confirmation_intent = resolve_contextual_confirmation(
+            orchestration_input.message_text,
+            orchestration_input.conversation.pending_action,
+            orchestration_input.conversation.last_question_code,
+        )
+        if confirmation_intent is not None:
+            if classification.primary_intent != confirmation_intent:
+                classification = classification.model_copy(
+                    update={"primary_intent": confirmation_intent}
+                )
+            await handle_appointment_confirmation(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
+            )
+            return
+
     intent = classification.primary_intent
     if intent == "SCHEDULE_VISIT":
         await start_visit_scheduling(
@@ -642,7 +691,6 @@ async def handle_appointment_flow_state(
         )
         return
 
-    state = ConversationState(orchestration_input.conversation.state)
     if state == ConversationState.WAITING_FOR_APPOINTMENT_DATE:
         await handle_waiting_for_appointment_date(
             session,
