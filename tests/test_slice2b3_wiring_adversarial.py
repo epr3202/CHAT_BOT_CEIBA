@@ -644,3 +644,120 @@ async def test_tc_wire_013_no_active_appointment_uses_service_code_and_handoff(
         if intent == "RESCHEDULE_VISIT"
         else "RESP-CANCEL-VISIT-005"
     )
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_014_exact_text_date_precedes_schedule_intent(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker)
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.014.schedule",
+        text="quiero agendar una visita",
+        result=classification("SCHEDULE_VISIT"),
+    )
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.014.date",
+        text="26 de agosto",
+        result=classification("SCHEDULE_VISIT", confidence=0.90),
+    )
+
+    conversation = await conversation_snapshot(sessionmaker)
+    assert conversation.state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
+    assert conversation.last_question_code == "RESP-VISIT-TIME-001"
+    assert conversation.visit_draft["visit_date"] == "2026-08-26"
+    assert conversation.visit_draft["offered_slots"] == ["08:00", "09:00", "10:00", "11:00"]
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_015_numeric_date_precedes_schedule_intent(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker)
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.015.schedule",
+        text="quiero agendar una visita",
+        result=classification("SCHEDULE_VISIT"),
+    )
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.015.date",
+        text="26-08-2026",
+        result=classification("SCHEDULE_VISIT", confidence=0.90),
+    )
+
+    conversation = await conversation_snapshot(sessionmaker)
+    assert conversation.state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
+    assert conversation.last_question_code == "RESP-VISIT-TIME-001"
+    assert conversation.visit_draft["visit_date"] == "2026-08-26"
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_016_interpretable_time_precedes_schedule_intent(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker)
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.016.schedule",
+        text="quiero agendar una visita",
+        result=classification("SCHEDULE_VISIT"),
+    )
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.016.date",
+        text="26 de agosto",
+        result=classification("UNKNOWN"),
+    )
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.016.time",
+        text="a las 9",
+        result=classification("SCHEDULE_VISIT", confidence=0.90),
+    )
+
+    conversation = await conversation_snapshot(sessionmaker)
+    assert conversation.state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
+    assert conversation.pending_action == "COLLECT_VISIT_ATTENDEES"
+    assert conversation.last_question_code == "RESP-VISIT-DATA-001"
+    assert conversation.visit_draft["visit_time"] == "09:00"
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_017_non_interpretable_schedule_intent_still_restarts_attempt(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker)
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.017.schedule",
+        text="quiero agendar una visita",
+        result=classification("SCHEDULE_VISIT"),
+    )
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.017.restart",
+        text="quiero empezar de nuevo",
+        result=classification("SCHEDULE_VISIT", confidence=0.90),
+    )
+
+    conversation = await conversation_snapshot(sessionmaker)
+    assert conversation.state == ConversationState.WAITING_FOR_APPOINTMENT_DATE
+    assert conversation.last_question_code == "RESP-VISIT-003"
+    assert conversation.visit_draft == {"mode": "SCHEDULE", "resume": None}
