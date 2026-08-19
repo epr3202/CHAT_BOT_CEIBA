@@ -1095,5 +1095,6 @@ async def test_tc_collect_018_visit_flow_still_requires_absolute_date(
         conversation = await session.get(Conversation, conversation.id)
         quote_request = await session.scalar(select(QuoteRequest))
     assert conversation is not None
-    assert conversation.state == "WAITING_FOR_HUMAN"
+    assert conversation.state == ConversationState.WAITING_FOR_APPOINTMENT_DATE.value
+    assert conversation.last_question_code == "RESP-VISIT-003"
     assert quote_request is None
