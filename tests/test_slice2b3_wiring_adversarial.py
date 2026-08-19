@@ -15,6 +15,7 @@ from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.appointment.models import Appointment
 from app.calendar.adapter import EventNotFoundError, FakeCalendarAdapter
 from app.channel.inbound import process_whatsapp_webhook
+from app.channel.models import Outbox
 from app.channel.states import Channel
 from app.config.settings import get_settings
 from app.conversation.models import Conversation
@@ -154,7 +155,7 @@ async def send_turn(
 async def seed_customer(
     sessionmaker: async_sessionmaker[AsyncSession],
     *,
-    full_name: str = "Natalia Pérez",
+    full_name: str | None = "Natalia Pérez",
 ) -> Customer:
     async with sessionmaker() as session:
         async with session.begin():
@@ -761,3 +762,101 @@ async def test_tc_wire_017_non_interpretable_schedule_intent_still_restarts_atte
     assert conversation.state == ConversationState.WAITING_FOR_APPOINTMENT_DATE
     assert conversation.last_question_code == "RESP-VISIT-003"
     assert conversation.visit_draft == {"mode": "SCHEDULE", "resume": None}
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_018_missing_name_is_collected_before_visit_confirmation(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, calendar, classifier = wiring_context
+    await seed_customer(sessionmaker, full_name=None)
+    await complete_schedule_until_confirmation(sessionmaker, classifier, prefix="wire.018")
+
+    waiting_for_name = await conversation_snapshot(sessionmaker)
+    async with sessionmaker() as session:
+        handoff_count = await session.scalar(select(func.count()).select_from(Handoff))
+    assert waiting_for_name.state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
+    assert waiting_for_name.pending_action == "COLLECT_CUSTOMER_NAME"
+    assert waiting_for_name.last_question_code == "RESP-CUSTOMER-001"
+    assert waiting_for_name.visit_draft["return_to"] == "VISIT_CONFIRMATION_SUMMARY"
+    assert handoff_count == 0
+
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.018.name",
+        text="Natalia Pérez",
+        result=classification(
+            "UNKNOWN",
+            entities=[entity("full_name", "Natalia Pérez", "Natalia Pérez")],
+        ),
+    )
+
+    summary = await conversation_snapshot(sessionmaker)
+    async with sessionmaker() as session:
+        customer = await session.scalar(select(Customer))
+    assert customer is not None
+    assert customer.full_name == "Natalia Pérez"
+    assert summary.state == ConversationState.APPOINTMENT_PENDING_CONFIRMATION
+    assert summary.pending_action == "CONFIRM_APPOINTMENT"
+    assert summary.last_question_code == "RESP-VISIT-CONFIRM-001"
+
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.018.confirm",
+        text="sí",
+        result=classification("CONFIRM"),
+    )
+
+    confirmed = await conversation_snapshot(sessionmaker)
+    async with sessionmaker() as session:
+        visit = await session.scalar(select(Appointment))
+    assert confirmed.state == ConversationState.APPOINTMENT_CONFIRMED
+    assert visit is not None
+    assert visit.appointment_status == "CONFIRMED"
+    event = await calendar.get_event(visit.appointment_id.hex)
+    assert event.start == slot_datetime(VISIT_DATE, time(9))
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_019_known_name_reaches_summary_without_extra_question(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker)
+    await complete_schedule_until_confirmation(sessionmaker, classifier, prefix="wire.019")
+
+    conversation = await conversation_snapshot(sessionmaker)
+    async with sessionmaker() as session:
+        outbox_count = await session.scalar(select(func.count()).select_from(Outbox))
+    assert conversation.state == ConversationState.APPOINTMENT_PENDING_CONFIRMATION
+    assert conversation.pending_action == "CONFIRM_APPOINTMENT"
+    assert conversation.last_question_code == "RESP-VISIT-CONFIRM-001"
+    assert "return_to" not in conversation.visit_draft
+    assert outbox_count == 6
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_020_nonempty_unusual_name_uses_contextual_name_capture(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker, full_name=None)
+    await complete_schedule_until_confirmation(sessionmaker, classifier, prefix="wire.020")
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.020.name",
+        text="X Æ A-12",
+        result=classification("UNKNOWN"),
+    )
+
+    conversation = await conversation_snapshot(sessionmaker)
+    async with sessionmaker() as session:
+        customer = await session.scalar(select(Customer))
+    assert customer is not None
+    assert customer.full_name == "X Æ A-12"
+    assert conversation.state == ConversationState.APPOINTMENT_PENDING_CONFIRMATION
+    assert conversation.pending_action == "CONFIRM_APPOINTMENT"
+    assert conversation.last_question_code == "RESP-VISIT-CONFIRM-001"
