@@ -166,6 +166,8 @@ async def seed_customer(
 
 async def seed_capture(
     sessionmaker: async_sessionmaker[AsyncSession],
+    *,
+    include_pending_budget: bool = False,
 ) -> tuple[Customer, Conversation, Lead, Event]:
     async with sessionmaker() as session:
         async with session.begin():
@@ -176,7 +178,7 @@ async def seed_capture(
                 customer_id=customer.id,
                 channel=Channel.WHATSAPP,
                 lead_status="QUALIFYING",
-                budget_data_status="PROVIDED",
+                budget_data_status=("NOT_ASKED" if include_pending_budget else "PROVIDED"),
             )
             session.add(lead)
             await session.flush()
@@ -195,9 +197,17 @@ async def seed_capture(
                 channel=Channel.WHATSAPP,
                 state=ConversationState.COLLECTING_EVENT_DATA,
                 active_lead_id=lead.lead_id,
-                pending_action="COLLECT_SERVICES",
-                pending_fields=["requested_services"],
-                last_question_code="RESP-EVENT-DATA-006",
+                pending_action=(
+                    "COLLECT_BUDGET" if include_pending_budget else "COLLECT_SERVICES"
+                ),
+                pending_fields=(
+                    ["estimated_budget", "requested_services"]
+                    if include_pending_budget
+                    else ["requested_services"]
+                ),
+                last_question_code=(
+                    "RESP-BUDGET-001" if include_pending_budget else "RESP-EVENT-DATA-006"
+                ),
             )
             session.add(conversation)
             await session.flush()
@@ -381,7 +391,7 @@ async def test_tc_wire_004_low_confidence_does_not_interrupt_capture(
     wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
 ) -> None:
     sessionmaker, _calendar, classifier = wiring_context
-    await seed_capture(sessionmaker)
+    await seed_capture(sessionmaker, include_pending_budget=True)
     await send_turn(
         sessionmaker,
         classifier,
@@ -391,9 +401,14 @@ async def test_tc_wire_004_low_confidence_does_not_interrupt_capture(
     )
 
     conversation = await conversation_snapshot(sessionmaker)
+    async with sessionmaker() as session:
+        appointment_count = await session.scalar(select(func.count()).select_from(Appointment))
     assert conversation.state == ConversationState.COLLECTING_EVENT_DATA
     assert conversation.visit_draft is None
-    assert conversation.pending_action == "COLLECT_SERVICES"
+    assert appointment_count == 0
+    assert (
+        ConversationState(conversation.state) not in orchestrator_module.APPOINTMENT_FLOW_STATES
+    )
 
 
 @pytest.mark.asyncio
