@@ -421,6 +421,10 @@ class VisitSchedulingService:
             state=ConversationState.APPOINTMENT_CONFIRMED,
             appointment_id=appointment_id,
             external_calendar_id=event_id,
+            variables={
+                "visit_date": format_date_natural(visit_date),
+                "visit_time": _format_visit_time(visit_time),
+            },
         )
 
     async def retry_confirmation_message(self, appointment_id: UUID) -> VisitServiceResult:
@@ -550,7 +554,12 @@ class VisitSchedulingService:
 
         return VisitServiceResult(
             response_code="RESP-RESCHEDULE-004",
+            state=ConversationState.APPOINTMENT_CONFIRMED,
             appointment_id=appointment_id,
+            variables={
+                "new_visit_date": format_date_natural(new_date),
+                "new_visit_time": _format_visit_time(new_time),
+            },
         )
 
     async def request_cancellation(self, customer_id: int) -> VisitServiceResult:
