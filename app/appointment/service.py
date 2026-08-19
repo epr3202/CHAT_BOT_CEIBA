@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -27,12 +30,53 @@ from app.scheduling.availability import AvailabilityService, slot_datetime
 BOGOTA = ZoneInfo("America/Bogota")
 DEFAULT_REMINDER_SEND_TIME = time(9)
 
+VisitDateInterpretation = Literal["EXACTA", "RELATIVA", "NO_INTERPRETABLE"]
+VisitTimeInterpretation = Literal[
+    "OFFERED_SLOT",
+    "OUTSIDE_OFFER",
+    "NO_INTERPRETABLE",
+    "OUT_OF_HOURS",
+]
+
+SPANISH_MONTHS = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+SPANISH_WEEKDAYS = {
+    "lunes": 0,
+    "martes": 1,
+    "miercoles": 2,
+    "jueves": 3,
+    "viernes": 4,
+    "sabado": 5,
+    "domingo": 6,
+}
+SPANISH_HOURS = {
+    "dos": 2,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+    "once": 11,
+}
+
 
 @dataclass(frozen=True)
 class VisitDateTextResult:
     resolved_date: date | None
     needs_confirmation: bool
     next_state: ConversationState
+    interpretation: VisitDateInterpretation = "NO_INTERPRETABLE"
 
 
 @dataclass(frozen=True)
@@ -40,6 +84,7 @@ class VisitTimeResult:
     accepted: bool
     preferred_visit_time: time | None = None
     response_code: str | None = None
+    interpretation: VisitTimeInterpretation = "NO_INTERPRETABLE"
 
 
 @dataclass(frozen=True)
@@ -70,34 +115,156 @@ def resolve_visit_date_text(
     today: date,
     require_absolute_confirmation: bool,
 ) -> VisitDateTextResult:
-    normalized = message_text.strip().casefold()
-    if "próximo sábado" in normalized or "proximo sabado" in normalized:
-        days_until_saturday = (5 - today.weekday()) % 7
-        if days_until_saturday == 0:
-            days_until_saturday = 7
-        resolved = today + timedelta(days=days_until_saturday)
+    normalized = _normalize_spanish_text(message_text)
+    relative = _resolve_relative_visit_date(normalized, today)
+    if relative is not None:
         return VisitDateTextResult(
-            resolved,
+            relative,
             needs_confirmation=require_absolute_confirmation,
             next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+            interpretation="RELATIVA",
         )
+
+    absolute = _resolve_absolute_visit_date(normalized, today)
+    if absolute is not None:
+        return VisitDateTextResult(
+            absolute,
+            needs_confirmation=False,
+            next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+            interpretation="EXACTA",
+        )
+
     return VisitDateTextResult(
         None,
-        needs_confirmation=True,
+        needs_confirmation=False,
         next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+        interpretation="NO_INTERPRETABLE",
     )
 
 
 def interpret_visit_time(message_text: str, offered_slots: list[time]) -> VisitTimeResult:
-    normalized = message_text.strip().casefold()
-    if "2" in normalized and ("tarde" in normalized or "pm" in normalized or "p. m." in normalized):
-        return VisitTimeResult(False, response_code="RESP-VISIT-TIME-002")
+    normalized = _normalize_spanish_text(message_text)
+    candidate = _extract_visit_time(normalized)
+    if candidate is None:
+        return VisitTimeResult(
+            False,
+            response_code="RESP-VISIT-TIME-003",
+            interpretation="NO_INTERPRETABLE",
+        )
 
-    for candidate in offered_slots:
-        hour_text = str(candidate.hour)
-        if hour_text in normalized:
-            return VisitTimeResult(True, preferred_visit_time=candidate)
-    return VisitTimeResult(False, response_code="RESP-VISIT-TIME-003")
+    allowed_times = {time(8), time(9), time(10), time(11)}
+    if candidate not in allowed_times:
+        return VisitTimeResult(
+            False,
+            preferred_visit_time=candidate,
+            response_code="RESP-VISIT-TIME-002",
+            interpretation="OUT_OF_HOURS",
+        )
+
+    if candidate not in set(offered_slots):
+        return VisitTimeResult(
+            False,
+            preferred_visit_time=candidate,
+            response_code="RESP-VISIT-TIME-004",
+            interpretation="OUTSIDE_OFFER",
+        )
+
+    return VisitTimeResult(
+        True,
+        preferred_visit_time=candidate,
+        interpretation="OFFERED_SLOT",
+    )
+
+
+def _normalize_spanish_text(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value.strip().casefold())
+    return "".join(character for character in decomposed if not unicodedata.combining(character))
+
+
+def _resolve_relative_visit_date(normalized: str, today: date) -> date | None:
+    if re.search(r"\bpasado\s+manana\b", normalized):
+        return today + timedelta(days=2)
+    if re.search(r"\bmanana\b", normalized):
+        return today + timedelta(days=1)
+    if re.search(r"\bhoy\b", normalized):
+        return today
+
+    for weekday_name, weekday in SPANISH_WEEKDAYS.items():
+        if not re.search(rf"\b(?:(?:el|este|proximo)\s+)?{weekday_name}\b", normalized):
+            continue
+        days_until = (weekday - today.weekday()) % 7
+        if days_until == 0:
+            days_until = 7
+        return today + timedelta(days=days_until)
+    return None
+
+
+def _resolve_absolute_visit_date(normalized: str, today: date) -> date | None:
+    numeric = re.search(r"\b(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{2,4}))?\b", normalized)
+    if numeric is not None:
+        day_value = int(numeric.group(1))
+        month_value = int(numeric.group(2))
+        year_text = numeric.group(3)
+        year_value = int(year_text) if year_text else None
+        if year_value is not None and year_value < 100:
+            year_value += 2000
+        return _future_date(day_value, month_value, year_value, today)
+
+    month_pattern = "|".join(SPANISH_MONTHS)
+    textual = re.search(
+        rf"\b(\d{{1,2}})\s+(?:de\s+)?({month_pattern})(?:\s+de\s+(\d{{4}}))?\b",
+        normalized,
+    )
+    if textual is None:
+        return None
+    return _future_date(
+        int(textual.group(1)),
+        SPANISH_MONTHS[textual.group(2)],
+        int(textual.group(3)) if textual.group(3) else None,
+        today,
+    )
+
+
+def _future_date(
+    day_value: int,
+    month_value: int,
+    year_value: int | None,
+    today: date,
+) -> date | None:
+    inferred_year = year_value or today.year
+    try:
+        candidate = date(inferred_year, month_value, day_value)
+    except ValueError:
+        return None
+    if year_value is not None:
+        return candidate if candidate >= today else None
+    if candidate < today:
+        try:
+            return date(today.year + 1, month_value, day_value)
+        except ValueError:
+            return None
+    return candidate
+
+
+def _extract_visit_time(normalized: str) -> time | None:
+    numeric = re.search(r"\b(?:a\s+las?\s+)?(\d{1,2})(?::(\d{2}))?\b", normalized)
+    if numeric is not None:
+        hour_value = int(numeric.group(1))
+        minute_value = int(numeric.group(2) or 0)
+        is_afternoon = any(token in normalized for token in ("tarde", "pm", "p. m."))
+        if is_afternoon and 1 <= hour_value < 12:
+            hour_value += 12
+        try:
+            return time(hour_value, minute_value)
+        except ValueError:
+            return None
+
+    for word, hour_value in SPANISH_HOURS.items():
+        if re.search(rf"\b{word}\b", normalized):
+            if "tarde" in normalized and hour_value < 12:
+                hour_value += 12
+            return time(hour_value)
+    return None
 
 
 def validate_visit_attendees(
