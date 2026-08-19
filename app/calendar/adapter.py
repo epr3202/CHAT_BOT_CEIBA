@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from functools import lru_cache
 from typing import Protocol
 
 from app.config.settings import Settings
@@ -176,20 +177,33 @@ class FakeCalendarAdapter:
 
 
 def get_calendar_adapter(settings: Settings) -> CalendarAdapter:
-    if settings.calendar_adapter == "fake":
+    return _calendar_adapter_for_configuration(
+        settings.calendar_adapter,
+        settings.google_calendar_id,
+        settings.google_service_account_file,
+    )
+
+
+@lru_cache(maxsize=8)
+def _calendar_adapter_for_configuration(
+    adapter_name: str,
+    google_calendar_id: str,
+    google_service_account_file: str,
+) -> CalendarAdapter:
+    if adapter_name == "fake":
         return FakeCalendarAdapter()
-    if settings.calendar_adapter == "google":
-        if not settings.google_calendar_id.strip():
+    if adapter_name == "google":
+        if not google_calendar_id.strip():
             raise ValueError("Missing required setting: GOOGLE_CALENDAR_ID")
-        if not settings.google_service_account_file.strip():
+        if not google_service_account_file.strip():
             raise ValueError("Missing required setting: GOOGLE_SERVICE_ACCOUNT_FILE")
         from app.calendar.google_adapter import GoogleCalendarAdapter
 
         return GoogleCalendarAdapter(
-            calendar_id=settings.google_calendar_id,
-            service_account_file=settings.google_service_account_file,
+            calendar_id=google_calendar_id,
+            service_account_file=google_service_account_file,
         )
-    raise ValueError(f"Unsupported calendar adapter: {settings.calendar_adapter}")
+    raise ValueError(f"Unsupported calendar adapter: {adapter_name}")
 
 
 def _interval_touches_date(interval: BusyInterval, target_date: date) -> bool:
