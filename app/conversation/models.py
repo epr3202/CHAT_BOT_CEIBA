@@ -65,6 +65,7 @@ class Conversation(Base):
     pending_action: Mapped[str | None] = mapped_column(String(128), nullable=True)
     pending_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     pending_confirmation: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    visit_draft: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     last_question_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     active_lead_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("lead.lead_id"), index=True, nullable=True
