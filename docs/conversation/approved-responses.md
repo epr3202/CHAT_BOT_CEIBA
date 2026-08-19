@@ -2675,7 +2675,7 @@ El sistema deberá medir:
 
 ## RESP-CATALOG-001 — Caption de catálogo por tipo de evento
 
-- **Status:** DRAFT
+- **Status:** APPROVED
 - **Pregunta/resumen:** Caption para envío de catálogo PDF
 - **Variables requeridas:** event_type
 - **Respuesta aprobada:**
@@ -2684,7 +2684,7 @@ El sistema deberá medir:
 
 ## RESP-CATALOG-002 — Solicitud de catálogo sin tipo de evento
 
-- **Status:** DRAFT
+- **Status:** APPROVED
 - **Pregunta/resumen:** Pregunta tipo de evento antes de enviar catálogo
 - **Variables requeridas:** Ninguna
 - **Respuesta aprobada:**
@@ -2693,7 +2693,7 @@ El sistema deberá medir:
 
 ## RESP-CATALOG-003 — Catálogo no disponible para el tipo
 
-- **Status:** DRAFT
+- **Status:** APPROVED
 - **Pregunta/resumen:** Catálogo no disponible
 - **Variables requeridas:** Ninguna
 - **Respuesta aprobada:**
