@@ -297,3 +297,25 @@ suite en rojo antes de implementar; ningún caso verde prematuro.
 
 Reporte final: agrega a lo original el resultado de ambas fases y el estado del
 CI en el PR.
+
+## Enmienda A7-bis — Interpretación determinista antes de intenciones de visita
+
+Dentro de `APPOINTMENT_FLOW_STATES`, el intento de interpretación determinista
+del mensaje según el estado se evalúa antes que `VISIT_INTENTS`:
+
+- En `WAITING_FOR_APPOINTMENT_DATE`, una interpretación `EXACTA` o `RELATIVA`
+  se despacha al handler de fecha e ignora la intención clasificada. Solo con
+  `NO_INTERPRETABLE` aplican `SCHEDULE_VISIT`, `CANCEL_VISIT` o
+  `RESCHEDULE_VISIT`.
+- En `WAITING_FOR_APPOINTMENT_SELECTION`, cualquier interpretación de hora
+  distinta de `NO_INTERPRETABLE` se despacha al handler de selección e ignora
+  la intención clasificada. Solo si la hora no es interpretable aplican las
+  intenciones de visita.
+- En `APPOINTMENT_PENDING_CONFIRMATION`, la interpretación contextual de sí/no
+  se despacha al handler de confirmación antes que las intenciones de visita.
+  Solo si el mensaje no expresa confirmación ni rechazo aplican las intenciones
+  de visita.
+
+Las intenciones sensibles conservan precedencia absoluta en el routing, fuera
+del despachador de estados de agenda. A7 continúa vigente cuando la
+interpretación determinista correspondiente falla.
