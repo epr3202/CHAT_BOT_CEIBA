@@ -921,8 +921,70 @@ async def handle_waiting_for_appointment_selection(
         )
         return
 
+    if pending_action == "COLLECT_CUSTOMER_NAME":
+        await apply_full_name(
+            session,
+            conversation,
+            orchestration_input.customer,
+            direct_customer_name_entity(classification, orchestration_input.message_text),
+            orchestration_input.request_id,
+        )
+        if not (orchestration_input.customer.full_name or "").strip():
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                QUESTION_CODE_BY_ACTION["COLLECT_CUSTOMER_NAME"],
+                {},
+            )
+            return
+        draft.pop("return_to", None)
+        conversation.visit_draft = draft
+        await prepare_visit_confirmation(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
     draft["visit_reason"] = normalize_visit_reason(orchestration_input.message_text)
     conversation.visit_draft = draft
+    if not (orchestration_input.customer.full_name or "").strip():
+        draft["return_to"] = "VISIT_CONFIRMATION_SUMMARY"
+        conversation.visit_draft = draft
+        set_pending_action(conversation, "COLLECT_CUSTOMER_NAME")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            QUESTION_CODE_BY_ACTION["COLLECT_CUSTOMER_NAME"],
+            {},
+        )
+        return
+    await prepare_visit_confirmation(
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
+    )
+
+
+async def prepare_visit_confirmation(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
     service = visit_scheduling_service(settings, knowledge_sessionmaker)
     result = await service.prepare_confirmation_summary(
         conversation_id=conversation.id,
@@ -1441,6 +1503,33 @@ def normalize_visit_reason(message_text: str) -> str:
     if normalized.casefold().startswith("para "):
         return normalized[5:].strip()
     return normalized
+
+
+def direct_customer_name_entity(
+    classification: IntentClassification,
+    message_text: str,
+) -> ExtractedEntity:
+    extracted_name = next(
+        (
+            entity
+            for entity in normalized_entities(classification)
+            if entity.entity == "full_name"
+        ),
+        None,
+    )
+    raw_value = extracted_name.raw_value if extracted_name is not None else message_text
+    normalized_value = (
+        extracted_name.normalized_value if extracted_name is not None else message_text
+    )
+    return ExtractedEntity(
+        entity="full_name",
+        raw_value=raw_value,
+        normalized_value=normalized_value,
+        quality_status="PROVIDED",
+        confidence=1.0,
+        needs_confirmation=False,
+        validation_errors=[],
+    )
 
 
 async def handle_greeting(
