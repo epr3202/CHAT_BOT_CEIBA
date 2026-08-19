@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -12,7 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.errors import AIErrorReason
 from app.ai.schemas import ExtractedEntity, IntentClassification
+from app.appointment.service import (
+    VisitSchedulingService,
+    VisitServiceResult,
+    interpret_visit_time,
+    resolve_visit_date_text,
+    validate_visit_attendees,
+)
 from app.audit.models import AuditEvent
+from app.calendar.adapter import get_calendar_adapter
 from app.catalog.service import (
     CatalogCaptionTooLong,
     enqueue_proactive_catalogs_for_event_type,
@@ -52,6 +62,7 @@ from app.orchestrator.slot_filling import (
     select_next_question,
 )
 from app.quote.models import QuoteRequest
+from app.scheduling.availability import AvailabilityService
 
 logger = structlog.get_logger(__name__)
 
@@ -64,10 +75,13 @@ SENSITIVE_HANDOFF_INTENTS = {
     "EVENT_CANCELLATION",
 }
 TRANSIENT_UNSUPPORTED_INTENTS = {
-    "SCHEDULE_VISIT",
-    "RESCHEDULE_VISIT",
-    "CANCEL_VISIT",
     "RESERVATION_INFORMATION",
+}
+VISIT_INTENTS = {"SCHEDULE_VISIT", "RESCHEDULE_VISIT", "CANCEL_VISIT"}
+APPOINTMENT_FLOW_STATES = {
+    ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+    ConversationState.WAITING_FOR_APPOINTMENT_SELECTION,
+    ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
 }
 COLLECTION_INTENTS = {"EVENT_INFORMATION", "QUOTE_REQUEST", "MODIFY_EVENT_DATA"}
 CRITICAL_STATES = {
@@ -312,6 +326,62 @@ async def route_classification(
         )
         return
 
+    if intent in SENSITIVE_HANDOFF_INTENTS:
+        await create_handoff_and_pause(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            reason=classification.handoff_reason or HANDOFF_REASON_BY_INTENT[intent],
+            priority="CRITICAL" if intent == "EMERGENCY" else classification.priority,
+        )
+        return
+
+    if state in APPOINTMENT_FLOW_STATES:
+        await handle_appointment_flow_state(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
+    if conversation.pending_action == "CONFIRM_VISIT_CANCELLATION":
+        await handle_visit_cancellation_confirmation(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
+    if (
+        state == ConversationState.COLLECTING_EVENT_DATA
+        and intent in VISIT_INTENTS
+        and classification.confidence < settings.ai_confidence_safe
+    ):
+        await handle_collecting_event_data(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
+    if intent in VISIT_INTENTS:
+        await handle_visit_intent(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
     if intent == "GREETING":
         await handle_greeting(session, knowledge_sessionmaker, orchestration_input, classification)
         return
@@ -369,18 +439,6 @@ async def route_classification(
         )
         return
 
-    if intent in SENSITIVE_HANDOFF_INTENTS:
-        await create_handoff_and_pause(
-            session,
-            settings,
-            knowledge_sessionmaker,
-            orchestration_input,
-            classification,
-            reason=classification.handoff_reason or HANDOFF_REASON_BY_INTENT[intent],
-            priority="CRITICAL" if intent == "EMERGENCY" else classification.priority,
-        )
-        return
-
     if state == ConversationState.QUOTE_REQUEST_READY:
         await handle_quote_request_ready(
             session,
@@ -421,6 +479,920 @@ async def route_classification(
         orchestration_input,
         classification,
     )
+
+
+async def handle_visit_intent(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    intent = classification.primary_intent
+    if intent == "SCHEDULE_VISIT":
+        await start_visit_scheduling(
+            session,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
+    service = visit_scheduling_service(settings, knowledge_sessionmaker)
+    if intent == "RESCHEDULE_VISIT":
+        result = await service.request_reschedule(orchestration_input.customer.id)
+        if result.needs_handoff:
+            await create_handoff_and_pause(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
+                reason="OTHER",
+                priority=classification.priority,
+                detail="Visit reschedule requires appointment identification",
+                response_code_override=result.response_code,
+            )
+            return
+        current_draft = dict(orchestration_input.conversation.visit_draft or {})
+        resume = current_draft.get("resume") or capture_resume_marker(
+            orchestration_input.conversation
+        )
+        orchestration_input.conversation.visit_draft = {
+            "mode": "RESCHEDULE",
+            "appointment_id": str(result.appointment_id),
+            "resume": resume,
+        }
+        await move_to_appointment_date(session, orchestration_input.conversation)
+        set_pending_action(orchestration_input.conversation, "SELECT_VISIT_DATE")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            orchestration_input.conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            result.response_code,
+            result.variables,
+        )
+        persist_classification_context(orchestration_input.conversation, classification)
+        return
+
+    result = await service.request_cancellation(orchestration_input.customer.id)
+    if result.needs_handoff:
+        await create_handoff_and_pause(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            reason="CANCELLATION",
+            priority=classification.priority,
+            detail="Visit cancellation requires appointment identification",
+            response_code_override=result.response_code,
+        )
+        return
+    orchestration_input.conversation.visit_draft = {
+        "mode": "CANCEL",
+        "appointment_id": str(result.appointment_id),
+        "response_variables": result.variables,
+        "resume": capture_resume_marker(orchestration_input.conversation),
+    }
+    set_pending_action(orchestration_input.conversation, "CONFIRM_VISIT_CANCELLATION")
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        orchestration_input.conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        result.response_code,
+        result.variables,
+    )
+    persist_classification_context(orchestration_input.conversation, classification)
+
+
+async def start_visit_scheduling(
+    session: AsyncSession,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+    *,
+    restart: bool = False,
+) -> None:
+    conversation = orchestration_input.conversation
+    existing_draft = dict(conversation.visit_draft or {})
+    resume = existing_draft.get("resume") or capture_resume_marker(conversation)
+    conversation.visit_draft = {"mode": "SCHEDULE", "resume": resume}
+    await move_to_appointment_date(session, conversation)
+    set_pending_action(conversation, "SELECT_VISIT_DATE")
+    if not restart:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-VISIT-002",
+            {},
+        )
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        "RESP-VISIT-003",
+        {},
+    )
+    persist_classification_context(conversation, classification)
+    conversation.failed_understanding_count = 0
+
+
+async def handle_appointment_flow_state(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    intent = classification.primary_intent
+    if intent == "SCHEDULE_VISIT":
+        await start_visit_scheduling(
+            session,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            restart=True,
+        )
+        return
+    if intent == "CANCEL_VISIT":
+        await cancel_visit_attempt(
+            session,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+    if intent == "RESCHEDULE_VISIT":
+        await handle_visit_intent(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+
+    state = ConversationState(orchestration_input.conversation.state)
+    if state == ConversationState.WAITING_FOR_APPOINTMENT_DATE:
+        await handle_waiting_for_appointment_date(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+    if state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION:
+        await handle_waiting_for_appointment_selection(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
+    await handle_appointment_confirmation(
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
+    )
+
+
+async def handle_waiting_for_appointment_date(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    decision = resolve_visit_date_text(
+        orchestration_input.message_text,
+        today=current_bogota_datetime().date(),
+        require_absolute_confirmation=True,
+    )
+    if decision.interpretation == "RELATIVA":
+        # INTERIM(states.md): pending approved absolute-date confirmation copy.
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-VISIT-003",
+            {},
+        )
+        return
+    if decision.resolved_date is None:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-VISIT-003",
+            {},
+        )
+        return
+
+    availability = await availability_service(settings, knowledge_sessionmaker).available_slots(
+        decision.resolved_date,
+        today=current_bogota_datetime().date(),
+        request_id=orchestration_input.request_id,
+    )
+    if availability.requires_review:
+        await create_handoff_and_pause(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            reason="SYSTEM_ERROR",
+            priority="URGENT",
+            detail="Calendar unavailable while offering visit slots",
+            response_code_override=availability.response_code,
+        )
+        return
+    if not availability.slots:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            availability.response_code,
+            {},
+        )
+        return
+
+    draft = require_visit_draft(conversation)
+    draft["visit_date"] = decision.resolved_date.isoformat()
+    draft["offered_slots"] = [slot.start_time.strftime("%H:%M") for slot in availability.slots]
+    conversation.visit_draft = draft
+    await transition_conversation(
+        session,
+        conversation,
+        ConversationState.WAITING_FOR_APPOINTMENT_SELECTION,
+        actor=SYSTEM_ACTOR,
+        reason="Validated visit date has available slots",
+    )
+    set_pending_action(conversation, "SELECT_VISIT_TIME")
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        availability.response_code,
+        {
+            "visit_date": format_date_natural(decision.resolved_date),
+            "appointment_options": format_appointment_options(
+                [slot.start_time for slot in availability.slots]
+            ),
+        },
+    )
+    persist_classification_context(conversation, classification)
+
+
+async def handle_waiting_for_appointment_selection(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
+    pending_action = conversation.pending_action
+    if pending_action == "SELECT_VISIT_TIME":
+        offered_slots = [time.fromisoformat(value) for value in draft.get("offered_slots", [])]
+        result = interpret_visit_time(orchestration_input.message_text, offered_slots)
+        if not result.accepted or result.preferred_visit_time is None:
+            variables = (
+                {"appointment_options": format_appointment_options(offered_slots)}
+                if result.response_code == "RESP-VISIT-TIME-003"
+                else {}
+            )
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                result.response_code or "RESP-VISIT-TIME-003",
+                variables,
+            )
+            return
+        draft["visit_time"] = result.preferred_visit_time.strftime("%H:%M")
+        conversation.visit_draft = draft
+        if draft.get("mode") == "RESCHEDULE":
+            await prepare_reschedule_confirmation(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
+            )
+            return
+        set_pending_action(conversation, "COLLECT_VISIT_ATTENDEES")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-VISIT-DATA-001",
+            {},
+        )
+        return
+
+    if pending_action == "COLLECT_VISIT_ATTENDEES":
+        attendee_count = parse_attendee_count(orchestration_input.message_text)
+        if attendee_count is None:
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                "RESP-VISIT-DATA-001",
+                {},
+            )
+            return
+        attendees = validate_visit_attendees(
+            attendee_count,
+            exception_requested=requests_attendee_exception(orchestration_input.message_text),
+        )
+        if not attendees.accepted:
+            if attendees.needs_handoff:
+                await create_handoff_and_pause(
+                    session,
+                    settings,
+                    knowledge_sessionmaker,
+                    orchestration_input,
+                    classification,
+                    reason="CAPACITY_REVIEW",
+                    priority=classification.priority,
+                    detail="Visit attendee exception requested",
+                    response_code_override=attendees.response_code,
+                )
+                return
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                attendees.response_code or "RESP-VISIT-DATA-002",
+                {},
+            )
+            return
+        draft["attendee_count"] = attendee_count
+        conversation.visit_draft = draft
+        set_pending_action(conversation, "COLLECT_VISIT_REASON")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-VISIT-DATA-003",
+            {},
+        )
+        return
+
+    draft["visit_reason"] = normalize_visit_reason(orchestration_input.message_text)
+    conversation.visit_draft = draft
+    service = visit_scheduling_service(settings, knowledge_sessionmaker)
+    result = await service.prepare_confirmation_summary(
+        conversation_id=conversation.id,
+        customer_name=orchestration_input.customer.full_name,
+        preferred_visit_date=date.fromisoformat(draft["visit_date"]),
+        preferred_visit_time=time.fromisoformat(draft["visit_time"]),
+        attendee_count=int(draft["attendee_count"]),
+        visit_reason=draft["visit_reason"],
+    )
+    if result.needs_handoff:
+        await create_handoff_and_pause(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            reason="SYSTEM_ERROR",
+            priority="URGENT",
+            detail="Required visit customer name is missing",
+            response_code_override=result.response_code,
+        )
+        return
+    await transition_conversation(
+        session,
+        conversation,
+        result.state or ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
+        actor=SYSTEM_ACTOR,
+        reason="Visit data ready for customer confirmation",
+    )
+    set_pending_action(conversation, "CONFIRM_APPOINTMENT")
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        result.response_code,
+        result.variables,
+    )
+
+
+async def prepare_reschedule_confirmation(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
+    service = visit_scheduling_service(settings, knowledge_sessionmaker)
+    result = await service.prepare_reschedule_summary(
+        appointment_id=UUID(draft["appointment_id"]),
+        new_date=date.fromisoformat(draft["visit_date"]),
+        new_time=time.fromisoformat(draft["visit_time"]),
+    )
+    await transition_conversation(
+        session,
+        conversation,
+        result.state or ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
+        actor=SYSTEM_ACTOR,
+        reason="Reschedule data ready for customer confirmation",
+    )
+    set_pending_action(conversation, "CONFIRM_RESCHEDULE")
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        result.response_code,
+        result.variables,
+    )
+    persist_classification_context(conversation, classification)
+
+
+async def handle_appointment_confirmation(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
+    if classification.primary_intent == "DENY":
+        # INTERIM(states.md): pending approved correction/cancellation copy.
+        draft.pop("visit_date", None)
+        draft.pop("visit_time", None)
+        draft.pop("offered_slots", None)
+        conversation.visit_draft = draft
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+            actor=SYSTEM_ACTOR,
+            reason="Customer denied appointment summary",
+        )
+        set_pending_action(conversation, "SELECT_VISIT_DATE")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-VISIT-003",
+            {},
+        )
+        return
+
+    if classification.primary_intent != "CONFIRM" and not is_affirmative(
+        orchestration_input.message_text
+    ):
+        await repeat_visit_confirmation(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+        )
+        return
+
+    service = visit_scheduling_service(settings, knowledge_sessionmaker)
+    if draft.get("mode") == "RESCHEDULE":
+        result = await service.reschedule_appointment(
+            appointment_id=UUID(draft["appointment_id"]),
+            new_date=date.fromisoformat(draft["visit_date"]),
+            new_time=time.fromisoformat(draft["visit_time"]),
+            actor="CUSTOMER",
+            now=current_bogota_datetime(),
+        )
+    else:
+        result = await service.confirm_appointment(
+            customer_id=orchestration_input.customer.id,
+            lead_id=conversation.active_lead_id,
+            conversation_id=conversation.id,
+            visit_date=date.fromisoformat(draft["visit_date"]),
+            visit_time=time.fromisoformat(draft["visit_time"]),
+            attendee_count=int(draft["attendee_count"]),
+            visit_reason=str(draft["visit_reason"]),
+            customer_confirmation=True,
+            now=current_bogota_datetime(),
+            request_id=orchestration_input.request_id,
+        )
+    await apply_visit_service_result(
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
+        result,
+    )
+
+
+async def repeat_visit_confirmation(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
+    service = visit_scheduling_service(settings, knowledge_sessionmaker)
+    if draft.get("mode") == "RESCHEDULE":
+        result = await service.prepare_reschedule_summary(
+            appointment_id=UUID(draft["appointment_id"]),
+            new_date=date.fromisoformat(draft["visit_date"]),
+            new_time=time.fromisoformat(draft["visit_time"]),
+        )
+    else:
+        result = await service.prepare_confirmation_summary(
+            conversation_id=conversation.id,
+            customer_name=orchestration_input.customer.full_name,
+            preferred_visit_date=date.fromisoformat(draft["visit_date"]),
+            preferred_visit_time=time.fromisoformat(draft["visit_time"]),
+            attendee_count=int(draft["attendee_count"]),
+            visit_reason=str(draft["visit_reason"]),
+        )
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        result.response_code,
+        result.variables,
+    )
+
+
+async def apply_visit_service_result(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+    result: VisitServiceResult,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
+    if result.needs_handoff:
+        await create_handoff_and_pause(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            reason="SYSTEM_ERROR",
+            priority="URGENT",
+            detail=f"Visit service requires review: {result.response_code}",
+            response_code_override=result.response_code,
+        )
+        return
+
+    target = result.state
+    if target is not None and conversation.state != target.value:
+        await transition_conversation(
+            session,
+            conversation,
+            target,
+            actor=SYSTEM_ACTOR,
+            reason=f"Visit service result {result.response_code}",
+        )
+    if result.response_code == "RESP-VISIT-CONFIRM-005":
+        set_pending_action(conversation, "SELECT_VISIT_TIME")
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        result.response_code,
+        result.variables,
+    )
+    if result.state != ConversationState.APPOINTMENT_CONFIRMED:
+        return
+
+    if draft.get("mode") == "SCHEDULE" and conversation.active_lead_id is not None:
+        lead = await session.get(Lead, conversation.active_lead_id)
+        if lead is not None:
+            lead.lead_status = "VISIT_SCHEDULED"
+    audit_domain_change(
+        session,
+        "VISIT_CONFIRMED" if draft.get("mode") == "SCHEDULE" else "VISIT_RESCHEDULED",
+        "appointment",
+        None,
+        {"appointment_id": str(result.appointment_id)},
+        result.response_code,
+        orchestration_input.request_id,
+    )
+    await clear_visit_draft_and_resume_capture(
+        session,
+        knowledge_sessionmaker,
+        orchestration_input,
+    )
+
+
+async def handle_visit_cancellation_confirmation(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
+    if draft.get("mode") != "CANCEL":
+        raise ValueError("Visit cancellation confirmation without cancellation draft")
+    if classification.primary_intent not in {"CONFIRM", "DENY"}:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-CANCEL-VISIT-001",
+            dict(draft.get("response_variables") or {}),
+        )
+        return
+
+    service = visit_scheduling_service(settings, knowledge_sessionmaker)
+    confirmed = classification.primary_intent == "CONFIRM"
+    result = await service.cancel_appointment(
+        appointment_id=UUID(draft["appointment_id"]),
+        customer_confirmation=confirmed,
+        reason="Solicitud del cliente",
+        now=current_bogota_datetime(),
+    )
+    if result.needs_handoff:
+        await create_handoff_and_pause(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            reason="CANCELLATION",
+            priority="URGENT",
+            detail=f"Visit cancellation requires review: {result.response_code}",
+            response_code_override=result.response_code,
+        )
+        return
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        result.response_code,
+        result.variables,
+    )
+    if confirmed and result.response_code == "RESP-CANCEL-VISIT-002":
+        audit_domain_change(
+            session,
+            "VISIT_CANCELLED",
+            "appointment",
+            None,
+            {"appointment_id": draft["appointment_id"]},
+            "Customer confirmed visit cancellation",
+            orchestration_input.request_id,
+        )
+        if conversation.state == ConversationState.APPOINTMENT_CONFIRMED.value:
+            await transition_conversation(
+                session,
+                conversation,
+                ConversationState.BOT_ACTIVE,
+                actor=SYSTEM_ACTOR,
+                reason="Confirmed visit was cancelled",
+            )
+    set_pending_action(conversation, None)
+    await clear_visit_draft_and_resume_capture(
+        session,
+        knowledge_sessionmaker,
+        orchestration_input,
+    )
+
+
+async def cancel_visit_attempt(
+    session: AsyncSession,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    persist_classification_context(orchestration_input.conversation, classification)
+    set_pending_action(orchestration_input.conversation, None)
+    await clear_visit_draft_and_resume_capture(
+        session,
+        knowledge_sessionmaker,
+        orchestration_input,
+        move_to_bot_when_no_resume=True,
+    )
+
+
+async def clear_visit_draft_and_resume_capture(
+    session: AsyncSession,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    *,
+    move_to_bot_when_no_resume: bool = False,
+) -> None:
+    conversation = orchestration_input.conversation
+    draft = dict(conversation.visit_draft or {})
+    resume = draft.get("resume")
+    conversation.visit_draft = None
+    if not isinstance(resume, dict):
+        if move_to_bot_when_no_resume and conversation.state != ConversationState.BOT_ACTIVE.value:
+            await transition_conversation(
+                session,
+                conversation,
+                ConversationState.BOT_ACTIVE,
+                actor=SYSTEM_ACTOR,
+                reason="Visit attempt cancelled",
+            )
+        return
+
+    if conversation.state != ConversationState.BOT_ACTIVE.value:
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.BOT_ACTIVE,
+            actor=SYSTEM_ACTOR,
+            reason="Visit flow completed before capture resumption",
+        )
+    await transition_conversation(
+        session,
+        conversation,
+        ConversationState.COLLECTING_EVENT_DATA,
+        actor=SYSTEM_ACTOR,
+        reason="Resume suspended event data capture",
+    )
+    lead = await active_lead(session, conversation)
+    event = await active_event(session, lead)
+    if lead is None or event is None:
+        set_pending_action(conversation, None)
+        return
+    progress = await capture_progress(
+        session,
+        orchestration_input.customer,
+        lead,
+        event,
+        conversation,
+    )
+    conversation.pending_fields = pending_fields_for(progress)
+    next_action = select_next_question(progress)
+    if next_action is None:
+        await transition_to_quote_request_ready(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            lead,
+            event,
+            orchestration_input.request_id,
+        )
+        return
+    set_pending_action(conversation, next_action)
+    await enqueue_template(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        orchestration_input.customer,
+        orchestration_input.inbound_message,
+        QUESTION_CODE_BY_ACTION[next_action],
+        {},
+    )
+
+
+async def move_to_appointment_date(
+    session: AsyncSession,
+    conversation: Conversation,
+) -> None:
+    state = ConversationState(conversation.state)
+    if state == ConversationState.NEW:
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.BOT_ACTIVE,
+            actor=SYSTEM_ACTOR,
+            reason="Visit request activates new conversation",
+        )
+        state = ConversationState.BOT_ACTIVE
+    if state != ConversationState.WAITING_FOR_APPOINTMENT_DATE:
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+            actor=SYSTEM_ACTOR,
+            reason="Start or restart visit date selection",
+        )
+
+
+def visit_scheduling_service(settings: Settings, sessionmaker: Any) -> VisitSchedulingService:
+    return VisitSchedulingService(
+        sessionmaker=sessionmaker,
+        calendar_adapter=get_calendar_adapter(settings),
+        freebusy_calendar_ids=freebusy_calendar_ids(settings),
+    )
+
+
+def availability_service(settings: Settings, sessionmaker: Any) -> AvailabilityService:
+    return AvailabilityService(
+        sessionmaker=sessionmaker,
+        calendar_adapter=get_calendar_adapter(settings),
+        freebusy_calendar_ids=freebusy_calendar_ids(settings),
+    )
+
+
+def freebusy_calendar_ids(settings: Settings) -> list[str]:
+    calendar_ids = [
+        value.strip()
+        for value in settings.google_freebusy_calendar_ids.split(",")
+        if value.strip()
+    ]
+    if settings.google_calendar_id.strip() and settings.google_calendar_id not in calendar_ids:
+        calendar_ids.append(settings.google_calendar_id)
+    return calendar_ids
+
+
+def current_bogota_datetime() -> datetime:
+    return datetime.now(ZoneInfo("America/Bogota"))
+
+
+def capture_resume_marker(conversation: Conversation) -> dict[str, str] | None:
+    if conversation.state != ConversationState.COLLECTING_EVENT_DATA.value:
+        return None
+    return {
+        "state": ConversationState.COLLECTING_EVENT_DATA.value,
+        "pending_action": conversation.pending_action or "",
+        "last_question_code": conversation.last_question_code or "",
+    }
+
+
+def require_visit_draft(conversation: Conversation) -> dict[str, Any]:
+    if not isinstance(conversation.visit_draft, dict):
+        raise ValueError("Appointment flow state requires visit_draft")
+    return dict(conversation.visit_draft)
+
+
+def format_appointment_options(slots: list[time]) -> str:
+    labels = [slot.strftime("%H:%M") for slot in slots]
+    if len(labels) < 2:
+        return labels[0] if labels else ""
+    return ", ".join(labels[:-1]) + f" y {labels[-1]}"
+
+
+def parse_attendee_count(message_text: str) -> int | None:
+    match = re.search(r"\b(\d+)\b", message_text)
+    return int(match.group(1)) if match is not None else None
+
+
+def requests_attendee_exception(message_text: str) -> bool:
+    normalized = message_text.casefold()
+    return any(token in normalized for token in ("excepción", "excepcion", "más", "mas"))
+
+
+def normalize_visit_reason(message_text: str) -> str:
+    normalized = message_text.strip()
+    if normalized.casefold().startswith("para "):
+        return normalized[5:].strip()
+    return normalized
 
 
 async def handle_greeting(
@@ -1746,6 +2718,7 @@ async def create_handoff_and_pause(
     response_code_override: str | None = None,
 ) -> None:
     conversation = orchestration_input.conversation
+    conversation.visit_draft = None
     _handoff, response_code = await create_handoff(
         session,
         conversation,
@@ -1861,6 +2834,9 @@ def is_action_allowed_for_slice(
     conversation: Conversation,
     classification: IntentClassification,
 ) -> bool:
+    state = ConversationState(conversation.state)
+    if state in APPOINTMENT_FLOW_STATES:
+        return True
     if classification.primary_intent in {"GREETING", "GENERAL_INFORMATION", "FAREWELL", "UNKNOWN"}:
         return True
     if classification.primary_intent in COLLECTION_INTENTS:
@@ -1875,6 +2851,15 @@ def is_action_allowed_for_slice(
             and conversation.pending_action.startswith("CONFIRM_")
             and conversation.last_question_code
         )
+    if classification.primary_intent in VISIT_INTENTS:
+        return state in {
+            ConversationState.NEW,
+            ConversationState.BOT_ACTIVE,
+            ConversationState.ANSWERING_INFORMATION,
+            ConversationState.COLLECTING_EVENT_DATA,
+            ConversationState.APPOINTMENT_CONFIRMED,
+            ConversationState.RETURNED_TO_BOT,
+        }
     if classification.primary_intent in SENSITIVE_HANDOFF_INTENTS | TRANSIENT_UNSUPPORTED_INTENTS:
         return (
             ConversationState.WAITING_FOR_HUMAN

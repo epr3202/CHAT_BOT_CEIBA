@@ -69,6 +69,7 @@ ALLOWED_TRANSITIONS: dict[ConversationState, frozenset[ConversationState]] = {
             ConversationState.WAITING_FOR_APPOINTMENT_DATE,
             ConversationState.ANSWERING_INFORMATION,
             ConversationState.WAITING_FOR_HUMAN,
+            ConversationState.BOT_ACTIVE,
         }
     ),
     ConversationState.APPOINTMENT_PENDING_CONFIRMATION: frozenset(
