@@ -480,6 +480,7 @@ async def test_tc_agd_023_resumen_previo_a_confirmacion() -> None:
     service = await visit_service(sessionmaker)
     result = await service.prepare_confirmation_summary(
         conversation_id=context.conversation_id,
+        customer_name="Natalia Pérez",
         preferred_visit_date=VALID_TUESDAY,
         preferred_visit_time=time(9),
         attendee_count=2,

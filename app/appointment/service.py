@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from uuid import UUID
@@ -24,6 +24,7 @@ from app.calendar.adapter import (
     CalendarUnavailableError,
     EventNotFoundError,
 )
+from app.conversation.presentation import format_date_natural
 from app.conversation.states import ConversationState
 from app.scheduling.availability import AvailabilityService, slot_datetime
 
@@ -100,6 +101,8 @@ class VisitServiceResult:
     state: ConversationState | None = None
     appointment_id: UUID | None = None
     external_calendar_id: str | None = None
+    variables: dict[str, str] = field(default_factory=dict)
+    needs_handoff: bool = False
 
 
 @dataclass(frozen=True)
@@ -297,14 +300,52 @@ class VisitSchedulingService:
         self,
         *,
         conversation_id: int,
+        customer_name: str | None,
         preferred_visit_date: date,
         preferred_visit_time: time,
         attendee_count: int,
-        visit_reason: str,
+        visit_reason: str | None,
+    ) -> VisitServiceResult:
+        if not customer_name or not customer_name.strip():
+            return VisitServiceResult(
+                response_code="RESP-VISIT-CONFIRM-006",
+                state=ConversationState.WAITING_FOR_HUMAN,
+                needs_handoff=True,
+            )
+
+        variables = {
+            "visit_date": format_date_natural(preferred_visit_date),
+            "visit_time": _format_visit_time(preferred_visit_time),
+            "visit_attendee_count": str(attendee_count),
+        }
+        normalized_reason = (visit_reason or "").strip()
+        if normalized_reason:
+            variables["event_type"] = normalized_reason
+        return VisitServiceResult(
+            response_code=(
+                "RESP-VISIT-CONFIRM-001"
+                if normalized_reason
+                else "RESP-VISIT-CONFIRM-002"
+            ),
+            state=ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
+            variables=variables,
+        )
+
+    async def prepare_reschedule_summary(
+        self,
+        *,
+        appointment_id: UUID,
+        new_date: date,
+        new_time: time,
     ) -> VisitServiceResult:
         return VisitServiceResult(
-            response_code="RESP-VISIT-CONFIRM-001",
+            response_code="RESP-RESCHEDULE-003",
             state=ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
+            appointment_id=appointment_id,
+            variables={
+                "new_visit_date": format_date_natural(new_date),
+                "new_visit_time": _format_visit_time(new_time),
+            },
         )
 
     async def confirm_appointment(
@@ -328,7 +369,14 @@ class VisitSchedulingService:
                 state=ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
             )
 
-        available = await self._is_slot_available(visit_date, visit_time, today=now.date())
+        try:
+            available = await self._is_slot_available(visit_date, visit_time, today=now.date())
+        except CalendarUnavailableError:
+            return VisitServiceResult(
+                response_code="RESP-CALENDAR-ERROR-001",
+                state=ConversationState.WAITING_FOR_HUMAN,
+                needs_handoff=True,
+            )
         if not available:
             return VisitServiceResult(
                 response_code="RESP-VISIT-CONFIRM-005",
@@ -364,6 +412,7 @@ class VisitSchedulingService:
                 response_code="RESP-CALENDAR-ERROR-002",
                 state=ConversationState.WAITING_FOR_HUMAN,
                 appointment_id=appointment_id,
+                needs_handoff=True,
             )
 
         await self._confirm_pending_appointment(appointment_id, event_id, visit_date)
@@ -418,13 +467,21 @@ class VisitSchedulingService:
     async def request_reschedule(self, customer_id: int) -> VisitServiceResult:
         appointments = await self._active_appointments_for_customer(customer_id)
         if len(appointments) == 1:
+            appointment = appointments[0]
             return VisitServiceResult(
                 response_code="RESP-RESCHEDULE-001",
-                appointment_id=appointments[0].appointment_id,
+                appointment_id=appointment.appointment_id,
+                variables=_current_appointment_variables(appointment),
             )
         if len(appointments) > 1:
-            return VisitServiceResult(response_code="RESP-RESCHEDULE-002")
-        return VisitServiceResult(response_code="RESP-RESCHEDULE-006")
+            return VisitServiceResult(
+                response_code="RESP-RESCHEDULE-002",
+                needs_handoff=True,
+            )
+        return VisitServiceResult(
+            response_code="RESP-RESCHEDULE-006",
+            needs_handoff=True,
+        )
 
     async def reschedule_appointment(
         self,
@@ -442,7 +499,14 @@ class VisitSchedulingService:
             previous_date = appointment.appointment_date
             previous_time = appointment.start_time
 
-        if not await self._is_slot_available(new_date, new_time, today=now.date()):
+        try:
+            available = await self._is_slot_available(new_date, new_time, today=now.date())
+        except CalendarUnavailableError:
+            return VisitServiceResult(
+                response_code="RESP-CALENDAR-ERROR-001",
+                needs_handoff=True,
+            )
+        if not available:
             return VisitServiceResult(response_code="RESP-VISIT-CONFIRM-005")
 
         try:
@@ -453,7 +517,10 @@ class VisitSchedulingService:
                 end=slot_datetime(new_date, calculate_visit_end_time(new_time)),
             )
         except CalendarUnavailableError:
-            return VisitServiceResult(response_code="RESP-CALENDAR-ERROR-003")
+            return VisitServiceResult(
+                response_code="RESP-CALENDAR-ERROR-003",
+                needs_handoff=True,
+            )
 
         try:
             async with self.sessionmaker() as session:
@@ -489,10 +556,20 @@ class VisitSchedulingService:
     async def request_cancellation(self, customer_id: int) -> VisitServiceResult:
         appointments = await self._active_appointments_for_customer(customer_id)
         if not appointments:
-            return VisitServiceResult(response_code="RESP-CANCEL-VISIT-005")
+            return VisitServiceResult(
+                response_code="RESP-CANCEL-VISIT-005",
+                needs_handoff=True,
+            )
+        if len(appointments) > 1:
+            return VisitServiceResult(
+                response_code="RESP-CANCEL-VISIT-005",
+                needs_handoff=True,
+            )
+        appointment = appointments[0]
         return VisitServiceResult(
             response_code="RESP-CANCEL-VISIT-001",
-            appointment_id=appointments[0].appointment_id,
+            appointment_id=appointment.appointment_id,
+            variables=_current_appointment_variables(appointment),
         )
 
     async def cancel_appointment(
@@ -526,6 +603,7 @@ class VisitSchedulingService:
                 return VisitServiceResult(
                     response_code="RESP-CALENDAR-ERROR-004",
                     appointment_id=appointment_id,
+                    needs_handoff=True,
                 )
 
         async with self.sessionmaker() as session:
@@ -533,7 +611,15 @@ class VisitSchedulingService:
                 appointment = await session.get(Appointment, appointment_id)
                 if appointment is None:
                     return VisitServiceResult(response_code="RESP-CANCEL-VISIT-005")
-                appointment.appointment_status = "CANCELLED"
+                visit_start = datetime.combine(
+                    appointment.appointment_date,
+                    appointment.start_time,
+                    tzinfo=BOGOTA,
+                )
+                remaining = visit_start - now.astimezone(BOGOTA)
+                appointment.appointment_status = (
+                    "LATE_CANCEL" if remaining < timedelta(hours=24) else "CANCELLED"
+                )
                 appointment.cancellation_reason = reason
                 appointment.cancelled_at = now.astimezone(UTC)
         return VisitServiceResult(
@@ -548,6 +634,8 @@ class VisitSchedulingService:
             freebusy_calendar_ids=self.freebusy_calendar_ids,
         )
         availability = await service.available_slots(visit_date, today=today)
+        if availability.requires_review:
+            raise CalendarUnavailableError("visit availability could not be verified")
         return visit_time in {slot.start_time for slot in availability.slots}
 
     async def _insert_pending_appointment(
@@ -661,3 +749,14 @@ class VisitSchedulingService:
         return datetime.combine(reminder_date, self.reminder_send_time, tzinfo=BOGOTA).astimezone(
             UTC
         )
+
+
+def _format_visit_time(value: time) -> str:
+    return value.strftime("%H:%M")
+
+
+def _current_appointment_variables(appointment: Appointment) -> dict[str, str]:
+    return {
+        "visit_date": format_date_natural(appointment.appointment_date),
+        "visit_time": _format_visit_time(appointment.start_time),
+    }
