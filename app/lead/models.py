@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, validates
 from app.channel.states import Channel
 from app.config.database import Base
 
-LEAD_STATUSES = ("NEW", "QUALIFYING", "QUALIFIED", "QUOTE_REQUESTED")
+LEAD_STATUSES = ("NEW", "QUALIFYING", "QUALIFIED", "QUOTE_REQUESTED", "VISIT_SCHEDULED")
 BUDGET_RANGES = ("NOT_PROVIDED", "BELOW_REFERENCE", "REFERENCE_RANGE", "PREMIUM", "CUSTOM")
 BUDGET_DATA_STATUSES = (
     "NOT_ASKED",
@@ -27,7 +27,9 @@ class Lead(Base):
     __tablename__ = "lead"
     __table_args__ = (
         CheckConstraint(
-            "lead_status IN ('NEW', 'QUALIFYING', 'QUALIFIED', 'QUOTE_REQUESTED')",
+            "lead_status IN ("
+            "'NEW', 'QUALIFYING', 'QUALIFIED', 'QUOTE_REQUESTED', 'VISIT_SCHEDULED'"
+            ")",
             name="ck_lead_status",
         ),
         CheckConstraint("channel IN ('WHATSAPP')", name="ck_lead_channel"),
