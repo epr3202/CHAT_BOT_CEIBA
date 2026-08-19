@@ -860,3 +860,63 @@ async def test_tc_wire_020_nonempty_unusual_name_uses_contextual_name_capture(
     assert conversation.state == ConversationState.APPOINTMENT_PENDING_CONFIRMATION
     assert conversation.pending_action == "CONFIRM_APPOINTMENT"
     assert conversation.last_question_code == "RESP-VISIT-CONFIRM-001"
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_021_pending_name_answer_precedes_schedule_intent(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker, full_name=None)
+    await complete_schedule_until_confirmation(sessionmaker, classifier, prefix="wire.021")
+
+    waiting_for_name = await conversation_snapshot(sessionmaker)
+    assert waiting_for_name.state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
+    assert waiting_for_name.pending_action == "COLLECT_CUSTOMER_NAME"
+
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.021.name",
+        text="Emerson",
+        result=classification("SCHEDULE_VISIT", confidence=0.90),
+    )
+
+    summary = await conversation_snapshot(sessionmaker)
+    async with sessionmaker() as session:
+        customer = await session.scalar(select(Customer))
+    assert customer is not None
+    assert customer.full_name == "Emerson"
+    assert summary.state == ConversationState.APPOINTMENT_PENDING_CONFIRMATION
+    assert summary.pending_action == "CONFIRM_APPOINTMENT"
+    assert summary.last_question_code == "RESP-VISIT-CONFIRM-001"
+    assert summary.visit_draft["visit_date"] == VISIT_DATE.isoformat()
+    assert summary.visit_draft["visit_time"] == "09:00"
+
+
+@pytest.mark.asyncio
+async def test_tc_wire_022_schedule_intent_without_direct_answer_still_restarts(
+    wiring_context: tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue],
+) -> None:
+    sessionmaker, _calendar, classifier = wiring_context
+    await seed_customer(sessionmaker)
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.022.schedule",
+        text="quiero agendar una visita",
+        result=classification("SCHEDULE_VISIT"),
+    )
+    await send_turn(
+        sessionmaker,
+        classifier,
+        message_id="wire.022.restart",
+        text="quiero empezar de nuevo",
+        result=classification("SCHEDULE_VISIT", confidence=0.90),
+    )
+
+    conversation = await conversation_snapshot(sessionmaker)
+    assert conversation.state == ConversationState.WAITING_FOR_APPOINTMENT_DATE
+    assert conversation.pending_action == "SELECT_VISIT_DATE"
+    assert conversation.last_question_code == "RESP-VISIT-003"
+    assert conversation.visit_draft == {"mode": "SCHEDULE", "resume": None}

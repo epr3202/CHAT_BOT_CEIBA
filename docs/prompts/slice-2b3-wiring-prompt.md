@@ -319,3 +319,20 @@ del mensaje según el estado se evalúa antes que `VISIT_INTENTS`:
 Las intenciones sensibles conservan precedencia absoluta en el routing, fuera
 del despachador de estados de agenda. A7 continúa vigente cuando la
 interpretación determinista correspondiente falla.
+
+## Enmienda A7-ter — Respuestas directas antes de intenciones de visita
+
+Dentro de la capa determinista de `handle_appointment_flow_state`, las
+respuestas a preguntas directas pendientes se despachan al handler del estado
+antes de evaluar `VISIT_INTENTS`. Esta precedencia aplica a:
+
+- `COLLECT_CUSTOMER_NAME`, porque la respuesta libre puede ser clasificada
+  erróneamente como una nueva solicitud de visita.
+- `COLLECT_VISIT_REASON`, porque también recibe texto libre y presenta el mismo
+  riesgo de clasificación contextual.
+- `COLLECT_VISIT_ATTENDEES`, porque su respuesta es directa y no debe depender
+  del efecto lateral de que un número sea interpretable por el parser de hora.
+
+Si no hay una de estas preguntas pendientes, A7 y A7-bis conservan su
+comportamiento. Las intenciones sensibles mantienen precedencia absoluta fuera
+del despachador de estados de agenda.
