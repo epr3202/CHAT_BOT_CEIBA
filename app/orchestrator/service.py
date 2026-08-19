@@ -83,6 +83,11 @@ APPOINTMENT_FLOW_STATES = {
     ConversationState.WAITING_FOR_APPOINTMENT_SELECTION,
     ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
 }
+DIRECT_APPOINTMENT_ANSWER_ACTIONS = {
+    "COLLECT_CUSTOMER_NAME",
+    "COLLECT_VISIT_ATTENDEES",
+    "COLLECT_VISIT_REASON",
+}
 COLLECTION_INTENTS = {"EVENT_INFORMATION", "QUOTE_REQUEST", "MODIFY_EVENT_DATA"}
 CRITICAL_STATES = {
     ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
@@ -615,6 +620,19 @@ async def handle_appointment_flow_state(
     classification: IntentClassification,
 ) -> None:
     state = ConversationState(orchestration_input.conversation.state)
+    if (
+        state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
+        and orchestration_input.conversation.pending_action
+        in DIRECT_APPOINTMENT_ANSWER_ACTIONS
+    ):
+        await handle_waiting_for_appointment_selection(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
     if state == ConversationState.WAITING_FOR_APPOINTMENT_DATE:
         date_decision = resolve_visit_date_text(
             orchestration_input.message_text,
