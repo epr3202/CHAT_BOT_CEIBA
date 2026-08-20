@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -70,6 +71,27 @@ def adapter(token_calls: list[str] | None = None) -> GoogleCalendarAdapter:
 
 def request_json(route: respx.Route) -> dict[str, object]:
     return json.loads(route.calls.last.request.content)
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+@respx.mock
+async def test_tc_gcal_description_is_sent_on_create_and_update(operation: str) -> None:
+    method = getattr(adapter(), f"{operation}_event")
+    assert "description" in inspect.signature(method).parameters
+    url = WRITE_EVENTS_URL if operation == "create" else EVENT_URL
+    route = (respx.post(url) if operation == "create" else respx.patch(url)).mock(
+        return_value=httpx.Response(200, json=event_payload())
+    )
+
+    await method(
+        EVENT_ID,
+        "Visita",
+        dt(2026, 8, 18, 9),
+        dt(2026, 8, 18, 9, 45),
+        description="Nombre del cliente: Natalia Pérez",
+    )
+
+    assert request_json(route)["description"] == "Nombre del cliente: Natalia Pérez"
 
 
 @respx.mock

@@ -30,6 +30,8 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/admin/logout",
         "/api/admin/agents",
         "/api/admin/agents/",
+        "/api/admin/catalogs",
+        "/api/admin/catalogs/",
         "/api/webhook/simulate",
         "/health",
         "/admin/handoffs",
@@ -40,6 +42,8 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/admin/logout",
         "/admin/agents",
         "/admin/agents/",
+        "/admin/catalogs",
+        "/admin/catalogs/",
         "/webhook",
     }
 
@@ -197,3 +201,43 @@ def test_frontend_persists_followup_bandeja_state() -> None:
     assert "function persistViewState" in app_js
     assert "localStorage.getItem(currentStatusStorageKey)" in app_js
     assert "localStorage.setItem(currentStatusStorageKey, state.currentStatus)" in app_js
+
+
+def test_frontend_has_catalogs_by_category_module_and_direct_upload() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
+    styles = FRONTEND.joinpath("styles.css").read_text(encoding="utf-8")
+    server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
+
+    assert 'id="catalogsModule"' in index_html
+    assert 'id="catalogUploadForm"' in index_html
+    assert 'id="catalogEventType"' in index_html
+    assert 'type="file"' in index_html
+    assert 'accept="application/pdf,.pdf"' in index_html
+    assert "/api/admin/catalogs/categories" in app_js
+    assert "/api/admin/catalogs/upload" in app_js
+    assert "FormData" in app_js
+    assert "Sin cobertura" in app_js
+    assert "Atención manual" in app_js
+    assert "function renderCatalogCategories" in app_js
+    assert 'path === "/api/admin/catalogs/categories"' in server
+    assert 'path === "/api/admin/catalogs/upload"' in server
+    assert ".catalog" in styles
+
+
+def test_compose_catalog_volume_is_rw_only_for_app() -> None:
+    compose = ROOT.joinpath("docker-compose.yml").read_text(encoding="utf-8")
+    app_section = compose[compose.index("  app:") : compose.index("  worker:")]
+    worker_section = compose[compose.index("  worker:") :]
+
+    assert "/opt/ceiba/catalogs:/data/catalogs:ro" not in app_section
+    assert "/opt/ceiba/catalogs:/data/catalogs" in app_section
+    assert "/opt/ceiba/catalogs:/data/catalogs:ro" in worker_section
+
+
+def test_frontend_proxy_preserves_binary_multipart_body() -> None:
+    server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
+
+    assert "async function readRawBody(request)" in server
+    assert "Buffer.concat(chunks)" in server
+    assert "await readRawBody(request)" in server

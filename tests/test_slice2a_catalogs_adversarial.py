@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -965,7 +966,7 @@ async def test_tc_cat_018c_unrenderable_template_chain_creates_handoff_and_logs(
     assert handoff is not None
     assert handoff.status == "PENDING"
     assert handoff.priority == "NORMAL"
-    assert handoff.reason == "OTHER"
+    assert handoff.reason == "TEMPLATE_UNAVAILABLE"
     assert "TEMPLATE_UNAVAILABLE" in handoff.summary
     assert "RESP-CATALOG-002" in handoff.summary
     assert audit is not None
@@ -1111,3 +1112,172 @@ async def test_tc_cat_022_admin_catalog_event_types_validate_send_mode_at_edge(
 
     assert response.status_code == 422
     assert response.json()["detail"] == {"invalid_send_modes": ["BOTH"]}
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_023_admin_upload_stores_hash_named_pdf_and_maps_category(
+    client_fixture: AsyncClient,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+) -> None:
+    await bootstrap_agent()
+    headers = await login_headers(client_fixture)
+    content = b"%PDF-1.4\nadmin upload gender reveal"
+    digest = hashlib.sha256(content).hexdigest()
+
+    response = await client_fixture.post(
+        "/admin/catalogs/upload",
+        headers=headers,
+        data={
+            "name": "Revelación de género",
+            "event_type": "GENDER_REVEAL",
+            "send_mode": "ON_REQUEST",
+        },
+        files={"file": ("catalogo original.pdf", content, "application/pdf")},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    expected_name = f"{digest[:16]}.pdf"
+    assert payload["file_path"] == expected_name
+    assert payload["file_hash"] == digest
+    assert payload["event_types"] == ["GENDER_REVEAL"]
+    assert payload["event_type_mappings"] == [
+        {"event_type": "GENDER_REVEAL", "send_mode": "ON_REQUEST"}
+    ]
+    assert tmp_path.joinpath(expected_name).read_bytes() == content
+    async with sessionmaker_fixture() as session:
+        asset_count = await session.scalar(select(func.count()).select_from(CatalogAsset))
+        mapping_count = await session.scalar(
+            select(func.count())
+            .select_from(CatalogEventTypeMap)
+            .where(CatalogEventTypeMap.event_type == "GENDER_REVEAL")
+        )
+    assert asset_count == 1
+    assert mapping_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("filename", "content", "mime_type"),
+    [
+        ("catalogo.txt", b"not a pdf", "text/plain"),
+        ("catalogo.pdf", b"not a pdf", "application/pdf"),
+        ("../escape.pdf", b"%PDF-1.4\nvalid", "application/pdf"),
+    ],
+)
+async def test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename(
+    client_fixture: AsyncClient,
+    tmp_path: Path,
+    filename: str,
+    content: bytes,
+    mime_type: str,
+) -> None:
+    await bootstrap_agent()
+    headers = await login_headers(client_fixture)
+
+    response = await client_fixture.post(
+        "/admin/catalogs/upload",
+        headers=headers,
+        data={"name": "Inválido", "event_type": "WEDDING", "send_mode": "ON_REQUEST"},
+        files={"file": (filename, content, mime_type)},
+    )
+
+    assert response.status_code == 422
+    assert list(tmp_path.glob("*.pdf")) == []
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_025_admin_upload_rejects_configured_oversize(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("CATALOG_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("CATALOG_MAX_FILE_MB", "0")
+    get_settings.cache_clear()
+    await bootstrap_agent()
+
+    async for client in app_client():
+        headers = await login_headers(client)
+        response = await client.post(
+            "/admin/catalogs/upload",
+            headers=headers,
+            data={"name": "Grande", "event_type": "WEDDING", "send_mode": "ON_REQUEST"},
+            files={"file": ("grande.pdf", b"%PDF-1.4\nx", "application/pdf")},
+        )
+        break
+
+    assert response.status_code == 422
+    assert list(tmp_path.glob("*.pdf")) == []
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_026_admin_upload_validation_leaves_no_orphan_file(
+    client_fixture: AsyncClient, tmp_path: Path
+) -> None:
+    await bootstrap_agent()
+    headers = await login_headers(client_fixture)
+
+    response = await client_fixture.post(
+        "/admin/catalogs/upload",
+        headers=headers,
+        data={"name": "Inválido", "event_type": "NOT_AN_EVENT", "send_mode": "ON_REQUEST"},
+        files={"file": ("valido.pdf", b"%PDF-1.4\nvalid", "application/pdf")},
+    )
+
+    assert response.status_code == 422
+    assert list(tmp_path.glob("*.pdf")) == []
+
+
+@pytest.mark.asyncio
+async def test_tc_cat_027_admin_category_listing_has_all_17_and_correct_coverage(
+    client_fixture: AsyncClient,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+) -> None:
+    await bootstrap_agent()
+    headers = await login_headers(client_fixture)
+    await seed_catalog_asset(
+        sessionmaker_fixture, pdf_file(tmp_path, "bodas.pdf"), event_type="WEDDING"
+    )
+    await seed_catalog_asset(
+        sessionmaker_fixture,
+        pdf_file(tmp_path, "cumpleanos.pdf"),
+        event_type="BIRTHDAY",
+        active=False,
+    )
+
+    response = await client_fixture.get("/admin/catalogs/categories", headers=headers)
+
+    assert response.status_code == 200, response.text
+    categories = response.json()
+    assert len(categories) == 17
+    assert {item["event_type"] for item in categories} == {
+        "WEDDING",
+        "CIVIL_WEDDING",
+        "PROPOSAL",
+        "BIRTHDAY",
+        "GRADUATION",
+        "ANNIVERSARY",
+        "ROMANTIC_DINNER",
+        "CORPORATE_EVENT",
+        "FAMILY_EVENT",
+        "BAPTISM",
+        "FIRST_COMMUNION",
+        "BABY_SHOWER",
+        "WORKSHOP",
+        "POOL_DAY",
+        "PRIVATE_DINNER",
+        "GENDER_REVEAL",
+        "OTHER",
+    }
+    by_type = {item["event_type"]: item for item in categories}
+    assert by_type["WEDDING"]["covered"] is True
+    assert by_type["WEDDING"]["active_catalog_count"] == 1
+    assert len(by_type["WEDDING"]["catalogs"]) == 1
+    assert by_type["BIRTHDAY"]["covered"] is False
+    assert by_type["BIRTHDAY"]["active_catalog_count"] == 0
+    assert len(by_type["BIRTHDAY"]["catalogs"]) == 1
+    assert by_type["BIRTHDAY"]["catalogs"][0]["active"] is False
+    assert by_type["GENDER_REVEAL"]["covered"] is False
+    assert by_type["GENDER_REVEAL"]["catalogs"] == []
