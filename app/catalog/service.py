@@ -171,9 +171,76 @@ async def enqueue_catalog_unavailable_response(
         request_id,
         trigger="EXPLICIT_REQUEST",
     )
+    if enqueued:
+        await create_catalog_not_available_handoff(
+            session,
+            conversation,
+            customer,
+            event_type,
+            request_id,
+        )
     return CatalogRequestResult(
         CatalogRequestOutcome.UNAVAILABLE if enqueued else CatalogRequestOutcome.HANDOFF,
         event_type,
+    )
+
+
+async def create_catalog_not_available_handoff(
+    session: AsyncSession,
+    conversation: Conversation,
+    customer: Customer,
+    event_type: str,
+    request_id: str | None,
+) -> None:
+    existing = await session.scalar(
+        select(Handoff)
+        .where(
+            Handoff.conversation_id == conversation.id,
+            Handoff.reason == "CATALOG_NOT_AVAILABLE",
+            Handoff.status.in_(("PENDING", "TAKEN")),
+        )
+        .order_by(Handoff.id.desc())
+        .limit(1)
+    )
+    if existing is None:
+        detail = f"Tipo de evento solicitado: {event_type}"
+        summary = await build_deterministic_summary(
+            session,
+            conversation,
+            customer,
+            "CATALOG_NOT_AVAILABLE",
+            detail=detail,
+            last_messages_limit=5,
+        )
+        session.add(
+            Handoff(
+                conversation_id=conversation.id,
+                reason="CATALOG_NOT_AVAILABLE",
+                priority="NORMAL",
+                summary=summary,
+                status="PENDING",
+            )
+        )
+    conversation.pending_action = "WAIT_FOR_HUMAN"
+    conversation.bot_enabled = False
+    if conversation.state != ConversationState.WAITING_FOR_HUMAN.value:
+        await transition_conversation(
+            session,
+            conversation,
+            ConversationState.WAITING_FOR_HUMAN,
+            actor="SYSTEM",
+            reason="CATALOG_NOT_AVAILABLE",
+        )
+    audit_catalog_event(
+        session,
+        "CATALOG_HANDOFF_NOT_AVAILABLE",
+        "Requested event type has no active catalog",
+        request_id,
+        {
+            "conversation_id": conversation.id,
+            "reason": "CATALOG_NOT_AVAILABLE",
+            "event_type": event_type,
+        },
     )
 
 
@@ -388,13 +455,14 @@ async def create_template_unavailable_handoff(
     session.add(
         Handoff(
             conversation_id=conversation.id,
-            reason="OTHER",
+            reason="TEMPLATE_UNAVAILABLE",
             priority="NORMAL",
             summary=summary,
             status="PENDING",
         )
     )
     conversation.pending_action = "WAIT_FOR_HUMAN"
+    conversation.bot_enabled = False
     if conversation.state != ConversationState.WAITING_FOR_HUMAN.value:
         await transition_conversation(
             session,

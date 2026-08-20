@@ -26,6 +26,7 @@ from app.calendar.adapter import get_calendar_adapter
 from app.catalog.service import (
     CatalogCaptionTooLong,
     CatalogRequestOutcome,
+    CatalogRequestResult,
     enqueue_catalog_event_type_prompt,
     enqueue_proactive_catalogs_for_event_type,
     handle_explicit_catalog_request,
@@ -349,7 +350,7 @@ async def resolve_catalog_event_type_capture(
             event_type,
             orchestration_input.request_id,
         )
-        if result.outcome != CatalogRequestOutcome.HANDOFF:
+        if not catalog_result_requires_human(result):
             set_pending_action(conversation, None)
         if result.outcome == CatalogRequestOutcome.SENT:
             conversation.failed_understanding_count = 0
@@ -408,7 +409,7 @@ async def resolve_catalog_event_type_capture(
         )
         if result.outcome == CatalogRequestOutcome.ASK_EVENT_TYPE:
             set_pending_action(conversation, CATALOG_CAPTURE_ACTION)
-        elif result.outcome != CatalogRequestOutcome.HANDOFF:
+        elif not catalog_result_requires_human(result):
             set_pending_action(conversation, None)
         persist_classification_context(conversation, classification)
         return True, False
@@ -425,6 +426,12 @@ def classified_catalog_event_type(classification: IntentClassification) -> str |
         if candidate in EVENT_TYPES:
             return candidate
     return None
+
+
+def catalog_result_requires_human(result: CatalogRequestResult) -> bool:
+    return result.outcome == CatalogRequestOutcome.HANDOFF or (
+        result.outcome == CatalogRequestOutcome.UNAVAILABLE and result.event_type is not None
+    )
 
 
 def catalog_capture_should_be_abandoned(
@@ -1805,12 +1812,12 @@ async def handle_general_information(
                 request_id=orchestration_input.request_id,
                 extra={"previous_pending_action": previous_pending_action},
             )
-        elif result.outcome != CatalogRequestOutcome.HANDOFF:
+        elif not catalog_result_requires_human(result):
             set_pending_action(conversation, previous_pending_action)
 
         target_state = previous_state
         if (
-            result.outcome != CatalogRequestOutcome.HANDOFF
+            not catalog_result_requires_human(result)
             and conversation.state != target_state.value
         ):
             await transition_conversation(
