@@ -506,6 +506,7 @@ BABY_SHOWER
 WORKSHOP
 POOL_DAY
 PRIVATE_DINNER
+GENDER_REVEAL
 OTHER
 ```
 
@@ -932,6 +933,10 @@ SPECIAL_EVENT
 SUPPLIER_CONFIRMATION
 URGENT_EVENT
 SYSTEM_ERROR
+REPEATED_NO_SHOW
+MANUAL_TAKEOVER
+TEMPLATE_UNAVAILABLE
+CATALOG_NOT_AVAILABLE
 OTHER
 ```
 
@@ -1276,6 +1281,22 @@ Permitir la operación diaria sin acceder directamente a la base de datos.
 * versión;
 * estado;
 * aprobación.
+
+### Catálogos por categoría
+
+* vista de los 17 tipos de evento del catálogo oficial;
+* PDFs mapeados a cada tipo, conservando la relación muchos a muchos: una categoría
+  puede tener varios PDFs y un mismo asset puede estar mapeado a varias categorías;
+* carga directa de un PDF desde el panel y mapeo a la categoría seleccionada en una
+  sola operación de negocio;
+* activación y desactivación de assets sin borrar su historial;
+* indicador visible de cobertura por categoría, donde existe cobertura únicamente
+  si hay al menos un PDF activo mapeado;
+* señalización de las categorías sin cobertura con la nota de que sus solicitudes
+  pasan a atención manual.
+
+La carga y administración exigen sesión y rol administrativo. Los nombres de archivo
+recibidos no se usan como rutas de almacenamiento y nunca pueden permitir traversal.
 
 ### Configuración básica
 

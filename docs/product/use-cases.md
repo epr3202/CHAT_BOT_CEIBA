@@ -663,6 +663,7 @@ BABY_SHOWER
 WORKSHOP
 POOL_DAY
 PRIVATE_DINNER
+GENDER_REVEAL
 OTHER
 ```
 
@@ -1402,6 +1403,21 @@ Cliente.
 12. Informa al cliente.
 13. Registra auditoría.
 
+El evento externo usa una `description` de texto plano con una línea por dato, en
+este orden, incluyendo únicamente los datos existentes y sin placeholders:
+
+```text
+Nombre del cliente: <nombre>
+Teléfono: <teléfono>
+Tipo de evento: <event_type del lead>
+Invitados del evento: <cantidad>
+Asistentes a la visita: <cantidad>
+Motivo de la visita: <motivo>
+```
+
+La reconciliación que deba recrear el evento externo reconstruye esta descripción
+con los datos vigentes al momento de la operación.
+
 ## Flujo alternativo — Horario ocupado al confirmar
 
 1. No crea la cita.
@@ -1477,6 +1493,11 @@ Cliente.
 13. Incrementa contador.
 14. Reprograma recordatorio.
 15. Confirma al cliente.
+
+La actualización del calendario reconstruye la `description` completa definida en
+UC-014 con los datos vigentes al momento de reprogramar. No conserva una copia
+obsoleta, no duplica líneas y no pierde la descripción. Si la reconciliación debe
+crear nuevamente el evento externo, aplica la misma regla.
 
 ## Flujo alternativo — Varias visitas
 

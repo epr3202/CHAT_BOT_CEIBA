@@ -575,6 +575,7 @@ BABY_SHOWER
 WORKSHOP
 POOL_DAY
 PRIVATE_DINNER
+GENDER_REVEAL
 OTHER
 ```
 
@@ -608,6 +609,7 @@ exacta con ese label. No resuelve a `WEDDING`, aunque el texto contenga la palab
 | `WORKSHOP`            | taller                                           |
 | `POOL_DAY`            | día de piscina, pasadía de piscina               |
 | `PRIVATE_DINNER`      | cena privada                                     |
+| `GENDER_REVEAL`       | revelación de género, revelacion de genero, gender reveal |
 | `OTHER`               | otro, otro tipo de evento                        |
 
 ### Confirmación
@@ -2209,6 +2211,9 @@ SUPPLIER_CONFIRMATION
 URGENT_EVENT
 SYSTEM_ERROR
 REPEATED_NO_SHOW
+MANUAL_TAKEOVER
+TEMPLATE_UNAVAILABLE
+CATALOG_NOT_AVAILABLE
 OTHER
 ```
 
