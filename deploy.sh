@@ -10,10 +10,14 @@ if [[ "${DEPLOY_REEXEC:-0}" != "1" && "$running_script_sha" != "$updated_script_
   DEPLOY_REEXEC=1 exec "$0" "$@"
 fi
 
-docker compose build app worker admin
+docker compose build app worker
 docker compose run --rm app alembic upgrade head
 docker compose run --rm app python scripts/load_knowledge.py
-docker compose up -d app worker admin
+docker compose up -d app worker
+
+if docker compose config --services | grep -qx admin; then
+  docker compose up -d --force-recreate admin
+fi
 
 deadline=$((SECONDS + 30))
 until curl -sf http://localhost:8000/health >/dev/null; do
