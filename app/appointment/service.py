@@ -26,6 +26,8 @@ from app.calendar.adapter import (
 )
 from app.conversation.presentation import format_date_natural
 from app.conversation.states import ConversationState
+from app.customer.models import Customer
+from app.event.models import Event
 from app.scheduling.availability import AvailabilityService, slot_datetime
 
 BOGOTA = ZoneInfo("America/Bogota")
@@ -110,6 +112,33 @@ class VisitReminder:
     appointment_id: UUID
     scheduled_at: datetime
     response_code: str
+
+
+def build_visit_description(
+    *,
+    customer_name: str | None,
+    phone_number: str | None,
+    event_type: str | None,
+    event_guest_count: int | None,
+    visit_attendee_count: int | None,
+    visit_reason: str | None,
+) -> str | None:
+    lines: list[str] = []
+    values: tuple[tuple[str, str | int | None], ...] = (
+        ("Nombre del cliente", customer_name),
+        ("Teléfono", phone_number),
+        ("Tipo de evento", event_type),
+        ("Invitados del evento", event_guest_count),
+        ("Asistentes a la visita", visit_attendee_count),
+        ("Motivo de la visita", visit_reason),
+    )
+    for label, value in values:
+        if value is None:
+            continue
+        rendered = str(value).strip()
+        if rendered:
+            lines.append(f"{label}: {rendered}")
+    return "\n".join(lines) or None
 
 
 def resolve_visit_date_text(
@@ -399,12 +428,19 @@ class VisitSchedulingService:
             )
 
         event_id = appointment_id.hex
+        description = await self._build_current_visit_description(
+            customer_id=customer_id,
+            lead_id=lead_id,
+            attendee_count=attendee_count,
+            visit_reason=visit_reason,
+        )
         try:
             await self._create_or_reconcile_event(
                 event_id=event_id,
                 summary="Visita comercial La Ceiba Club House",
                 start=slot_datetime(visit_date, visit_time),
                 end=slot_datetime(visit_date, calculate_visit_end_time(visit_time)),
+                description=description,
             )
         except CalendarUnavailableError:
             await self._mark_appointment_for_reconciliation(appointment_id)
@@ -514,11 +550,18 @@ class VisitSchedulingService:
             return VisitServiceResult(response_code="RESP-VISIT-CONFIRM-005")
 
         try:
+            description = await self._build_current_visit_description(
+                customer_id=appointment.customer_id,
+                lead_id=appointment.lead_id,
+                attendee_count=appointment.attendee_count,
+                visit_reason=appointment.visit_reason,
+            )
             await self._update_or_reconcile_event(
                 event_id=appointment_id.hex,
                 summary="Visita comercial La Ceiba Club House",
                 start=slot_datetime(new_date, new_time),
                 end=slot_datetime(new_date, calculate_visit_end_time(new_time)),
+                description=description,
             )
         except CalendarUnavailableError:
             return VisitServiceResult(
@@ -683,14 +726,19 @@ class VisitSchedulingService:
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None,
     ) -> None:
         try:
-            await self.calendar_adapter.create_event(event_id, summary, start, end)
+            await self.calendar_adapter.create_event(
+                event_id, summary, start, end, description=description
+            )
         except AlreadyExistsError:
             return
         except CalendarUnavailableError:
             try:
-                await self.calendar_adapter.create_event(event_id, summary, start, end)
+                await self.calendar_adapter.create_event(
+                    event_id, summary, start, end, description=description
+                )
             except AlreadyExistsError:
                 return
             raise
@@ -702,12 +750,17 @@ class VisitSchedulingService:
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None,
     ) -> None:
         try:
-            await self.calendar_adapter.update_event(event_id, summary, start, end)
+            await self.calendar_adapter.update_event(
+                event_id, summary, start, end, description=description
+            )
         except EventNotFoundError:
             try:
-                await self.calendar_adapter.create_event(event_id, summary, start, end)
+                await self.calendar_adapter.create_event(
+                    event_id, summary, start, end, description=description
+                )
             except AlreadyExistsError as create_exc:
                 raise CalendarUnavailableError(
                     f"calendar event appeared during reschedule: {event_id}"
@@ -716,7 +769,38 @@ class VisitSchedulingService:
                 raise
             return
         except CalendarUnavailableError:
-            await self.calendar_adapter.update_event(event_id, summary, start, end)
+            await self.calendar_adapter.update_event(
+                event_id, summary, start, end, description=description
+            )
+
+    async def _build_current_visit_description(
+        self,
+        *,
+        customer_id: int,
+        lead_id: UUID | None,
+        attendee_count: int,
+        visit_reason: str,
+    ) -> str | None:
+        async with self.sessionmaker() as session:
+            customer = await session.get(Customer, customer_id)
+            event = (
+                await session.scalar(
+                    select(Event)
+                    .where(Event.lead_id == lead_id)
+                    .order_by(Event.created_at.desc(), Event.event_id.desc())
+                    .limit(1)
+                )
+                if lead_id is not None
+                else None
+            )
+        return build_visit_description(
+            customer_name=customer.full_name if customer is not None else None,
+            phone_number=customer.phone_number if customer is not None else None,
+            event_type=event.event_type if event is not None else None,
+            event_guest_count=event.guest_count if event is not None else None,
+            visit_attendee_count=attendee_count,
+            visit_reason=visit_reason,
+        )
 
     async def _confirm_pending_appointment(
         self,

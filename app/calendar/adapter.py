@@ -36,6 +36,7 @@ class ExternalEventRef:
     summary: str
     start: datetime
     end: datetime
+    description: str | None = None
 
 
 class CalendarAdapter(Protocol):
@@ -52,6 +53,7 @@ class CalendarAdapter(Protocol):
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None = None,
     ) -> ExternalEventRef:
         ...
 
@@ -61,6 +63,7 @@ class CalendarAdapter(Protocol):
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None = None,
     ) -> ExternalEventRef:
         ...
 
@@ -122,6 +125,7 @@ class FakeCalendarAdapter:
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None = None,
     ) -> ExternalEventRef:
         self.create_call_count += 1
         if event_id in self._events:
@@ -129,7 +133,13 @@ class FakeCalendarAdapter:
         if "create" in self.raise_on:
             raise CalendarUnavailableError("fake calendar create failed")
 
-        event = ExternalEventRef(event_id=event_id, summary=summary, start=start, end=end)
+        event = ExternalEventRef(
+            event_id=event_id,
+            summary=summary,
+            start=start,
+            end=end,
+            description=description,
+        )
         self._events[event_id] = event
         self.created_event_ids.append(event_id)
         if self.timeout_after_create:
@@ -143,6 +153,7 @@ class FakeCalendarAdapter:
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None = None,
     ) -> ExternalEventRef:
         self.update_call_count += 1
         if self.fail_update_once:
@@ -153,7 +164,13 @@ class FakeCalendarAdapter:
         if event_id not in self._events:
             raise EventNotFoundError(f"calendar event not found: {event_id}")
 
-        event = ExternalEventRef(event_id=event_id, summary=summary, start=start, end=end)
+        event = ExternalEventRef(
+            event_id=event_id,
+            summary=summary,
+            start=start,
+            end=end,
+            description=description,
+        )
         self._events[event_id] = event
         self.updated_event_ids.append(event_id)
         return event

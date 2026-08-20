@@ -96,12 +96,19 @@ class GoogleCalendarAdapter:
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None = None,
     ) -> ExternalEventRef:
         _validate_event_id(event_id)
         response = await self._request(
             "POST",
             self._events_url(),
-            _event_write_payload(event_id=event_id, summary=summary, start=start, end=end),
+            _event_write_payload(
+                event_id=event_id,
+                summary=summary,
+                start=start,
+                end=end,
+                description=description,
+            ),
             operation="create",
         )
         return _event_ref_from_response(response.json())
@@ -112,12 +119,18 @@ class GoogleCalendarAdapter:
         summary: str,
         start: datetime,
         end: datetime,
+        description: str | None = None,
     ) -> ExternalEventRef:
         _validate_event_id(event_id)
         response = await self._request(
             "PATCH",
             self._event_url(event_id),
-            _event_write_payload(summary=summary, start=start, end=end),
+            _event_write_payload(
+                summary=summary,
+                start=start,
+                end=end,
+                description=description,
+            ),
             operation="update",
         )
         return _event_ref_from_response(response.json())
@@ -204,6 +217,7 @@ def _event_write_payload(
     start: datetime,
     end: datetime,
     event_id: str | None = None,
+    description: str | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "summary": summary,
@@ -218,6 +232,8 @@ def _event_write_payload(
     }
     if event_id is not None:
         payload["id"] = event_id
+    if description is not None:
+        payload["description"] = description
     return payload
 
 
@@ -227,6 +243,7 @@ def _event_ref_from_response(data: dict[str, Any]) -> ExternalEventRef:
         summary=str(data.get("summary", "")),
         start=_parse_google_datetime(_event_datetime(data, "start")),
         end=_parse_google_datetime(_event_datetime(data, "end")),
+        description=str(data["description"]) if data.get("description") is not None else None,
     )
 
 
