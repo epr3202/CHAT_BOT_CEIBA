@@ -52,6 +52,28 @@ def normalize_event_type(value: str | None) -> str | None:
 
 
 @pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("WEDDING", "WEDDING"),
+        ("GENDER REVEAL", "GENDER_REVEAL"),
+        ("BODA", "WEDDING"),
+        ("boda", "WEDDING"),
+        ("boda civil", "CIVIL_WEDDING"),
+        ("Boda Civil", "CIVIL_WEDDING"),
+        ("FIESTA", None),
+        ("", None),
+        ("   ", None),
+        (None, None),
+    ],
+)
+def test_event_type_normalizer_falls_back_to_canonical_labels(
+    value: str | None,
+    expected: str | None,
+) -> None:
+    assert normalize_event_type(value) == expected
+
+
+@pytest.mark.parametrize(
     "value",
     ["GENDER REVEAL", "gender-reveal", " GENDER_REVEAL "],
 )
