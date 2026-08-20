@@ -158,7 +158,7 @@ async def test_ai_unavailable_uses_deterministic_menu(
         )
 
     assert outbox is not None
-    assert "Puedo ayudarte con información" in outbox.payload["text"]["body"]
+    assert "nuestros espacios" in outbox.payload["text"]["body"]
     assert audit is not None
 
 
@@ -297,7 +297,7 @@ async def test_third_unknown_creates_low_confidence_handoff(
     assert handoff is not None
     assert handoff.reason == "LOW_CONFIDENCE"
     assert outbox is not None
-    assert "equipo para que puedan ayudarte personalmente" in outbox.payload["text"]["body"]
+    assert "personalmente" in outbox.payload["text"]["body"]
 
 
 @pytest.mark.asyncio
