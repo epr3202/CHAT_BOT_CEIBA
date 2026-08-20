@@ -991,6 +991,65 @@ async def test_tc_collect_013_duplicate_webhook_is_idempotent_during_capture(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("classifier_value", "expected_event_type", "expected_pending_action"),
+    [
+        ("GENDER REVEAL", "GENDER_REVEAL", "COLLECT_GUEST_COUNT"),
+        ("FIESTA", None, "COLLECT_EVENT_TYPE"),
+    ],
+)
+async def test_event_type_entity_never_aborts_webhook_turn(
+    monkeypatch: pytest.MonkeyPatch,
+    classifier_value: str,
+    expected_event_type: str | None,
+    expected_pending_action: str,
+) -> None:
+    await configure_test_environment(monkeypatch)
+
+    async def classify_event_type(
+        self: OpenRouterIntentClient,
+        message_text: str,
+        context: dict[str, object],
+        conversation_id: int | None = None,
+    ) -> IntentClassification:
+        return classification(
+            "EVENT_INFORMATION",
+            [entity("event_type", classifier_value, classifier_value)],
+        )
+
+    monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_event_type)
+    external_message_id = f"wamid.event-type.{classifier_value.lower().replace(' ', '-')}"
+    payload = json.loads(
+        whatsapp_message_payload(external_message_id, text="Quiero organizar mi evento").decode()
+    )
+    sessionmaker = await reset_test_database()
+    await load_knowledge_entries(sessionmaker, list(iter_seed_entries()))
+
+    await process_whatsapp_webhook(payload, sessionmaker, "req-event-type-normalization")
+
+    async with sessionmaker() as session:
+        event = await session.scalar(select(Event))
+        conversation = await session.scalar(select(Conversation))
+        outbox_count = await session.scalar(select(func.count()).select_from(Outbox))
+        discarded = await session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "EVENT_TYPE_ENTITY_DISCARDED")
+        )
+    assert event is not None
+    assert event.event_type == expected_event_type
+    assert conversation is not None
+    assert conversation.pending_action == expected_pending_action
+    assert outbox_count == 1
+    if classifier_value == "FIESTA":
+        assert discarded is not None
+        assert discarded.new_value == {
+            "raw_value": "FIESTA",
+            "normalized_value": "FIESTA",
+        }
+    else:
+        assert discarded is None
+
+
+@pytest.mark.asyncio
 async def test_tc_collect_014_one_question_per_turn(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
     settings: Settings,
