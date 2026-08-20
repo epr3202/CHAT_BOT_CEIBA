@@ -25,6 +25,7 @@ CATALOG_EVENT_TYPE_LABELS: dict[str, tuple[str, ...]] = {
     "WORKSHOP": ("taller",),
     "POOL_DAY": ("día de piscina", "pasadía de piscina"),
     "PRIVATE_DINNER": ("cena privada",),
+    "GENDER_REVEAL": ("revelación de género", "revelacion de genero", "gender reveal"),
     "OTHER": ("otro", "otro tipo de evento"),
 }
 

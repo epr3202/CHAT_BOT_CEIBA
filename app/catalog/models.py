@@ -79,7 +79,7 @@ class CatalogEventTypeMap(Base):
             "'WEDDING', 'CIVIL_WEDDING', 'PROPOSAL', 'BIRTHDAY', 'GRADUATION', "
             "'ANNIVERSARY', 'ROMANTIC_DINNER', 'CORPORATE_EVENT', 'FAMILY_EVENT', "
             "'BAPTISM', 'FIRST_COMMUNION', 'BABY_SHOWER', 'WORKSHOP', 'POOL_DAY', "
-            "'PRIVATE_DINNER', 'OTHER')",
+            "'PRIVATE_DINNER', 'GENDER_REVEAL', 'OTHER')",
             name="ck_catalog_event_type_map_event_type",
         ),
         CheckConstraint(

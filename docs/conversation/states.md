@@ -925,8 +925,15 @@ URGENT_EVENT
 SYSTEM_ERROR
 REPEATED_NO_SHOW
 MANUAL_TAKEOVER
+TEMPLATE_UNAVAILABLE
+CATALOG_NOT_AVAILABLE
 OTHER
 ```
+
+`TEMPLATE_UNAVAILABLE` se usa cuando una respuesta aprobada no puede renderizarse de
+forma segura y no existe otra plantilla aplicable. `CATALOG_NOT_AVAILABLE` se usa
+cuando el `event_type` solicitado es conocido pero no tiene ningún PDF activo
+mapeado; el resumen del handoff incluye siempre ese tipo de evento.
 
 ## 14.3 Acciones de entrada
 
@@ -1382,10 +1389,12 @@ conversación nuevo: la conversación permanece en su estado actual y esta acci�
 enruta el turno siguiente, siguiendo el mismo patrón de acciones contextuales
 como `CONFIRM_APPOINTMENT`.
 
-La acción se limpia cuando:
+La acción deja de estar vigente cuando:
 
 * se envía al menos un catálogo mapeado;
-* se responde `RESP-CATALOG-003` porque el tipo resuelto no tiene catálogo mapeado;
+* se responde `RESP-CATALOG-003` porque el tipo resuelto no tiene catálogo mapeado:
+  se crea el handoff `CATALOG_NOT_AVAILABLE` y la acción se reemplaza por
+  `WAIT_FOR_HUMAN`;
 * se agota la única re-pregunta permitida; o
 * el cliente cambia claramente a otra intención accionable.
 

@@ -35,6 +35,7 @@ EVENT_TYPE_LABELS = {
     "WORKSHOP": "un taller",
     "POOL_DAY": "un día de piscina",
     "PRIVATE_DINNER": "una cena privada",
+    "GENDER_REVEAL": "una revelación de género",
     "OTHER": "una celebración",
 }
 

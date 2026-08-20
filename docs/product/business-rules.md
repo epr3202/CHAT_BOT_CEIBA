@@ -793,6 +793,7 @@ BABY_SHOWER
 WORKSHOP
 POOL_DAY
 PRIVATE_DINNER
+GENDER_REVEAL
 OTHER
 ```
 
@@ -1766,9 +1767,17 @@ SPECIAL_EVENT
 SUPPLIER_CONFIRMATION
 URGENT_EVENT
 SYSTEM_ERROR
+REPEATED_NO_SHOW
 MANUAL_TAKEOVER
+TEMPLATE_UNAVAILABLE
+CATALOG_NOT_AVAILABLE
 OTHER
 ```
+
+`TEMPLATE_UNAVAILABLE` identifica un fallo al renderizar de forma segura una
+plantilla aprobada sin alternativa aplicable. `CATALOG_NOT_AVAILABLE` identifica
+una solicitud con `event_type` conocido pero sin PDF activo mapeado; requiere que el
+resumen determinista incluya el tipo solicitado.
 
 ---
 

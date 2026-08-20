@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+import hashlib
 import secrets
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime, time, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -176,6 +188,13 @@ class CatalogPayload(BaseModel):
     event_type_mappings: list[CatalogEventTypeMappingPayload]
     created_at: datetime
     updated_at: datetime
+
+
+class CatalogCategoryPayload(BaseModel):
+    event_type: str
+    covered: bool
+    active_catalog_count: int
+    catalogs: list[CatalogPayload]
 
 
 class BlockedDateCreateRequest(BaseModel):
@@ -473,6 +492,106 @@ async def list_catalogs(
         )
     ).all()
     return [await catalog_payload(session, asset) for asset in assets]
+
+
+@router.post("/catalogs/upload")
+async def upload_catalog(
+    request: Request,
+    session: DbSession,
+    name: Annotated[str, Form(min_length=1, max_length=180)],
+    event_type: Annotated[str, Form(min_length=1, max_length=64)],
+    file: Annotated[UploadFile, File()],
+    send_mode: Annotated[str, Form()] = "ON_REQUEST",
+    authorization: Annotated[str | None, Header()] = None,
+) -> CatalogPayload:
+    agent = await authenticated_admin(session, authorization)
+    agent_name = agent.name
+    mapping = CatalogEventTypeMappingRequest(event_type=event_type, send_mode=send_mode)
+    validate_catalog_event_type_mappings([mapping])
+    await session.rollback()
+
+    stored_path, file_hash, file_size, created_new_file = await store_catalog_upload(
+        request, file
+    )
+    try:
+        async with session.begin():
+            asset = CatalogAsset(
+                name=name.strip(),
+                file_path=stored_path.name,
+                file_hash=file_hash,
+                mime_type="application/pdf",
+                file_size=file_size,
+                active=True,
+                version=1,
+            )
+            session.add(asset)
+            await session.flush()
+            session.add(
+                CatalogEventTypeMap(
+                    catalog_asset_id=asset.catalog_asset_id,
+                    event_type=event_type,
+                    send_mode=send_mode,
+                )
+            )
+            session.add(
+                AuditEvent(
+                    actor=agent_name,
+                    action="CATALOG_ASSET_UPLOADED",
+                    entity="catalog_asset",
+                    old_value=None,
+                    new_value={
+                        "catalog_asset_id": str(asset.catalog_asset_id),
+                        "event_type": event_type,
+                        "send_mode": send_mode,
+                        "file_hash": file_hash,
+                    },
+                    reason="Admin uploaded and mapped catalog asset",
+                    request_id=None,
+                )
+            )
+    except Exception:
+        if created_new_file:
+            stored_path.unlink(missing_ok=True)
+        raise
+    return await catalog_payload(session, asset)
+
+
+@router.get("/catalogs/categories")
+async def list_catalog_categories(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[CatalogCategoryPayload]:
+    await authenticated_admin(session, authorization)
+    rows = (
+        await session.execute(
+            select(CatalogEventTypeMap.event_type, CatalogAsset)
+            .join(CatalogAsset)
+            .order_by(
+                CatalogEventTypeMap.event_type,
+                CatalogAsset.created_at,
+                CatalogAsset.name,
+            )
+        )
+    ).all()
+    assets_by_event_type: dict[str, list[CatalogAsset]] = {
+        event_type: [] for event_type in EVENT_TYPES
+    }
+    for mapped_event_type, asset in rows:
+        assets_by_event_type[mapped_event_type].append(asset)
+
+    payload: list[CatalogCategoryPayload] = []
+    for event_type in EVENT_TYPES:
+        assets = assets_by_event_type[event_type]
+        active_count = sum(asset.active for asset in assets)
+        payload.append(
+            CatalogCategoryPayload(
+                event_type=event_type,
+                covered=active_count > 0,
+                active_catalog_count=active_count,
+                catalogs=[await catalog_payload(session, asset) for asset in assets],
+            )
+        )
+    return payload
 
 
 @router.patch("/catalogs/{catalog_asset_id}")
@@ -1550,6 +1669,76 @@ def resolve_catalog_file_path(request: Request, relative_path: str) -> Path:
     if not file_path.is_relative_to(storage_dir):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid path")
     return file_path
+
+
+async def store_catalog_upload(
+    request: Request,
+    upload: UploadFile,
+) -> tuple[Path, str, int, bool]:
+    filename = (upload.filename or "").strip()
+    normalized_filename = filename.replace("\\", "/")
+    filename_path = PurePosixPath(normalized_filename)
+    if (
+        not filename
+        or filename_path.is_absolute()
+        or ".." in filename_path.parts
+        or len(filename_path.parts) != 1
+        or filename_path.suffix.casefold() != ".pdf"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid PDF filename",
+        )
+    if upload.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only application/pdf catalogs are supported",
+        )
+
+    storage_dir = Path(request.app.state.settings.catalog_storage_dir).resolve()
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    temporary_path = storage_dir / f".upload-{uuid4().hex}.tmp"
+    max_bytes = request.app.state.settings.catalog_max_file_mb * 1024 * 1024
+    digest = hashlib.sha256()
+    file_size = 0
+    magic = b""
+    try:
+        with temporary_path.open("xb") as output:
+            while chunk := await upload.read(64 * 1024):
+                file_size += len(chunk)
+                if file_size > max_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Catalog file exceeds configured maximum size",
+                    )
+                if len(magic) < 4:
+                    magic = (magic + chunk)[:4]
+                digest.update(chunk)
+                output.write(chunk)
+        if file_size == 0 or magic != b"%PDF":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Uploaded content is not a PDF",
+            )
+
+        file_hash = digest.hexdigest()
+        stored_path = storage_dir / f"{file_hash[:16]}.pdf"
+        created_new_file = not stored_path.exists()
+        if created_new_file:
+            temporary_path.replace(stored_path)
+        else:
+            if sha256_file(stored_path) != file_hash:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Catalog hash prefix collision",
+                )
+            temporary_path.unlink()
+        return stored_path, file_hash, file_size, created_new_file
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+    finally:
+        await upload.close()
 
 
 def validate_catalog_admin_file(request: Request, file_path: Path) -> int:

@@ -512,9 +512,19 @@ La resolución de una solicitud explícita de catálogo sigue este orden:
    `CATALOG_CAPTURE_STARTED`. El evento registra en `extra` el `pending_action`
    desplazado, que no se restaura durante esta captura.
 
-Si existe un candidato válido pero no tiene catálogos mapeados, responder
-`RESP-CATALOG-003`. No se inicia la captura y el `pending_action` previo permanece
-inalterado.
+Si existe un candidato válido pero no tiene catálogos mapeados, ejecutar como una
+sola decisión de negocio idempotente:
+
+1. Responder `RESP-CATALOG-003`.
+2. Crear un handoff con razón `CATALOG_NOT_AVAILABLE` y resumen determinista que
+   incluya el `event_type` solicitado.
+3. Transicionar la conversación a `WAITING_FOR_HUMAN`, pausar el bot y dejar
+   `pending_action = WAIT_FOR_HUMAN`.
+4. Auditar `CATALOG_HANDOFF_NOT_AVAILABLE`, con el `event_type` solicitado en
+   `extra` y el `request_id` del turno.
+
+No se inicia la captura. La reentrega del mismo mensaje no crea otra respuesta ni
+un segundo handoff.
 
 ### Turno con `COLLECT_CATALOG_EVENT_TYPE`
 
@@ -536,8 +546,12 @@ El resultado se procesa así:
   `trigger = EXPLICIT_REQUEST` y modos `ON_REQUEST` o `PROACTIVE`, limpiar la
   acción, reiniciar `failed_understanding_count = 0` y auditar
   `CATALOG_EVENT_TYPE_RESOLVED`.
-* Resuelto sin catálogos mapeados: responder `RESP-CATALOG-003`, limpiar la acción y
-  auditar `CATALOG_EVENT_TYPE_RESOLVED`.
+* Resuelto sin catálogos mapeados: responder `RESP-CATALOG-003`, limpiar la acción,
+  crear un handoff con razón `CATALOG_NOT_AVAILABLE` y resumen determinista que
+  incluya el `event_type` solicitado, transicionar a `WAITING_FOR_HUMAN`, pausar el
+  bot y dejar `pending_action = WAIT_FOR_HUMAN`. Auditar
+  `CATALOG_HANDOFF_NOT_AVAILABLE` con el `event_type` solicitado en `extra` y el
+  `request_id` del turno. La reentrega no crea otro handoff.
 * No resuelto en el primer intento: incrementar `failed_understanding_count`,
   responder nuevamente `RESP-CATALOG-002`, mantener la acción y auditar
   `CATALOG_EVENT_TYPE_UNRESOLVED`. Solo se permite esta única re-pregunta.

@@ -288,6 +288,9 @@ async def test_tc_catcap_001_same_message_entity_sends_without_lead(
     assert len(await outboxes(sessionmaker_fixture, kind="DOCUMENT")) == 1
     assert conversation.last_question_code != "RESP-CATALOG-002"
     assert conversation.pending_action == "CONFIRM_QUOTE_REQUEST"
+    async with sessionmaker_fixture() as session:
+        handoff_count = await session.scalar(select(func.count()).select_from(Handoff))
+    assert handoff_count == 0
 
 
 @pytest.mark.asyncio
@@ -350,9 +353,21 @@ async def test_tc_catcap_004_entity_without_mapping_returns_unavailable(
     )
 
     conversation = await snapshot(sessionmaker_fixture, conversation_id)
+    async with sessionmaker_fixture() as session:
+        handoff = await session.scalar(
+            select(Handoff).where(Handoff.conversation_id == conversation_id)
+        )
     assert conversation.last_question_code == "RESP-CATALOG-003"
-    assert conversation.pending_action is None
-    assert await audit(sessionmaker_fixture, "CATALOG_EVENT_TYPE_RESOLVED") is not None
+    assert conversation.pending_action == "WAIT_FOR_HUMAN"
+    assert conversation.state == ConversationState.WAITING_FOR_HUMAN.value
+    assert conversation.bot_enabled is False
+    assert handoff is not None
+    assert handoff.reason == "CATALOG_NOT_AVAILABLE"
+    assert "PROPOSAL" in handoff.summary
+    unavailable = await audit(sessionmaker_fixture, "CATALOG_HANDOFF_NOT_AVAILABLE")
+    assert unavailable is not None
+    assert unavailable.new_value is not None
+    assert unavailable.new_value["event_type"] == "PROPOSAL"
 
 
 @pytest.mark.asyncio
@@ -617,10 +632,131 @@ async def test_tc_catcap_013_exact_proposal_label_never_partially_matches_weddin
     )
 
     conversation = await snapshot(sessionmaker_fixture, conversation_id)
-    resolved = await audit(sessionmaker_fixture, "CATALOG_EVENT_TYPE_RESOLVED")
+    async with sessionmaker_fixture() as session:
+        handoff = await session.scalar(
+            select(Handoff).where(Handoff.conversation_id == conversation_id)
+        )
     assert conversation.last_question_code == "RESP-CATALOG-003"
-    assert conversation.pending_action is None
+    assert conversation.pending_action == "WAIT_FOR_HUMAN"
+    assert conversation.state == ConversationState.WAITING_FOR_HUMAN.value
+    assert conversation.bot_enabled is False
     assert await outboxes(sessionmaker_fixture, kind="DOCUMENT") == []
-    assert resolved is not None
-    assert resolved.new_value is not None
-    assert resolved.new_value["event_type"] == "PROPOSAL"
+    assert handoff is not None
+    assert handoff.reason == "CATALOG_NOT_AVAILABLE"
+    assert "PROPOSAL" in handoff.summary
+    unavailable = await audit(sessionmaker_fixture, "CATALOG_HANDOFF_NOT_AVAILABLE")
+    assert unavailable is not None
+    assert unavailable.new_value is not None
+    assert unavailable.new_value["event_type"] == "PROPOSAL"
+
+
+@pytest.mark.asyncio
+async def test_tc_catcap_014_explicit_gender_reveal_without_mapping_hands_off(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    conversation_id, _ = await seed_context(sessionmaker_fixture, event_type=None)
+
+    await orchestrate(
+        sessionmaker_fixture,
+        conversation_id,
+        "Quiero el catálogo de revelación de género",
+        catalog_request(event_type="GENDER_REVEAL"),
+        request_id="req-catcap-014",
+    )
+
+    conversation = await snapshot(sessionmaker_fixture, conversation_id)
+    async with sessionmaker_fixture() as session:
+        handoff = await session.scalar(
+            select(Handoff).where(Handoff.conversation_id == conversation_id)
+        )
+    unavailable = await audit(sessionmaker_fixture, "CATALOG_HANDOFF_NOT_AVAILABLE")
+    assert conversation.last_question_code == "RESP-CATALOG-003"
+    assert conversation.state == ConversationState.WAITING_FOR_HUMAN.value
+    assert conversation.pending_action == "WAIT_FOR_HUMAN"
+    assert conversation.bot_enabled is False
+    assert handoff is not None
+    assert handoff.reason == "CATALOG_NOT_AVAILABLE"
+    assert "GENDER_REVEAL" in handoff.summary
+    assert unavailable is not None
+    assert unavailable.request_id == "req-catcap-014"
+    assert unavailable.new_value is not None
+    assert unavailable.new_value["event_type"] == "GENDER_REVEAL"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reply", ["revelación de género", "revelacion de genero", "gender reveal"]
+)
+async def test_tc_catcap_015_gender_reveal_labels_resolve_and_handoff(
+    sessionmaker_fixture: async_sessionmaker[AsyncSession], reply: str
+) -> None:
+    conversation_id, _ = await seed_context(sessionmaker_fixture, event_type=None)
+    await install_catalog_capture(sessionmaker_fixture, conversation_id)
+
+    await orchestrate(
+        sessionmaker_fixture,
+        conversation_id,
+        reply,
+        classification("GENERAL_INFORMATION", confidence=0.65),
+        request_id="req-catcap-015",
+    )
+
+    conversation = await snapshot(sessionmaker_fixture, conversation_id)
+    async with sessionmaker_fixture() as session:
+        handoff = await session.scalar(
+            select(Handoff).where(Handoff.conversation_id == conversation_id)
+        )
+    assert conversation.last_question_code == "RESP-CATALOG-003"
+    assert conversation.state == ConversationState.WAITING_FOR_HUMAN.value
+    assert conversation.pending_action == "WAIT_FOR_HUMAN"
+    assert handoff is not None
+    assert handoff.reason == "CATALOG_NOT_AVAILABLE"
+    assert "GENDER_REVEAL" in handoff.summary
+
+
+@pytest.mark.asyncio
+async def test_tc_catcap_016_duplicate_unavailable_webhook_creates_one_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    conversation_id, _ = await seed_context(sessionmaker_fixture, event_type=None)
+    conversation = await snapshot(sessionmaker_fixture, conversation_id)
+    async with sessionmaker_fixture() as session:
+        customer = await session.get(Customer, conversation.customer_id)
+    assert customer is not None
+
+    async def classify_gender_reveal_request(
+        self: OpenRouterIntentClient,
+        message_text: str,
+        context: dict[str, object],
+        conversation_id: int | None = None,
+    ) -> IntentClassification:
+        return catalog_request(event_type="GENDER_REVEAL")
+
+    monkeypatch.setattr(
+        OpenRouterIntentClient, "classify_intent", classify_gender_reveal_request
+    )
+    payload = json.loads(
+        whatsapp_message_payload(
+            "wamid.catcap.016",
+            phone=customer.phone_number.removeprefix("+"),
+            text="Quiero el catálogo de revelación de género",
+        ).decode()
+    )
+
+    await process_whatsapp_webhook(payload, sessionmaker_fixture, "req-catcap-016-a")
+    await process_whatsapp_webhook(payload, sessionmaker_fixture, "req-catcap-016-b")
+
+    async with sessionmaker_fixture() as session:
+        handoff_count = await session.scalar(
+            select(func.count())
+            .select_from(Handoff)
+            .where(Handoff.conversation_id == conversation_id)
+        )
+        response_count = await session.scalar(
+            select(func.count())
+            .select_from(Outbox)
+            .where(Outbox.conversation_id == conversation_id)
+        )
+    assert handoff_count == 1
+    assert response_count == 1

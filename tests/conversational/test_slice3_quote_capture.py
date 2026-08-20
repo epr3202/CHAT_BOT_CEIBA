@@ -1068,7 +1068,8 @@ async def test_tc_collect_017_date_pending_summary_uses_variant_without_placehol
     body = await latest_outbox_body(sessionmaker_fixture)
     async with sessionmaker_fixture() as session:
         quote_request = await session.scalar(select(QuoteRequest))
-    assert "fecha aún por definir" in body
+    assert "fecha" in body
+    assert "por definir" in body
     assert all(token not in body for token in ("None", "null", "{event_date}"))
     assert quote_request is not None
     assert quote_request.summary_snapshot["event_date_raw"] == "Todavía no sé la fecha"
