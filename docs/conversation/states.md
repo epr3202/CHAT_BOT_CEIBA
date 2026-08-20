@@ -1352,6 +1352,7 @@ NONE
 CLASSIFY_MESSAGE
 ANSWER_INFORMATION
 SEND_CATALOG
+COLLECT_CATALOG_EVENT_TYPE
 COLLECT_EVENT_TYPE
 COLLECT_GUEST_COUNT
 COLLECT_EVENT_DATE
@@ -1372,6 +1373,25 @@ WAIT_FOR_HUMAN
 WAIT_FOR_PAYMENT_REVIEW
 WAIT_FOR_RESERVATION_CONFIRMATION
 ```
+
+## 20.1 `COLLECT_CATALOG_EVENT_TYPE`
+
+Se instala cuando el bot responde una solicitud explícita de catálogo con
+`RESP-CATALOG-002` para preguntar el tipo de evento. No introduce un estado de
+conversación nuevo: la conversación permanece en su estado actual y esta acción
+enruta el turno siguiente, siguiendo el mismo patrón de acciones contextuales
+como `CONFIRM_APPOINTMENT`.
+
+La acción se limpia cuando:
+
+* se envía al menos un catálogo mapeado;
+* se responde `RESP-CATALOG-003` porque el tipo resuelto no tiene catálogo mapeado;
+* se agota la única re-pregunta permitida; o
+* el cliente cambia claramente a otra intención accionable.
+
+Cuando esta acción desplaza otra acción pendiente, la acción anterior se registra
+en el evento de auditoría, pero no se restaura mientras continúa la captura de tipo
+de evento para catálogo.
 
 ---
 

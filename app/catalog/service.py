@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -32,6 +34,20 @@ logger = structlog.get_logger(__name__)
 
 class CatalogCaptionTooLong(ValueError):
     pass
+
+
+class CatalogRequestOutcome(StrEnum):
+    SENT = "SENT"
+    ASK_EVENT_TYPE = "ASK_EVENT_TYPE"
+    UNAVAILABLE = "UNAVAILABLE"
+    HANDOFF = "HANDOFF"
+
+
+@dataclass(frozen=True)
+class CatalogRequestResult:
+    outcome: CatalogRequestOutcome
+    event_type: str | None = None
+    sent_count: int = 0
 
 
 async def enqueue_proactive_catalogs_for_event_type(
@@ -68,22 +84,19 @@ async def handle_explicit_catalog_request(
     inbound_message: Message,
     lead_id: UUID | None,
     event_type: str | None,
+    classified_event_type: str | None,
     request_id: str | None,
-) -> int:
-    if lead_id is None:
-        await enqueue_template_text(
+) -> CatalogRequestResult:
+    candidate = classified_event_type or event_type
+    if candidate is None:
+        return await enqueue_catalog_event_type_prompt(
             session,
             knowledge_sessionmaker,
             conversation,
             customer,
             inbound_message,
-            CATALOG_ASK_EVENT_TYPE_RESPONSE_CODE,
-            {},
             request_id,
-            fallback_response_codes=(CATALOG_UNAVAILABLE_RESPONSE_CODE,),
-            trigger="EXPLICIT_REQUEST",
         )
-        return 0
 
     sent = await enqueue_catalogs_for_event_type(
         session,
@@ -92,28 +105,76 @@ async def handle_explicit_catalog_request(
         customer,
         inbound_message,
         lead_id,
-        event_type or "OTHER",
+        candidate,
         "EXPLICIT_REQUEST",
         ("ON_REQUEST", "PROACTIVE"),
         request_id,
     )
     if sent > 0:
-        return sent
-    await enqueue_template_text(
+        return CatalogRequestResult(CatalogRequestOutcome.SENT, candidate, sent)
+    return await enqueue_catalog_unavailable_response(
         session,
         knowledge_sessionmaker,
         conversation,
         customer,
         inbound_message,
-        CATALOG_ASK_EVENT_TYPE_RESPONSE_CODE
-        if event_type is None
-        else CATALOG_UNAVAILABLE_RESPONSE_CODE,
+        request_id,
+        event_type=candidate,
+    )
+
+
+async def enqueue_catalog_event_type_prompt(
+    session: AsyncSession,
+    knowledge_sessionmaker: Any,
+    conversation: Conversation,
+    customer: Customer,
+    inbound_message: Message,
+    request_id: str | None,
+) -> CatalogRequestResult:
+    enqueued = await enqueue_template_text(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        customer,
+        inbound_message,
+        CATALOG_ASK_EVENT_TYPE_RESPONSE_CODE,
         {},
         request_id,
         fallback_response_codes=(CATALOG_UNAVAILABLE_RESPONSE_CODE,),
         trigger="EXPLICIT_REQUEST",
     )
-    return 0
+    if not enqueued:
+        return CatalogRequestResult(CatalogRequestOutcome.HANDOFF)
+    if conversation.last_question_code == CATALOG_ASK_EVENT_TYPE_RESPONSE_CODE:
+        return CatalogRequestResult(CatalogRequestOutcome.ASK_EVENT_TYPE)
+    return CatalogRequestResult(CatalogRequestOutcome.UNAVAILABLE)
+
+
+async def enqueue_catalog_unavailable_response(
+    session: AsyncSession,
+    knowledge_sessionmaker: Any,
+    conversation: Conversation,
+    customer: Customer,
+    inbound_message: Message,
+    request_id: str | None,
+    *,
+    event_type: str,
+) -> CatalogRequestResult:
+    enqueued = await enqueue_template_text(
+        session,
+        knowledge_sessionmaker,
+        conversation,
+        customer,
+        inbound_message,
+        CATALOG_UNAVAILABLE_RESPONSE_CODE,
+        {},
+        request_id,
+        trigger="EXPLICIT_REQUEST",
+    )
+    return CatalogRequestResult(
+        CatalogRequestOutcome.UNAVAILABLE if enqueued else CatalogRequestOutcome.HANDOFF,
+        event_type,
+    )
 
 
 async def enqueue_catalogs_for_event_type(
@@ -122,7 +183,7 @@ async def enqueue_catalogs_for_event_type(
     conversation: Conversation,
     customer: Customer,
     inbound_message: Message,
-    lead_id: UUID,
+    lead_id: UUID | None,
     event_type: str,
     trigger: str,
     modes: tuple[str, ...],
@@ -192,15 +253,16 @@ async def enqueue_catalogs_for_event_type(
                 )
                 session.add(outbox)
                 await session.flush()
-                session.add(
-                    CatalogSend(
-                        lead_id=lead_id,
-                        catalog_asset_id=asset.catalog_asset_id,
-                        trigger=trigger,
-                        outbound_message_id=outbox.id,
+                if lead_id is not None:
+                    session.add(
+                        CatalogSend(
+                            lead_id=lead_id,
+                            catalog_asset_id=asset.catalog_asset_id,
+                            trigger=trigger,
+                            outbound_message_id=outbox.id,
+                        )
                     )
-                )
-                await session.flush()
+                    await session.flush()
         except IntegrityError:
             audit_catalog_event(
                 session,

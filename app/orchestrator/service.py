@@ -25,6 +25,8 @@ from app.audit.models import AuditEvent
 from app.calendar.adapter import get_calendar_adapter
 from app.catalog.service import (
     CatalogCaptionTooLong,
+    CatalogRequestOutcome,
+    enqueue_catalog_event_type_prompt,
     enqueue_proactive_catalogs_for_event_type,
     handle_explicit_catalog_request,
     is_catalog_request_category,
@@ -32,6 +34,7 @@ from app.catalog.service import (
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings
+from app.conversation.catalog_event_type import resolve_catalog_event_type_label
 from app.conversation.confirmation import resolve_contextual_confirmation
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.knowledge import KnowledgeRenderError, render_response
@@ -45,7 +48,7 @@ from app.conversation.presentation import (
 from app.conversation.service import ALLOWED_TRANSITIONS, transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
-from app.event.models import Event, EventServiceRequest
+from app.event.models import EVENT_TYPES, Event, EventServiceRequest
 from app.event.validation import (
     EventDateTriplet,
     parse_customer_date_expression,
@@ -95,6 +98,13 @@ CRITICAL_STATES = {
     ConversationState.WAITING_FOR_APPOINTMENT_SELECTION,
     ConversationState.QUOTE_REQUEST_READY,
 }
+CATALOG_CAPTURE_ACTION = "COLLECT_CATALOG_EVENT_TYPE"
+CATALOG_CAPTURE_ABANDON_INTENTS = (
+    SENSITIVE_HANDOFF_INTENTS
+    | TRANSIENT_UNSUPPORTED_INTENTS
+    | VISIT_INTENTS
+    | {"QUOTE_REQUEST", "MODIFY_EVENT_DATA", "FAREWELL"}
+)
 
 HANDOFF_REASON_BY_INTENT = {
     "HUMAN_REQUEST": "CUSTOMER_REQUEST",
@@ -180,6 +190,17 @@ async def orchestrate_inbound_message(
         orchestration_input.message_text,
         classification,
     )
+    catalog_handled, understanding_failure_already_counted = (
+        await resolve_catalog_event_type_capture(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+    )
+    if catalog_handled:
+        return
     classification = await resolve_pending_confirmation(
         session,
         conversation,
@@ -242,6 +263,7 @@ async def orchestrate_inbound_message(
         knowledge_sessionmaker,
         orchestration_input,
         classification,
+        understanding_failure_already_counted=understanding_failure_already_counted,
     )
 
 
@@ -298,12 +320,134 @@ async def resolve_pending_confirmation(
     return classification
 
 
+async def resolve_catalog_event_type_capture(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> tuple[bool, bool]:
+    conversation = orchestration_input.conversation
+    if conversation.pending_action != CATALOG_CAPTURE_ACTION:
+        return False, False
+
+    event_type = classified_catalog_event_type(classification)
+    if event_type is None:
+        event_type = resolve_catalog_event_type_label(orchestration_input.message_text)
+
+    if event_type is not None:
+        lead = await active_lead(session, conversation)
+        event = await active_event(session, lead)
+        result = await handle_explicit_catalog_request(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            lead.lead_id if lead is not None else None,
+            event.event_type if event is not None else None,
+            event_type,
+            orchestration_input.request_id,
+        )
+        if result.outcome != CatalogRequestOutcome.HANDOFF:
+            set_pending_action(conversation, None)
+        if result.outcome == CatalogRequestOutcome.SENT:
+            conversation.failed_understanding_count = 0
+        conversation.pending_confirmation = None
+        persist_classification_context(conversation, classification)
+        audit_orchestrator_event(
+            session,
+            "CATALOG_EVENT_TYPE_RESOLVED",
+            conversation,
+            reason="Catalog event type resolved deterministically",
+            request_id=orchestration_input.request_id,
+            extra={
+                "event_type": event_type,
+                "outcome": result.outcome.value,
+                "sent_count": result.sent_count,
+            },
+        )
+        return True, False
+
+    if catalog_capture_should_be_abandoned(classification, settings):
+        set_pending_action(conversation, None)
+        conversation.pending_confirmation = None
+        audit_orchestrator_event(
+            session,
+            "CATALOG_CAPTURE_ABANDONED",
+            conversation,
+            reason="Customer changed to a distinct actionable intent",
+            request_id=orchestration_input.request_id,
+            extra={
+                "intent": classification.primary_intent,
+                "confidence": classification.confidence,
+            },
+        )
+        return False, False
+
+    conversation.failed_understanding_count += 1
+    attempt = conversation.failed_understanding_count
+    audit_orchestrator_event(
+        session,
+        "CATALOG_EVENT_TYPE_UNRESOLVED",
+        conversation,
+        reason="Catalog event type could not be resolved deterministically",
+        request_id=orchestration_input.request_id,
+        extra={"attempt": attempt, "failed_understanding_count": attempt},
+    )
+    conversation.pending_confirmation = None
+
+    if attempt == 1:
+        result = await enqueue_catalog_event_type_prompt(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            orchestration_input.request_id,
+        )
+        if result.outcome == CatalogRequestOutcome.ASK_EVENT_TYPE:
+            set_pending_action(conversation, CATALOG_CAPTURE_ACTION)
+        elif result.outcome != CatalogRequestOutcome.HANDOFF:
+            set_pending_action(conversation, None)
+        persist_classification_context(conversation, classification)
+        return True, False
+
+    set_pending_action(conversation, None)
+    return False, True
+
+
+def classified_catalog_event_type(classification: IntentClassification) -> str | None:
+    for entity in normalized_entities(classification):
+        if entity.entity != "event_type" or entity.quality_status == "INVALID":
+            continue
+        candidate = str(entity.normalized_value or "").strip().upper()
+        if candidate in EVENT_TYPES:
+            return candidate
+    return None
+
+
+def catalog_capture_should_be_abandoned(
+    classification: IntentClassification, settings: Settings
+) -> bool:
+    if classification.confidence < settings.ai_confidence_probable:
+        return False
+    if classification.primary_intent in CATALOG_CAPTURE_ABANDON_INTENTS:
+        return True
+    return classification.primary_intent == "GENERAL_INFORMATION" and bool(
+        classification.information_category
+        and not is_catalog_request_category(classification.information_category)
+    )
+
+
 async def route_classification(
     session: AsyncSession,
     settings: Settings,
     knowledge_sessionmaker: Any,
     orchestration_input: OrchestrationInput,
     classification: IntentClassification,
+    *,
+    understanding_failure_already_counted: bool = False,
 ) -> None:
     conversation = orchestration_input.conversation
     customer = orchestration_input.customer
@@ -398,6 +542,7 @@ async def route_classification(
             knowledge_sessionmaker,
             orchestration_input,
             classification,
+            understanding_failure_already_counted=understanding_failure_already_counted,
         )
         return
 
@@ -431,6 +576,7 @@ async def route_classification(
             knowledge_sessionmaker,
             orchestration_input,
             classification,
+            understanding_failure_already_counted=understanding_failure_already_counted,
         )
         return
 
@@ -483,6 +629,7 @@ async def route_classification(
         knowledge_sessionmaker,
         orchestration_input,
         classification,
+        understanding_failure_already_counted=understanding_failure_already_counted,
     )
 
 
@@ -1579,11 +1726,16 @@ async def handle_general_information(
     knowledge_sessionmaker: Any,
     orchestration_input: OrchestrationInput,
     classification: IntentClassification,
+    *,
+    understanding_failure_already_counted: bool = False,
 ) -> None:
     conversation = orchestration_input.conversation
     previous_state = ConversationState(conversation.state)
     previous_pending_action = conversation.pending_action
-    if ConversationState.ANSWERING_INFORMATION in ALLOWED_TRANSITIONS[previous_state]:
+    if (
+        not is_catalog_request_category(classification.information_category)
+        and ConversationState.ANSWERING_INFORMATION in ALLOWED_TRANSITIONS[previous_state]
+    ):
         set_pending_action(conversation, "ANSWER_INFORMATION")
         await transition_conversation(
             session,
@@ -1595,7 +1747,8 @@ async def handle_general_information(
 
     category = classification.information_category
     if category is None:
-        conversation.failed_understanding_count += 1
+        if not understanding_failure_already_counted:
+            conversation.failed_understanding_count += 1
         persist_classification_context(conversation, classification)
         set_pending_action(conversation, "CLASSIFY_MESSAGE")
         await enqueue_template(
@@ -1628,8 +1781,7 @@ async def handle_general_information(
     if is_catalog_request_category(category):
         lead = await active_lead(session, conversation)
         event = await active_event(session, lead)
-        set_pending_action(conversation, "SEND_CATALOG")
-        await handle_explicit_catalog_request(
+        result = await handle_explicit_catalog_request(
             session,
             knowledge_sessionmaker,
             conversation,
@@ -1637,12 +1789,37 @@ async def handle_general_information(
             orchestration_input.inbound_message,
             lead.lead_id if lead is not None else None,
             event.event_type if event is not None else None,
+            classified_catalog_event_type(classification),
             orchestration_input.request_id,
         )
         persist_classification_context(conversation, classification)
         conversation.failed_understanding_count = 0
         conversation.pending_confirmation = None
-        conversation.pending_action = previous_pending_action
+        if result.outcome == CatalogRequestOutcome.ASK_EVENT_TYPE:
+            set_pending_action(conversation, CATALOG_CAPTURE_ACTION)
+            audit_orchestrator_event(
+                session,
+                "CATALOG_CAPTURE_STARTED",
+                conversation,
+                reason="Catalog request requires event type",
+                request_id=orchestration_input.request_id,
+                extra={"previous_pending_action": previous_pending_action},
+            )
+        elif result.outcome != CatalogRequestOutcome.HANDOFF:
+            set_pending_action(conversation, previous_pending_action)
+
+        target_state = previous_state
+        if (
+            result.outcome != CatalogRequestOutcome.HANDOFF
+            and conversation.state != target_state.value
+        ):
+            await transition_conversation(
+                session,
+                conversation,
+                target_state,
+                actor=SYSTEM_ACTOR,
+                reason="Catalog information handled",
+            )
         return
     if response_code == "RESP-LOCATION-001" and wants_location_link(
         orchestration_input.message_text
@@ -1699,9 +1876,12 @@ async def handle_unknown(
     knowledge_sessionmaker: Any,
     orchestration_input: OrchestrationInput,
     classification: IntentClassification,
+    *,
+    understanding_failure_already_counted: bool = False,
 ) -> None:
     conversation = orchestration_input.conversation
-    conversation.failed_understanding_count += 1
+    if not understanding_failure_already_counted:
+        conversation.failed_understanding_count += 1
     persist_classification_context(conversation, classification)
     set_pending_action(conversation, "CLASSIFY_MESSAGE")
 

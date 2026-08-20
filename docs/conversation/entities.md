@@ -578,17 +578,37 @@ PRIVATE_DINNER
 OTHER
 ```
 
-### Ejemplos
+### Labels canónicos para resolución determinista
 
-| Expresión                        | Valor             |
-| -------------------------------- | ----------------- |
-| “Quiero casarme”                 | `WEDDING`         |
-| “Será una ceremonia civil”       | `CIVIL_WEDDING`   |
-| “Quiero pedirle matrimonio”      | `PROPOSAL`        |
-| “Es el cumpleaños de mi mamá”    | `BIRTHDAY`        |
-| “Celebramos nuestro aniversario” | `ANNIVERSARY`     |
-| “Es una reunión de empresa”      | `CORPORATE_EVENT` |
-| “Quiero una cena para mi pareja” | `ROMANTIC_DINNER` |
+Los siguientes labels son la fuente de verdad para resolver una respuesta textual
+cuando está pendiente `COLLECT_CATALOG_EVENT_TYPE`. La resolución exige igualdad
+exacta entre el texto completo normalizado y un label canónico. La normalización
+convierte a minúsculas, elimina acentos, colapsa espacios consecutivos y elimina
+puntuación terminal. Nunca se permite substring ni matching parcial. La entidad
+estructurada `event_type`, cuando es válida, tiene precedencia sobre este match.
+
+Ejemplo normativo: `Propuesta de matrimonio` resuelve a `PROPOSAL` por igualdad
+exacta con ese label. No resuelve a `WEDDING`, aunque el texto contenga la palabra
+`matrimonio`.
+
+| Valor                 | Labels canónicos mínimos                         |
+| --------------------- | ------------------------------------------------ |
+| `WEDDING`             | boda, matrimonio                                 |
+| `CIVIL_WEDDING`       | boda civil, matrimonio civil, ceremonia civil    |
+| `PROPOSAL`            | propuesta, propuesta de matrimonio, pedida de mano |
+| `BIRTHDAY`            | cumpleaños                                       |
+| `GRADUATION`          | graduación, grado                                |
+| `ANNIVERSARY`         | aniversario                                      |
+| `ROMANTIC_DINNER`     | cena romántica, plan romántico, planes románticos, los planes románticos |
+| `CORPORATE_EVENT`     | evento corporativo, evento empresarial           |
+| `FAMILY_EVENT`        | evento familiar, reunión familiar                |
+| `BAPTISM`             | bautizo, bautismo                                |
+| `FIRST_COMMUNION`     | primera comunión                                 |
+| `BABY_SHOWER`         | baby shower                                      |
+| `WORKSHOP`            | taller                                           |
+| `POOL_DAY`            | día de piscina, pasadía de piscina               |
+| `PRIVATE_DINNER`      | cena privada                                     |
+| `OTHER`               | otro, otro tipo de evento                        |
 
 ### Confirmación
 
