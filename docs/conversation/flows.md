@@ -495,6 +495,69 @@ Respuesta:
 
 > Para darte una respuesta correcta, necesitamos que nuestro equipo confirme esa información. Voy a compartir tu consulta con un asesor.
 
+## Solicitud explícita de catálogo
+
+La resolución de una solicitud explícita de catálogo sigue este orden:
+
+1. Usar el `event_type` válido extraído del mensaje actual por el clasificador.
+2. Si el mensaje actual no aporta uno, usar el `event_type` del evento del lead
+   activo.
+3. Si existe un candidato, buscar los catálogos mapeados para ese tipo y enviar los
+   que admitan los modos `ON_REQUEST` o `PROACTIVE`, con
+   `trigger = EXPLICIT_REQUEST`.
+4. Si se envía al menos un catálogo, conservar el `pending_action` que existía antes
+   de la solicitud; no preguntar el tipo de evento.
+5. Si no existe candidato resoluble, responder `RESP-CATALOG-002`, instalar
+   `pending_action = COLLECT_CATALOG_EVENT_TYPE` y auditar
+   `CATALOG_CAPTURE_STARTED`. El evento registra en `extra` el `pending_action`
+   desplazado, que no se restaura durante esta captura.
+
+Si existe un candidato válido pero no tiene catálogos mapeados, responder
+`RESP-CATALOG-003`. No se inicia la captura y el `pending_action` previo permanece
+inalterado.
+
+### Turno con `COLLECT_CATALOG_EVENT_TYPE`
+
+Antes de aplicar las bandas de confianza o las restricciones generales de acciones
+de la clasificación, el orquestador intenta resolver el tipo de evento de forma
+determinista:
+
+1. Aceptar una entidad `event_type` válida contra el catálogo de
+   `entities.md`.
+2. Si no existe una entidad válida, exigir igualdad exacta del texto completo
+   normalizado con uno de los labels canónicos de `entities.md` §7.1, aplicando
+   allí la normalización definida. Nunca usar substring ni matching parcial.
+3. No inferir libremente un tipo de evento cuando ninguno de esos mecanismos lo
+   resuelva.
+
+El resultado se procesa así:
+
+* Resuelto con catálogos mapeados: enviar los catálogos con
+  `trigger = EXPLICIT_REQUEST` y modos `ON_REQUEST` o `PROACTIVE`, limpiar la
+  acción, reiniciar `failed_understanding_count = 0` y auditar
+  `CATALOG_EVENT_TYPE_RESOLVED`.
+* Resuelto sin catálogos mapeados: responder `RESP-CATALOG-003`, limpiar la acción y
+  auditar `CATALOG_EVENT_TYPE_RESOLVED`.
+* No resuelto en el primer intento: incrementar `failed_understanding_count`,
+  responder nuevamente `RESP-CATALOG-002`, mantener la acción y auditar
+  `CATALOG_EVENT_TYPE_UNRESOLVED`. Solo se permite esta única re-pregunta.
+* No resuelto en el segundo intento: incrementar `failed_understanding_count`,
+  limpiar la acción, auditar `CATALOG_EVENT_TYPE_UNRESOLVED` y enrutar el mismo
+  mensaje por el flujo normal de clasificación, incluido su escalamiento estándar
+  por contador.
+* Cambio claro de intención: si la clasificación tiene
+  `confidence >= ai_confidence_probable` para una intención accionable diferente,
+  limpiar la acción, auditar `CATALOG_CAPTURE_ABANDONED` y enrutar el mismo mensaje
+  normalmente. No volver a encolar el catálogo.
+
+Las intenciones prioritarias y sensibles, incluida `EMERGENCY` y las que producen
+handoff, conservan su prioridad: abandonan esta captura, limpian la acción y siguen
+su flujo autorizado. Todos los eventos de auditoría de esta sección propagan el
+`request_id` del turno.
+
+Todo el ciclo conserva `FLOW-GEN-008`: la reentrega del mismo mensaje entrante no
+produce una segunda respuesta ni un segundo envío de catálogo.
+
 ## Estado resultante
 
 * estado anterior;
