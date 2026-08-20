@@ -28,7 +28,10 @@ git -C "$seed_repo" commit --quiet -m "updated deploy script"
 git -C "$seed_repo" push --quiet
 
 docker() {
-  printf '%s\n' "${DEPLOY_REEXEC:-unset}" >>"$SMOKE_DOCKER_LOG"
+  printf '%s|%s\n' "${DEPLOY_REEXEC:-unset}" "$*" >>"$SMOKE_DOCKER_LOG"
+  if [[ "$*" == "compose config --services" ]]; then
+    printf 'app\nworker\nadmin\n'
+  fi
 }
 
 curl() {
@@ -43,13 +46,27 @@ export SMOKE_DOCKER_LOG="$docker_log"
   ./deploy.sh >/dev/null
 )
 
-docker_call_count="$(wc -l <"$docker_log")"
-if [[ "$docker_call_count" -ne 4 ]]; then
-  echo "Expected 4 docker calls, got $docker_call_count" >&2
+expected_docker_calls=(
+  "1|compose build app worker"
+  "1|compose run --rm app alembic upgrade head"
+  "1|compose run --rm app python scripts/load_knowledge.py"
+  "1|compose up -d app worker"
+  "1|compose config --services"
+  "1|compose up -d --force-recreate admin"
+)
+mapfile -t actual_docker_calls <"$docker_log"
+
+if [[ "${#actual_docker_calls[@]}" -ne "${#expected_docker_calls[@]}" ]]; then
+  echo "Unexpected Docker call count" >&2
+  printf 'Actual: %s\n' "${actual_docker_calls[*]}" >&2
   exit 1
 fi
 
-if grep --invert-match --line-regexp --quiet '1' "$docker_log"; then
-  echo "Deploy steps ran without DEPLOY_REEXEC=1" >&2
-  exit 1
-fi
+for index in "${!expected_docker_calls[@]}"; do
+  if [[ "${actual_docker_calls[$index]}" != "${expected_docker_calls[$index]}" ]]; then
+    echo "Unexpected Docker call at index $index" >&2
+    echo "Expected: ${expected_docker_calls[$index]}" >&2
+    echo "Actual: ${actual_docker_calls[$index]}" >&2
+    exit 1
+  fi
+done
