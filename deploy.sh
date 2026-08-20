@@ -4,10 +4,10 @@ set -euo pipefail
 git fetch origin main
 git reset --hard origin/main
 
-docker compose build app worker
+docker compose build app worker admin
 docker compose run --rm app alembic upgrade head
 docker compose run --rm app python scripts/load_knowledge.py
-docker compose up -d app worker
+docker compose up -d app worker admin
 
 deadline=$((SECONDS + 30))
 until curl -sf http://localhost:8000/health >/dev/null; do
