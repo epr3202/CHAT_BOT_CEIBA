@@ -590,7 +590,7 @@ No confirmar espacio sin revisión.
 
 ## RESP-EVENTS-001 — Eventos atendidos
 
-> En La Ceiba nos encanta recibir bodas, matrimonios civiles, pedidas de mano, cumpleaños, grados, aniversarios, cenas, reuniones familiares, eventos empresariales, bautizos, primeras comuniones, baby showers, talleres y celebraciones personalizadas.
+> En La Ceiba nos encanta recibir bodas, matrimonios civiles, pedidas de mano, cumpleaños, grados, aniversarios, cenas, reuniones familiares, eventos empresariales, bautizos, primeras comuniones, baby showers, revelaciones de género, talleres y celebraciones personalizadas.
 
 ---
 
