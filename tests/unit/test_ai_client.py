@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import AsyncIterator
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -72,6 +73,23 @@ def valid_classification() -> dict[str, object]:
         },
         "reasoning_code": "EXPLICIT_GREETING",
     }
+
+
+def classification_with_event_type(value: str) -> dict[str, object]:
+    payload = valid_classification()
+    payload["primary_intent"] = "EVENT_INFORMATION"
+    payload["extracted_entities"] = [
+        {
+            "entity": "event_type",
+            "raw_value": value,
+            "normalized_value": value,
+            "quality_status": "PROVIDED",
+            "confidence": 0.93,
+            "needs_confirmation": False,
+            "validation_errors": [],
+        }
+    ]
+    return payload
 
 
 async def count_ai_executions(sessionmaker: async_sessionmaker[AsyncSession]) -> int:
@@ -271,3 +289,101 @@ async def test_prompt_version_setting_selects_v2_and_records_execution(
 
     assert execution is not None
     assert execution.prompt_version == "intent_v2"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tc_aiexec_001_persists_raw_normalized_prompt_conversation_and_timestamp(
+    settings: Settings,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    raw_payload = classification_with_event_type("CENA ROMÁNTICA")
+    respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=completion_payload(raw_payload))
+    )
+
+    async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
+        classification = await client.classify_intent("Cena romántica", context={})
+
+    async with sessionmaker_fixture() as session:
+        execution = await session.scalar(select(AIExecution))
+
+    assert classification.extracted_entities[0].normalized_value == "ROMANTIC_DINNER"
+    assert execution is not None
+    assert execution.structured_output == raw_payload
+    assert execution.validation_status == "VALID"
+    assert execution.prompt_version == settings.ai_prompt_version
+    assert execution.created_at is not None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tc_aiexec_002_and_etype_007_persist_and_log_unrecognized_raw_output(
+    settings: Settings,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    raw_payload = classification_with_event_type("FIESTA GALÁCTICA")
+    respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=completion_payload(raw_payload))
+    )
+
+    with caplog.at_level("WARNING"):
+        async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
+            classification = await client.classify_intent("Fiesta galáctica", context={})
+
+    async with sessionmaker_fixture() as session:
+        execution = await session.scalar(select(AIExecution))
+
+    assert classification.extracted_entities[0].normalized_value is None
+    assert execution is not None
+    assert execution.structured_output == raw_payload
+    assert execution.validation_status == "INVALID"
+    assert "FIESTA GALÁCTICA" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_tc_aiexec_003_http_finishes_before_persistence_transaction(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order: list[str] = []
+    client = OpenRouterIntentClient(settings, Mock(), http_client=httpx.AsyncClient())
+
+    async def fake_post(endpoint: str, payload: dict[str, object]) -> httpx.Response:
+        order.extend(("http_started", "http_finished"))
+        return httpx.Response(200, json=completion_payload(valid_classification()))
+
+    async def tracking_record(**kwargs: object) -> None:
+        order.append("persistence_started")
+
+    monkeypatch.setattr(client, "_post_with_retries", fake_post)
+    monkeypatch.setattr(client, "_record_execution", tracking_record)
+
+    await client.classify_intent("Hola", context={})
+    await client._http_client.aclose()  # type: ignore[union-attr]
+
+    assert order == ["http_started", "http_finished", "persistence_started"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tc_aiexec_004_persistence_failure_does_not_fail_classification(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=completion_payload(valid_classification()))
+    )
+
+    async def fail_persistence(**kwargs: object) -> None:
+        raise RuntimeError("ai_execution unavailable")
+
+    async with OpenRouterIntentClient(settings, Mock()) as client:
+        monkeypatch.setattr(client, "_record_execution", fail_persistence)
+        with caplog.at_level("ERROR"):
+            classification = await client.classify_intent("Hola", context={})
+
+    assert classification.primary_intent == "GREETING"
+    assert "ai_execution unavailable" in caplog.text
