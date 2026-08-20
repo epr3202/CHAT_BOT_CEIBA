@@ -12,6 +12,7 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "httpx",
+    "python-multipart",
     "google-auth",
     "structlog",
     "bcrypt",

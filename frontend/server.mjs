@@ -23,15 +23,16 @@ function sendJson(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
-async function readBody(request) {
+async function readRawBody(request) {
   const chunks = [];
   for await (const chunk of request) {
     chunks.push(chunk);
   }
-  if (chunks.length === 0) {
-    return "";
-  }
-  return Buffer.concat(chunks).toString("utf8");
+  return chunks.length === 0 ? Buffer.alloc(0) : Buffer.concat(chunks);
+}
+
+async function readBody(request) {
+  return (await readRawBody(request)).toString("utf8");
 }
 
 function signedWhatsAppPayload({ phone, text, messageId }) {
@@ -75,7 +76,10 @@ function signedWhatsAppPayload({ phone, text, messageId }) {
 }
 
 async function proxy(request, response, targetPath) {
-  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readBody(request);
+  const body =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await readRawBody(request);
   const headers = {"Content-Type": request.headers["content-type"] || "application/json"};
   if (request.headers.authorization) {
     headers.Authorization = request.headers.authorization;
@@ -189,6 +193,18 @@ const server = createServer(async (request, response) => {
     }
     if (path === "/api/admin/agents") {
       await proxy(request, response, "/admin/agents");
+      return;
+    }
+    if (path === "/api/admin/catalogs/categories") {
+      await proxy(request, response, "/admin/catalogs/categories");
+      return;
+    }
+    if (path === "/api/admin/catalogs/upload") {
+      await proxy(request, response, "/admin/catalogs/upload");
+      return;
+    }
+    if (path.startsWith("/api/admin/catalogs/")) {
+      await proxy(request, response, path.replace("/api", ""));
       return;
     }
     if (path.startsWith("/api/admin/agents/")) {

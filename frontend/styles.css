@@ -617,6 +617,61 @@ textarea {
   display: block;
 }
 
+.catalogUploadForm {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.catalogCategoryList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.catalogCategory {
+  border: 1px solid var(--line);
+  border-left: 4px solid #9aafa2;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfb;
+}
+
+.catalogCategory.covered {
+  border-left-color: #39865d;
+}
+
+.catalogCategory.uncovered {
+  border-left-color: #b65a4a;
+}
+
+.catalogCategoryHeader,
+.catalogAsset {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.catalogManualNote,
+.catalogEmpty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.catalogAssets {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.catalogAsset {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
 .coverageGrid span {
   color: var(--muted);
   margin-top: 6px;
@@ -663,6 +718,8 @@ textarea {
   .formGrid,
   .simulatorLayout,
   .coverageGrid,
+  .catalogUploadForm,
+  .catalogCategoryList,
   .handoffActions {
     grid-template-columns: 1fr;
   }

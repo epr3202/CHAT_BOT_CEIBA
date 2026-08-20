@@ -28,6 +28,9 @@
         <button class="navItem" data-view="coverage" title="Cobertura">
           <span class="icon">✓</span><span>Cobertura</span>
         </button>
+        <button class="navItem" data-view="catalogsModule" title="Catálogos">
+          <span class="icon">▤</span><span>Catálogos</span>
+        </button>
       </nav>
     </aside>
 
@@ -209,6 +212,59 @@
             <article><strong>Outbox</strong><span>Mensajes salientes quedan en cola para el worker.</span></article>
             <article><strong>Admin mínimo</strong><span>Tomar caso, responder como asesor y devolver al bot.</span></article>
           </div>
+        </section>
+      </section>
+
+      <section class="view" id="catalogsModule">
+        <section class="panel">
+          <div class="panelHeader">
+            <div>
+              <h2>Catálogos por categoría</h2>
+              <span>Los tipos sin PDF activo pasan a atención manual.</span>
+            </div>
+            <button id="refreshCatalogs" type="button">Actualizar cobertura</button>
+          </div>
+          <form id="catalogUploadForm" class="catalogUploadForm">
+            <label>
+              Nombre del catálogo
+              <input id="catalogName" name="name" type="text" maxlength="180" required />
+            </label>
+            <label>
+              Categoría
+              <select id="catalogEventType" name="event_type" required>
+                <option value="WEDDING">WEDDING</option>
+                <option value="CIVIL_WEDDING">CIVIL_WEDDING</option>
+                <option value="PROPOSAL">PROPOSAL</option>
+                <option value="BIRTHDAY">BIRTHDAY</option>
+                <option value="GRADUATION">GRADUATION</option>
+                <option value="ANNIVERSARY">ANNIVERSARY</option>
+                <option value="ROMANTIC_DINNER">ROMANTIC_DINNER</option>
+                <option value="CORPORATE_EVENT">CORPORATE_EVENT</option>
+                <option value="FAMILY_EVENT">FAMILY_EVENT</option>
+                <option value="BAPTISM">BAPTISM</option>
+                <option value="FIRST_COMMUNION">FIRST_COMMUNION</option>
+                <option value="BABY_SHOWER">BABY_SHOWER</option>
+                <option value="WORKSHOP">WORKSHOP</option>
+                <option value="POOL_DAY">POOL_DAY</option>
+                <option value="PRIVATE_DINNER">PRIVATE_DINNER</option>
+                <option value="GENDER_REVEAL">GENDER_REVEAL</option>
+                <option value="OTHER">OTHER</option>
+              </select>
+            </label>
+            <label>
+              Modo de envío
+              <select id="catalogSendMode" name="send_mode">
+                <option value="ON_REQUEST">Bajo solicitud</option>
+                <option value="PROACTIVE">Proactivo</option>
+              </select>
+            </label>
+            <label>
+              PDF
+              <input id="catalogFile" name="file" type="file" accept="application/pdf,.pdf" required />
+            </label>
+            <button class="primary" type="submit">Subir y mapear PDF</button>
+          </form>
+          <div id="catalogCategoryList" class="catalogCategoryList"></div>
         </section>
       </section>
     </main>

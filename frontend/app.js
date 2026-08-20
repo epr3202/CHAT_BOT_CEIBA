@@ -36,6 +36,7 @@ const state = {
   conversationState: localStorage.getItem(conversationStateStorageKey) || "",
   assignedToMe: localStorage.getItem(assignedToMeStorageKey) === "true",
   adminCases: [],
+  catalogCategories: [],
   visibleConversationIds: new Set(),
   chatPollIntervalMs: 3000,
   lastWebhook: null,
@@ -84,10 +85,11 @@ function renderAdminTokenRequired() {
 }
 
 async function requestJson(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(options.headers || {}),
     },
   });
@@ -101,6 +103,112 @@ async function requestJson(path, options = {}) {
     throw new Error(detail || `HTTP ${response.status}`);
   }
   return payload;
+}
+
+async function loadCatalogCategories() {
+  const container = $("#catalogCategoryList");
+  if (!hasOperationToken()) {
+    setEmpty(container, "Inicia sesión como administrador para gestionar catálogos.");
+    return;
+  }
+  setEmpty(container, "Cargando cobertura de catálogos...");
+  try {
+    state.catalogCategories = await requestJson("/api/admin/catalogs/categories", {
+      headers: sessionHeaders(),
+    });
+    renderCatalogCategories();
+  } catch (error) {
+    setEmpty(container, `No se pudo cargar la cobertura: ${error.message}`);
+  }
+}
+
+function renderCatalogCategories() {
+  const container = $("#catalogCategoryList");
+  container.replaceChildren();
+  for (const category of state.catalogCategories) {
+    const card = document.createElement("article");
+    card.className = `catalogCategory ${category.covered ? "covered" : "uncovered"}`;
+
+    const header = document.createElement("div");
+    header.className = "catalogCategoryHeader";
+    const title = document.createElement("strong");
+    title.textContent = category.event_type;
+    const coverage = document.createElement("span");
+    coverage.className = `pill ${category.covered ? "ok" : "bad"}`;
+    coverage.textContent = category.covered ? "Con cobertura" : "Sin cobertura";
+    header.append(title, coverage);
+    card.append(header);
+
+    if (!category.covered) {
+      const note = document.createElement("p");
+      note.className = "catalogManualNote";
+      note.textContent = "Atención manual para solicitudes sin PDF activo.";
+      card.append(note);
+    }
+
+    const assets = document.createElement("div");
+    assets.className = "catalogAssets";
+    for (const catalog of category.catalogs) {
+      const row = document.createElement("div");
+      row.className = "catalogAsset";
+      const label = document.createElement("span");
+      label.textContent = `${catalog.name} · ${catalog.active ? "Activo" : "Inactivo"}`;
+      const toggle = actionButton(
+        catalog.active ? "Desactivar" : "Activar",
+        () => setCatalogActive(catalog.catalog_asset_id, !catalog.active),
+        catalog.active ? "danger" : ""
+      );
+      row.append(label, toggle);
+      assets.append(row);
+    }
+    if (!category.catalogs.length) {
+      const empty = document.createElement("span");
+      empty.className = "catalogEmpty";
+      empty.textContent = "Sin PDFs mapeados";
+      assets.append(empty);
+    }
+    card.append(assets);
+    container.append(card);
+  }
+}
+
+async function uploadCatalog(event) {
+  event.preventDefault();
+  const file = $("#catalogFile").files[0];
+  if (!file) {
+    logEvent("Selecciona un PDF para cargar.");
+    return;
+  }
+  const form = new FormData();
+  form.append("name", $("#catalogName").value.trim());
+  form.append("event_type", $("#catalogEventType").value);
+  form.append("send_mode", $("#catalogSendMode").value);
+  form.append("file", file, file.name);
+  try {
+    await requestJson("/api/admin/catalogs/upload", {
+      method: "POST",
+      headers: sessionHeaders(),
+      body: form,
+    });
+    $("#catalogUploadForm").reset();
+    logEvent("Catálogo cargado y mapeado.");
+    await loadCatalogCategories();
+  } catch (error) {
+    logEvent(`No se pudo subir el catálogo: ${error.message}`);
+  }
+}
+
+async function setCatalogActive(catalogAssetId, active) {
+  try {
+    await requestJson(`/api/admin/catalogs/${catalogAssetId}`, {
+      method: "PATCH",
+      headers: sessionHeaders(),
+      body: JSON.stringify({ active }),
+    });
+    await loadCatalogCategories();
+  } catch (error) {
+    logEvent(`No se pudo actualizar el catálogo: ${error.message}`);
+  }
 }
 
 function applyConfigToForm() {
@@ -720,6 +828,7 @@ async function refreshAll() {
   }
   await loadAllAdminCases();
   await loadHandoffs(state.currentStatus);
+  if (state.agent?.role === "ADMIN") await loadCatalogCategories();
 }
 
 function bindUi() {
@@ -729,6 +838,7 @@ function bindUi() {
       $$(".view").forEach((view) => view.classList.remove("active"));
       button.classList.add("active");
       $(`#${button.dataset.view}`).classList.add("active");
+      if (button.dataset.view === "catalogsModule") loadCatalogCategories();
     });
   });
 
@@ -767,6 +877,8 @@ function bindUi() {
     loadAllAdminCases();
   });
   $("#refreshAll").addEventListener("click", refreshAll);
+  $("#refreshCatalogs").addEventListener("click", loadCatalogCategories);
+  $("#catalogUploadForm").addEventListener("submit", uploadCatalog);
   $("#closeSummaryModal").addEventListener("click", closeSummaryModal);
   $("#summaryModal").addEventListener("click", (event) => {
     if (event.target.id === "summaryModal") closeSummaryModal();
