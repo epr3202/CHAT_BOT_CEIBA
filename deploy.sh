@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+running_script_sha="$(git hash-object "$0")"
 git fetch origin main
 git reset --hard origin/main
+updated_script_sha="$(git hash-object "$0")"
+
+if [[ "${DEPLOY_REEXEC:-0}" != "1" && "$running_script_sha" != "$updated_script_sha" ]]; then
+  DEPLOY_REEXEC=1 exec "$0" "$@"
+fi
 
 docker compose build app worker admin
 docker compose run --rm app alembic upgrade head
