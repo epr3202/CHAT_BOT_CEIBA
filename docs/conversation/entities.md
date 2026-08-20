@@ -579,6 +579,12 @@ GENDER_REVEAL
 OTHER
 ```
 
+Antes de validar una entidad estructurada `event_type`, normalizar su valor con
+`strip`, convertirlo a mayúsculas y reemplazar uno o más espacios o guiones por
+`_`. Si el resultado no pertenece al catálogo anterior, tratar la entidad como
+ausente (`None`) y auditar el valor descartado. Un valor desconocido nunca debe
+generar una excepción que aborte el turno.
+
 ### Labels canónicos para resolución determinista
 
 Los siguientes labels son la fuente de verdad para resolver una respuesta textual

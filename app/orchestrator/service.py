@@ -49,7 +49,8 @@ from app.conversation.presentation import (
 from app.conversation.service import ALLOWED_TRANSITIONS, transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
-from app.event.models import EVENT_TYPES, Event, EventServiceRequest
+from app.event.event_type import normalize_event_type
+from app.event.models import Event, EventServiceRequest
 from app.event.validation import (
     EventDateTriplet,
     parse_customer_date_expression,
@@ -191,6 +192,11 @@ async def orchestrate_inbound_message(
         orchestration_input.message_text,
         classification,
     )
+    classification = normalize_classification_event_type_entities(
+        session,
+        classification,
+        orchestration_input.request_id,
+    )
     catalog_handled, understanding_failure_already_counted = (
         await resolve_catalog_event_type_capture(
             session,
@@ -207,6 +213,11 @@ async def orchestrate_inbound_message(
         conversation,
         classification,
         orchestration_input.message_text,
+        orchestration_input.request_id,
+    )
+    classification = normalize_classification_event_type_entities(
+        session,
+        classification,
         orchestration_input.request_id,
     )
 
@@ -422,8 +433,8 @@ def classified_catalog_event_type(classification: IntentClassification) -> str |
     for entity in normalized_entities(classification):
         if entity.entity != "event_type" or entity.quality_status == "INVALID":
             continue
-        candidate = str(entity.normalized_value or "").strip().upper()
-        if candidate in EVENT_TYPES:
+        candidate = normalize_event_type(entity.normalized_value or entity.raw_value)
+        if candidate is not None:
             return candidate
     return None
 
@@ -2376,9 +2387,10 @@ def apply_event_type(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    event_type = str(entity.normalized_value or entity.raw_value).strip().upper()
-    if event_type == "BODA":
-        event_type = "WEDDING"
+    event_type = normalize_event_type(entity.normalized_value or entity.raw_value)
+    if event_type is None:
+        audit_discarded_event_type(session, entity, request_id)
+        return
     old = {"event_type": event.event_type, "event_type_other": event.event_type_other}
     event.event_type = event_type
     audit_domain_change(
@@ -2407,6 +2419,7 @@ async def maybe_enqueue_proactive_catalogs(
         entity.entity == "event_type"
         and entity.quality_status in {"PROVIDED", "CORRECTED"}
         and not entity.needs_confirmation
+        and normalize_event_type(entity.normalized_value or entity.raw_value) is not None
         for entity in entities
     )
     if not confirmed_event_type:
@@ -2732,6 +2745,73 @@ def normalized_entities(classification: IntentClassification) -> list[ExtractedE
             )
         )
     return entities
+
+
+def normalize_event_type_entities(
+    session: AsyncSession,
+    entities: list[ExtractedEntity],
+    request_id: str | None,
+) -> list[ExtractedEntity]:
+    normalized_entities_list: list[ExtractedEntity] = []
+    for entity in entities:
+        if entity.entity != "event_type":
+            normalized_entities_list.append(entity)
+            continue
+        event_type = normalize_event_type(entity.normalized_value or entity.raw_value)
+        if event_type is None:
+            audit_discarded_event_type(session, entity, request_id)
+            continue
+        normalized_entities_list.append(
+            entity.model_copy(update={"normalized_value": event_type})
+        )
+    return normalized_entities_list
+
+
+def normalize_classification_event_type_entities(
+    session: AsyncSession,
+    classification: IntentClassification,
+    request_id: str | None,
+) -> IntentClassification:
+    entities = normalize_event_type_entities(
+        session,
+        normalized_entities(classification),
+        request_id,
+    )
+    legacy_entities = dict(classification.entities)
+    normalized_entity = next(
+        (entity for entity in entities if entity.entity == "event_type"),
+        None,
+    )
+    if "event_type" in legacy_entities:
+        if normalized_entity is None:
+            legacy_entities.pop("event_type")
+        else:
+            legacy_entities["event_type"] = normalized_entity.normalized_value
+    return classification.model_copy(
+        update={
+            "entities": legacy_entities,
+            "extracted_entities": entities,
+        }
+    )
+
+
+def audit_discarded_event_type(
+    session: AsyncSession,
+    entity: ExtractedEntity,
+    request_id: str | None,
+) -> None:
+    audit_domain_change(
+        session,
+        "EVENT_TYPE_ENTITY_DISCARDED",
+        "event_type",
+        None,
+        {
+            "raw_value": entity.raw_value,
+            "normalized_value": entity.normalized_value,
+        },
+        "Unknown event_type entity discarded before domain validation",
+        request_id,
+    )
 
 
 def contextual_requested_service_entities(

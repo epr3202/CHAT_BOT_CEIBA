@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.event.event_type import normalize_event_type
+
 QUESTION_CODE_BY_ACTION = {
     "COLLECT_EVENT_TYPE": "RESP-EVENT-DATA-013",
     "COLLECT_GUEST_COUNT": "RESP-EVENT-DATA-004",
@@ -40,9 +42,13 @@ class CaptureProgress:
             self.guest_count_min is not None and self.guest_count_max is not None
         )
 
+    @property
+    def has_event_type(self) -> bool:
+        return normalize_event_type(self.event_type) is not None
+
 
 def select_next_question(progress: CaptureProgress) -> str | None:
-    if not progress.event_type:
+    if not progress.has_event_type:
         return "COLLECT_EVENT_TYPE"
     if not progress.has_guest_count:
         return "COLLECT_GUEST_COUNT"
@@ -59,7 +65,7 @@ def select_next_question(progress: CaptureProgress) -> str | None:
 
 def pending_fields_for(progress: CaptureProgress) -> list[str]:
     pending: list[str] = []
-    if not progress.event_type:
+    if not progress.has_event_type:
         pending.append("event_type")
     if not progress.has_guest_count:
         pending.append("guest_count")
@@ -76,7 +82,7 @@ def pending_fields_for(progress: CaptureProgress) -> list[str]:
 
 def minimum_quote_data_complete(progress: CaptureProgress) -> bool:
     return bool(
-        progress.event_type
+        progress.has_event_type
         and progress.has_guest_count
         and progress.date_resolved
         and progress.full_name
