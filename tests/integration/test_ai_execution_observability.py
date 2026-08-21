@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import json
-import logging
-from collections.abc import AsyncIterator, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 import respx
-import structlog
+import structlog.testing
 from httpx import AsyncClient
 from sqlalchemy import UniqueConstraint, select
 
@@ -27,7 +25,6 @@ from tests.integration.helpers import (
 )
 
 OPENROUTER_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
-ORCHESTRATOR_LOGGER = "app.orchestrator.service"
 DECISION_FIELDS = {
     "request_id",
     "intent",
@@ -114,44 +111,28 @@ async def stored_executions() -> list[AIExecution]:
         )
 
 
-@contextmanager
-def capture_structured_records() -> Iterator[None]:
-    previous_config = structlog.get_config()
-    structlog.configure(
-        processors=[structlog.stdlib.render_to_log_kwargs],
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=False,
-    )
-    try:
-        yield
-    finally:
-        structlog.configure(**previous_config)
-
-
 def assert_single_decision_record(
-    caplog: pytest.LogCaptureFixture,
-    decision_source: str,
+    logs: list[dict[str, object]],
     *,
-    intent: str | None = None,
-) -> logging.LogRecord:
-    records = [
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "orchestrator_decision"
-        or "orchestrator_decision" in record.getMessage()
-    ]
+    decision_source: str,
+    intent: str,
+    state_before: str,
+    state_after: str,
+    transition: str | None,
+    pending_action: str | None,
+) -> dict[str, object]:
+    records = [record for record in logs if record.get("event") == "orchestrator_decision"]
     assert len(records) == 1
     record = records[0]
-    assert record.levelno == logging.INFO
-    assert (
-        getattr(record, "event", None) == "orchestrator_decision"
-        or "orchestrator_decision" in record.getMessage()
-    )
-    assert DECISION_FIELDS <= vars(record).keys()
-    assert record.decision_source == decision_source  # type: ignore[attr-defined]
-    if intent is not None:
-        assert record.intent == intent  # type: ignore[attr-defined]
+    assert record["event"] == "orchestrator_decision"
+    assert DECISION_FIELDS <= record.keys()
+    assert UUID(str(record["request_id"])).version == 4
+    assert record["intent"] == intent
+    assert record["state_before"] == state_before
+    assert record["state_after"] == state_after
+    assert record["transition"] == transition
+    assert record["decision_source"] == decision_source
+    assert record["pending_action"] == pending_action
     return record
 
 
@@ -322,7 +303,6 @@ async def test_tc_aiexec_008_two_tasks_share_external_message_id_without_unique_
 @respx.mock
 async def test_tc_log_001_deterministic_decision_has_structured_schema(
     client: AsyncClient,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     route = respx.post(OPENROUTER_COMPLETIONS_URL).mock(
         return_value=httpx.Response(200, json=completion_payload(valid_classification()))
@@ -336,44 +316,65 @@ async def test_tc_log_001_deterministic_decision_has_structured_schema(
             conversation.pending_action = "CONFIRM_QUOTE_REQUEST"
             conversation.last_question_code = "RESP-QUOTE-002"
 
-    caplog.clear()
-    with capture_structured_records(), caplog.at_level(logging.INFO, logger=ORCHESTRATOR_LOGGER):
+    with structlog.testing.capture_logs() as logs:
         response = await post_message(client, "wamid.log.001.decision", text="Sí")
 
     assert response.status_code == 200
     assert route.call_count == 1
-    assert_single_decision_record(caplog, "DETERMINISTIC", intent="CONFIRM")
+    assert_single_decision_record(
+        logs,
+        decision_source="DETERMINISTIC",
+        intent="CONFIRM",
+        state_before="BOT_ACTIVE",
+        state_after="BOT_ACTIVE",
+        transition=None,
+        pending_action="CLASSIFY_MESSAGE",
+    )
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_tc_log_002_llm_decision_has_structured_schema(
     client: AsyncClient,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     respx.post(OPENROUTER_COMPLETIONS_URL).mock(
         return_value=httpx.Response(200, json=completion_payload(valid_classification()))
     )
 
-    with capture_structured_records(), caplog.at_level(logging.INFO, logger=ORCHESTRATOR_LOGGER):
+    with structlog.testing.capture_logs() as logs:
         response = await post_message(client, "wamid.log.002")
 
     assert response.status_code == 200
-    assert_single_decision_record(caplog, "LLM", intent="GREETING")
+    assert_single_decision_record(
+        logs,
+        decision_source="LLM",
+        intent="GREETING",
+        state_before="BOT_ACTIVE",
+        state_after="BOT_ACTIVE",
+        transition=None,
+        pending_action=None,
+    )
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_tc_log_003_fallback_decision_has_structured_schema(
     client: AsyncClient,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     respx.post(OPENROUTER_COMPLETIONS_URL).mock(
         return_value=httpx.Response(503, text="provider unavailable")
     )
 
-    with capture_structured_records(), caplog.at_level(logging.INFO, logger=ORCHESTRATOR_LOGGER):
+    with structlog.testing.capture_logs() as logs:
         response = await post_message(client, "wamid.log.003")
 
     assert response.status_code == 200
-    assert_single_decision_record(caplog, "FALLBACK")
+    assert_single_decision_record(
+        logs,
+        decision_source="FALLBACK",
+        intent="UNKNOWN",
+        state_before="BOT_ACTIVE",
+        state_after="BOT_ACTIVE",
+        transition=None,
+        pending_action=None,
+    )
