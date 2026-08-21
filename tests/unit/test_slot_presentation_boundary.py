@@ -9,7 +9,7 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-import structlog
+import structlog.testing
 
 from app.conversation import knowledge
 from app.conversation.presentation import (
@@ -119,20 +119,22 @@ def test_visit_confirmation_uses_canonical_label_for_literal_incident() -> None:
     assert "Una boda" not in rendered
 
 
-def test_unresolved_free_text_event_type_degrades_and_warns(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_unresolved_free_text_event_type_degrades_and_warns() -> None:
     present_variables, _, _ = presentation_api()
     raw_value = "una boda para mi hija"
 
-    with caplog.at_level("WARNING"):
+    with structlog.testing.capture_logs() as logs:
         variables = present_variables({"event_type": raw_value})
     rendered = "pensando en {event_type}".format(**variables)
 
     assert rendered == "pensando en tu celebración"
     assert raw_value not in rendered
-    assert "event_type_presentation_fallback" in caplog.text
-    assert raw_value in caplog.text
+    records = [
+        record for record in logs if record.get("event") == "event_type_presentation_fallback"
+    ]
+    assert len(records) == 1
+    assert records[0]["event"] == "event_type_presentation_fallback"
+    assert records[0]["discarded_value"] == raw_value
 
 
 def test_quote_summary_normalizes_literal_requested_services_incident() -> None:
@@ -239,7 +241,6 @@ def test_internal_slot_labels_use_approved_customer_text(
 @pytest.mark.asyncio
 async def test_unregistered_variable_uses_controlled_render_failure_path(
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     entries = {
         "RESP-TEST-PRESENTATION": SimpleNamespace(
@@ -263,27 +264,15 @@ async def test_unregistered_variable_uses_controlled_render_failure_path(
     customer = SimpleNamespace(phone_number="+573001112233")
     inbound_message = SimpleNamespace(id=202)
 
-    previous_structlog_config = structlog.get_config()
-    structlog.configure(
-        processors=[structlog.stdlib.render_to_log_kwargs],
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=False,
-    )
-    try:
-        with caplog.at_level("ERROR", logger="app.orchestrator.service"):
-            await orchestrator_service.enqueue_template(
-                session,
-                object(),
-                conversation,
-                customer,
-                inbound_message,
-                "RESP-TEST-PRESENTATION",
-                {"invented_slot": "INTERNAL_SLOT"},
-            )
-    finally:
-        structlog.configure(
-            **previous_structlog_config,
+    with structlog.testing.capture_logs() as logs:
+        await orchestrator_service.enqueue_template(
+            session,
+            object(),
+            conversation,
+            customer,
+            inbound_message,
+            "RESP-TEST-PRESENTATION",
+            {"invented_slot": "INTERNAL_SLOT"},
         )
 
     outbox = session.add.call_args.args[0]
@@ -291,17 +280,9 @@ async def test_unregistered_variable_uses_controlled_render_failure_path(
     assert body == "Respuesta aprobada de respaldo."
     assert "Texto parcial" not in body
     assert "INTERNAL_SLOT" not in body
-    assert any(
-        (
-            getattr(record, "event", None) == "approved_response_render_failed"
-            or "approved_response_render_failed" in record.getMessage()
-        )
-        and (
-            getattr(record, "response_code", None) == "RESP-TEST-PRESENTATION"
-            or (
-                isinstance(record.msg, dict)
-                and record.msg.get("response_code") == "RESP-TEST-PRESENTATION"
-            )
-        )
-        for record in caplog.records
-    )
+    records = [
+        record for record in logs if record.get("event") == "approved_response_render_failed"
+    ]
+    assert len(records) == 1
+    assert records[0]["event"] == "approved_response_render_failed"
+    assert records[0]["response_code"] == "RESP-TEST-PRESENTATION"

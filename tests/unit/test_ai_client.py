@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
-from collections.abc import AsyncIterator, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
 from unittest.mock import Mock
 from uuid import uuid4
 
 import httpx
 import pytest
 import respx
-import structlog
+import structlog.testing
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -94,21 +92,6 @@ def classification_with_event_type(value: str) -> dict[str, object]:
         }
     ]
     return payload
-
-
-@contextmanager
-def capture_structured_records() -> Iterator[None]:
-    previous_config = structlog.get_config()
-    structlog.configure(
-        processors=[structlog.stdlib.render_to_log_kwargs],
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=False,
-    )
-    try:
-        yield
-    finally:
-        structlog.configure(**previous_config)
 
 
 async def count_ai_executions(sessionmaker: async_sessionmaker[AsyncSession]) -> int:
@@ -394,7 +377,6 @@ async def test_tc_aiexec_003_http_finishes_before_persistence_transaction(
 async def test_tc_aiexec_004_persistence_failure_does_not_fail_classification(
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=completion_payload(valid_classification()))
@@ -406,19 +388,16 @@ async def test_tc_aiexec_004_persistence_failure_does_not_fail_classification(
     request_id = uuid4()
     async with OpenRouterIntentClient(settings, Mock()) as client:
         monkeypatch.setattr(client, "_record_execution", fail_persistence)
-        with capture_structured_records(), caplog.at_level(logging.WARNING, logger="app.ai.client"):
+        with structlog.testing.capture_logs() as logs:
             classification = await client.classify_intent("Hola", context={}, request_id=request_id)
 
     assert classification.primary_intent == "GREETING"
-    records = [
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "ai_execution_persist_failed"
-        or "ai_execution_persist_failed" in record.getMessage()
-    ]
+    records = [record for record in logs if record.get("event") == "ai_execution_persist_failed"]
     assert len(records) == 1
-    assert str(records[0].request_id) == str(request_id)  # type: ignore[attr-defined]
-    assert records[0].task == "INTENT_CLASSIFICATION"  # type: ignore[attr-defined]
+    assert records[0]["event"] == "ai_execution_persist_failed"
+    assert records[0]["request_id"] == str(request_id)
+    assert records[0]["task"] == "INTENT_CLASSIFICATION"
+    assert records[0]["error"] == "ai_execution unavailable"
 
 
 @pytest.mark.asyncio
@@ -426,7 +405,6 @@ async def test_tc_aiexec_004_persistence_failure_does_not_fail_classification(
 async def test_persistence_failure_preserves_original_ai_error(
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
         return_value=httpx.Response(503, text="provider unavailable")
@@ -437,16 +415,17 @@ async def test_persistence_failure_preserves_original_ai_error(
 
     async with OpenRouterIntentClient(settings, Mock()) as client:
         monkeypatch.setattr(client, "_record_execution", fail_persistence)
-        with capture_structured_records(), caplog.at_level(logging.WARNING, logger="app.ai.client"):
+        with structlog.testing.capture_logs() as logs:
             with pytest.raises(AIUnavailable) as raised:
                 await client.classify_intent("Hola", context={}, request_id=None)
 
     assert raised.value.reason == AIErrorReason.HTTP_ERROR
-    assert any(
-        getattr(record, "event", None) == "ai_execution_persist_failed"
-        or "ai_execution_persist_failed" in record.getMessage()
-        for record in caplog.records
-    )
+    records = [record for record in logs if record.get("event") == "ai_execution_persist_failed"]
+    assert len(records) == 1
+    assert records[0]["event"] == "ai_execution_persist_failed"
+    assert records[0]["request_id"] is None
+    assert records[0]["task"] == "INTENT_CLASSIFICATION"
+    assert records[0]["error"] == "ai_execution unavailable"
 
 
 @pytest.mark.asyncio

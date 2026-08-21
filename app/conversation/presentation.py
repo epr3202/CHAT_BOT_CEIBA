@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import date
-from logging import getLogger
 from typing import Any
+
+import structlog
 
 from app.conversation.catalog_event_type import (
     CATALOG_EVENT_TYPE_LABELS,
@@ -12,7 +13,7 @@ from app.conversation.catalog_event_type import (
 )
 from app.event.models import EVENT_TYPES
 
-logger = getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 MONTH_NAMES = {
     1: "enero",
@@ -218,12 +219,8 @@ def _present_event_type(value: Any) -> str:
     if event_type is not None:
         return format_event_type(event_type)
     logger.warning(
-        "event_type_presentation_fallback discarded_value=%r",
-        raw_value,
-        extra={
-            "event": "event_type_presentation_fallback",
-            "discarded_value": raw_value,
-        },
+        "event_type_presentation_fallback",
+        discarded_value=raw_value,
     )
     return format_event_type(None)
 
