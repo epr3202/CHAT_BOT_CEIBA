@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 
 import httpx
+import structlog
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -17,6 +18,19 @@ from app.config.settings import Settings
 
 INTENT_CLASSIFICATION_FUNCTION = "INTENT_CLASSIFICATION"
 DEFAULT_INTENT_MODEL = "openai/gpt-4o-mini"
+CONTACT_KNOWN_FIELDS = frozenset(
+    {
+        "customer_name",
+        "email",
+        "first_name",
+        "full_name",
+        "last_name",
+        "name",
+        "phone",
+        "phone_number",
+    }
+)
+logger = structlog.get_logger(__name__)
 
 
 class OpenRouterIntentClient:
@@ -61,35 +75,64 @@ class OpenRouterIntentClient:
         started = time.monotonic()
         success = False
         error_reason: AIErrorReason | None = None
+        raw_output: str | None = None
+        parsed_output: dict[str, Any] | None = None
+        validation_status = "INVALID_SCHEMA"
+        error_detail: str | None = None
+        input_payload = {
+            "message_text": message_text,
+            "context": telemetry_context(context),
+        }
 
         try:
             payload = self._build_payload(message_text, context)
             response = await self._post_with_retries("chat/completions", payload)
-            content = extract_message_content(response.json())
-            parsed = parse_json_content(content)
-            classification = IntentClassification.model_validate(parsed)
+            raw_output = extract_message_content(response.json())
+            parsed_output = parse_json_content(raw_output)
+            classification = IntentClassification.model_validate(parsed_output)
             success = True
+            validation_status = "VALID"
             return classification
         except AIUnavailable as error:
             error_reason = error.reason
+            validation_status = "HTTP_ERROR"
+            error_detail = error.detail or str(error)
             raise
         except (json.JSONDecodeError, TypeError, KeyError, IndexError) as error:
             error_reason = AIErrorReason.INVALID_JSON
+            error_detail = str(error)
             raise AIUnavailable(AIErrorReason.INVALID_JSON, str(error)) from error
         except ValidationError as error:
             error_reason = AIErrorReason.SCHEMA_VIOLATION
+            error_detail = str(error)
             raise AIUnavailable(AIErrorReason.SCHEMA_VIOLATION, str(error)) from error
+        except Exception as error:
+            error_detail = str(error)
+            raise
         finally:
             latency_ms = int((time.monotonic() - started) * 1000)
-            await self._record_execution(
-                latency_ms=latency_ms,
-                success=success,
-                error_reason=error_reason,
-                conversation_id=conversation_id,
-                input_character_count=len(message_text),
-                request_id=request_id,
-                external_message_id=external_message_id,
-            )
+            try:
+                await self._record_execution(
+                    latency_ms=latency_ms,
+                    success=success,
+                    error_reason=error_reason,
+                    conversation_id=conversation_id,
+                    input_character_count=len(message_text),
+                    request_id=request_id,
+                    external_message_id=external_message_id,
+                    input_payload=input_payload,
+                    raw_output=raw_output,
+                    parsed_output=parsed_output,
+                    validation_status=validation_status,
+                    error=error_detail,
+                )
+            except Exception as persistence_error:
+                logger.warning(
+                    "ai_execution_persist_failed",
+                    request_id=str(request_id) if request_id is not None else None,
+                    task=INTENT_CLASSIFICATION_FUNCTION,
+                    error=str(persistence_error),
+                )
 
     def _build_payload(self, message_text: str, context: dict[str, Any]) -> dict[str, Any]:
         normalized_context = {
@@ -159,6 +202,11 @@ class OpenRouterIntentClient:
         input_character_count: int,
         request_id: uuid.UUID | None,
         external_message_id: str | None,
+        input_payload: dict[str, Any],
+        raw_output: str | None,
+        parsed_output: dict[str, Any] | None,
+        validation_status: str,
+        error: str | None,
     ) -> None:
         async with self._sessionmaker() as session:
             async with session.begin():
@@ -174,8 +222,30 @@ class OpenRouterIntentClient:
                         input_character_count=input_character_count,
                         request_id=request_id,
                         external_message_id=external_message_id,
+                        input_payload=input_payload,
+                        raw_output=raw_output,
+                        parsed_output=parsed_output,
+                        validation_status=validation_status,
+                        error=error,
                     )
                 )
+
+
+def telemetry_context(context: dict[str, Any]) -> dict[str, Any]:
+    known_fields = context.get("known_fields", {})
+    sanitized_known_fields = (
+        {key: value for key, value in known_fields.items() if key not in CONTACT_KNOWN_FIELDS}
+        if isinstance(known_fields, dict)
+        else {}
+    )
+    return {
+        "last_intent": context.get("last_intent"),
+        "pending_action": context.get("pending_action"),
+        "last_question_code": context.get("last_question_code"),
+        "known_fields": sanitized_known_fields,
+        "failed_understanding_count": context.get("failed_understanding_count", 0),
+        "pending_confirmation": context.get("pending_confirmation"),
+    }
 
 
 def extract_message_content(payload: dict[str, Any]) -> str:

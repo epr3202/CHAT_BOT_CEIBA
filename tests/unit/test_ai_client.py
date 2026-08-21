@@ -414,6 +414,7 @@ async def test_tc_aiexec_004_persistence_failure_does_not_fail_classification(
         record
         for record in caplog.records
         if getattr(record, "event", None) == "ai_execution_persist_failed"
+        or "ai_execution_persist_failed" in record.getMessage()
     ]
     assert len(records) == 1
     assert str(records[0].request_id) == str(request_id)  # type: ignore[attr-defined]
@@ -442,7 +443,9 @@ async def test_persistence_failure_preserves_original_ai_error(
 
     assert raised.value.reason == AIErrorReason.HTTP_ERROR
     assert any(
-        getattr(record, "event", None) == "ai_execution_persist_failed" for record in caplog.records
+        getattr(record, "event", None) == "ai_execution_persist_failed"
+        or "ai_execution_persist_failed" in record.getMessage()
+        for record in caplog.records
     )
 
 
