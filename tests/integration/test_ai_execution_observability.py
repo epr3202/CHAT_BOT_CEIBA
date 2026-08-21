@@ -135,7 +135,12 @@ def assert_single_decision_record(
     *,
     intent: str | None = None,
 ) -> logging.LogRecord:
-    records = [record for record in caplog.records if record.name == ORCHESTRATOR_LOGGER]
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "orchestrator_decision"
+        or "orchestrator_decision" in record.getMessage()
+    ]
     assert len(records) == 1
     record = records[0]
     assert record.levelno == logging.INFO
