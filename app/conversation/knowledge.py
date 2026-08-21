@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.conversation.models import KnowledgeEntry
+from app.conversation.presentation import VariablePresentationError, present_variables
 
 
 class KnowledgeRenderErrorReason(StrEnum):
@@ -15,6 +16,7 @@ class KnowledgeRenderErrorReason(StrEnum):
     NOT_APPROVED = "NOT_APPROVED"
     MISSING_VARIABLE = "MISSING_VARIABLE"
     UNKNOWN_VARIABLE = "UNKNOWN_VARIABLE"
+    PRESENTATION_ERROR = "PRESENTATION_ERROR"
 
 
 class KnowledgeRenderError(Exception):
@@ -74,7 +76,16 @@ async def render_response(
                 variable,
             )
 
-    return entry.answer_template.format(**variables)
+    try:
+        presented_variables = present_variables(variables)
+    except VariablePresentationError as error:
+        raise KnowledgeRenderError(
+            KnowledgeRenderErrorReason.PRESENTATION_ERROR,
+            code,
+            error.variable,
+        ) from error
+
+    return entry.answer_template.format(**presented_variables)
 
 
 async def get_latest_response(
