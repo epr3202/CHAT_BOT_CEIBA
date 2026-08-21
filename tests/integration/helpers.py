@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 from collections.abc import AsyncIterator
+from uuid import UUID
 
 import asyncpg
 import pytest
@@ -128,6 +129,9 @@ async def configure_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        *,
+        request_id: UUID | None,
+        external_message_id: str | None = None,
     ) -> IntentClassification:
         return IntentClassification(
             primary_intent="GREETING",

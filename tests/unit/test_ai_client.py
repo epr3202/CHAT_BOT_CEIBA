@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
 from unittest.mock import Mock
+from uuid import uuid4
 
 import httpx
 import pytest
 import respx
+import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -92,6 +96,21 @@ def classification_with_event_type(value: str) -> dict[str, object]:
     return payload
 
 
+@contextmanager
+def capture_structured_records() -> Iterator[None]:
+    previous_config = structlog.get_config()
+    structlog.configure(
+        processors=[structlog.stdlib.render_to_log_kwargs],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=False,
+    )
+    try:
+        yield
+    finally:
+        structlog.configure(**previous_config)
+
+
 async def count_ai_executions(sessionmaker: async_sessionmaker[AsyncSession]) -> int:
     async with sessionmaker() as session:
         return await session.scalar(select(func.count()).select_from(AIExecution)) or 0
@@ -108,7 +127,7 @@ async def test_valid_json_returns_intent_classification(
     )
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
-        classification = await client.classify_intent("Hola", context={})
+        classification = await client.classify_intent("Hola", context={}, request_id=None)
 
     assert isinstance(classification, IntentClassification)
     assert classification.primary_intent == "GREETING"
@@ -132,6 +151,7 @@ async def test_prompt_includes_pending_action_and_last_question_code_context(
                 "pending_action": "CONFIRM_QUOTE_REQUEST",
                 "last_question_code": "RESP-QUOTE-002",
             },
+            request_id=None,
         )
 
     request = route.calls.last.request
@@ -155,7 +175,7 @@ async def test_unknown_intent_becomes_schema_violation(
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
         with pytest.raises(AIUnavailable) as error:
-            await client.classify_intent("Hola", context={})
+            await client.classify_intent("Hola", context={}, request_id=None)
 
     assert error.value.reason == AIErrorReason.SCHEMA_VIOLATION
     assert await count_ai_executions(sessionmaker_fixture) == 1
@@ -175,7 +195,7 @@ async def test_extra_field_becomes_schema_violation(
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
         with pytest.raises(AIUnavailable) as error:
-            await client.classify_intent("Hola", context={})
+            await client.classify_intent("Hola", context={}, request_id=None)
 
     assert error.value.reason == AIErrorReason.SCHEMA_VIOLATION
 
@@ -195,7 +215,7 @@ async def test_needs_human_requires_handoff_reason(
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
         with pytest.raises(AIUnavailable) as error:
-            await client.classify_intent("Quiero hablar con alguien", context={})
+            await client.classify_intent("Quiero hablar con alguien", context={}, request_id=None)
 
     assert error.value.reason == AIErrorReason.SCHEMA_VIOLATION
 
@@ -213,7 +233,7 @@ async def test_timeout_becomes_ai_unavailable(
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
         with pytest.raises(AIUnavailable) as error:
-            await client.classify_intent("Hola", context={})
+            await client.classify_intent("Hola", context={}, request_id=None)
 
     assert error.value.reason == AIErrorReason.TIMEOUT
     assert await count_ai_executions(sessionmaker_fixture) == 1
@@ -231,7 +251,7 @@ async def test_json_fences_are_stripped(
     )
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
-        classification = await client.classify_intent("Hola", context={})
+        classification = await client.classify_intent("Hola", context={}, request_id=None)
 
     assert classification.primary_intent == "GREETING"
 
@@ -249,7 +269,7 @@ async def test_failure_records_ai_execution(
     started = time.monotonic()
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
         with pytest.raises(AIUnavailable) as error:
-            await client.classify_intent("???", context={})
+            await client.classify_intent("???", context={}, request_id=None)
 
     assert error.value.reason == AIErrorReason.INVALID_JSON
     async with sessionmaker_fixture() as session:
@@ -258,6 +278,9 @@ async def test_failure_records_ai_execution(
     assert execution is not None
     assert execution.success is False
     assert execution.error_reason == "INVALID_JSON"
+    assert execution.validation_status == "INVALID_SCHEMA"
+    assert execution.raw_output == "{invalid"
+    assert execution.parsed_output is None
     assert execution.conversation_id is None
     assert execution.input_character_count == 3
     assert execution.latency_ms >= 0
@@ -276,12 +299,10 @@ async def test_prompt_version_setting_selects_v2_and_records_execution(
     )
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
-        await client.classify_intent("Hola", context={})
+        await client.classify_intent("Hola", context={}, request_id=None)
 
     request_payload = json.loads(route.calls.last.request.content)
-    assert request_payload["messages"][0]["content"].startswith(
-        "Eres una capa de interpretación"
-    )
+    assert request_payload["messages"][0]["content"].startswith("Eres una capa de interpretación")
     assert "Rúbrica explícita de confianza" in request_payload["messages"][0]["content"]
 
     async with sessionmaker_fixture() as session:
@@ -293,7 +314,7 @@ async def test_prompt_version_setting_selects_v2_and_records_execution(
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_tc_aiexec_001_persists_raw_normalized_prompt_conversation_and_timestamp(
+async def test_tc_aiexec_001_persists_raw_parsed_prompt_conversation_and_timestamp(
     settings: Settings,
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -303,14 +324,15 @@ async def test_tc_aiexec_001_persists_raw_normalized_prompt_conversation_and_tim
     )
 
     async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
-        classification = await client.classify_intent("Cena romántica", context={})
+        classification = await client.classify_intent("Cena romántica", context={}, request_id=None)
 
     async with sessionmaker_fixture() as session:
         execution = await session.scalar(select(AIExecution))
 
-    assert classification.extracted_entities[0].normalized_value == "ROMANTIC_DINNER"
+    assert classification.extracted_entities[0].normalized_value == "CENA ROMÁNTICA"
     assert execution is not None
-    assert execution.structured_output == raw_payload
+    assert execution.raw_output == json.dumps(raw_payload)
+    assert execution.parsed_output == raw_payload
     assert execution.validation_status == "VALID"
     assert execution.prompt_version == settings.ai_prompt_version
     assert execution.created_at is not None
@@ -318,28 +340,29 @@ async def test_tc_aiexec_001_persists_raw_normalized_prompt_conversation_and_tim
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_tc_aiexec_002_and_etype_007_persist_and_log_unrecognized_raw_output(
+async def test_tc_aiexec_002_persists_invalid_schema_raw_and_parsed_output(
     settings: Settings,
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    raw_payload = classification_with_event_type("FIESTA GALÁCTICA")
+    raw_payload = valid_classification()
+    raw_payload["primary_intent"] = "MADE_UP"
     respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=completion_payload(raw_payload))
     )
 
-    with caplog.at_level("WARNING"):
-        async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
-            classification = await client.classify_intent("Fiesta galáctica", context={})
+    async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
+        with pytest.raises(AIUnavailable) as raised:
+            await client.classify_intent("Mensaje inválido", context={}, request_id=None)
 
     async with sessionmaker_fixture() as session:
         execution = await session.scalar(select(AIExecution))
 
-    assert classification.extracted_entities[0].normalized_value is None
+    assert raised.value.reason == AIErrorReason.SCHEMA_VIOLATION
     assert execution is not None
-    assert execution.structured_output == raw_payload
-    assert execution.validation_status == "INVALID"
-    assert "FIESTA GALÁCTICA" in caplog.text
+    assert execution.raw_output == json.dumps(raw_payload)
+    assert execution.parsed_output == raw_payload
+    assert execution.validation_status == "INVALID_SCHEMA"
+    assert execution.error
 
 
 @pytest.mark.asyncio
@@ -380,10 +403,86 @@ async def test_tc_aiexec_004_persistence_failure_does_not_fail_classification(
     async def fail_persistence(**kwargs: object) -> None:
         raise RuntimeError("ai_execution unavailable")
 
+    request_id = uuid4()
     async with OpenRouterIntentClient(settings, Mock()) as client:
         monkeypatch.setattr(client, "_record_execution", fail_persistence)
-        with caplog.at_level("ERROR"):
-            classification = await client.classify_intent("Hola", context={})
+        with capture_structured_records(), caplog.at_level(logging.WARNING, logger="app.ai.client"):
+            classification = await client.classify_intent("Hola", context={}, request_id=request_id)
 
     assert classification.primary_intent == "GREETING"
-    assert "ai_execution unavailable" in caplog.text
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "ai_execution_persist_failed"
+    ]
+    assert len(records) == 1
+    assert str(records[0].request_id) == str(request_id)  # type: ignore[attr-defined]
+    assert records[0].task == "INTENT_CLASSIFICATION"  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_persistence_failure_preserves_original_ai_error(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        return_value=httpx.Response(503, text="provider unavailable")
+    )
+
+    async def fail_persistence(**kwargs: object) -> None:
+        raise RuntimeError("ai_execution unavailable")
+
+    async with OpenRouterIntentClient(settings, Mock()) as client:
+        monkeypatch.setattr(client, "_record_execution", fail_persistence)
+        with capture_structured_records(), caplog.at_level(logging.WARNING, logger="app.ai.client"):
+            with pytest.raises(AIUnavailable) as raised:
+                await client.classify_intent("Hola", context={}, request_id=None)
+
+    assert raised.value.reason == AIErrorReason.HTTP_ERROR
+    assert any(
+        getattr(record, "event", None) == "ai_execution_persist_failed" for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_input_payload_excludes_contact_fields_from_known_fields(
+    settings: Settings,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+) -> None:
+    respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=completion_payload(valid_classification()))
+    )
+    context = {
+        "last_intent": "EVENT_INFORMATION",
+        "pending_action": "COLLECT_EVENT_TYPE",
+        "last_question_code": "RESP-DISCOVERY-002",
+        "known_fields": {
+            "phone_number": "+573001112233",
+            "full_name": "Cliente de prueba",
+            "event_type": "WEDDING",
+        },
+        "failed_understanding_count": 1,
+        "pending_confirmation": {"type": "EVENT_TYPE"},
+    }
+
+    async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
+        await client.classify_intent("Quiero una boda", context=context, request_id=None)
+
+    async with sessionmaker_fixture() as session:
+        execution = await session.scalar(select(AIExecution))
+
+    assert execution is not None
+    assert execution.input_payload == {
+        "message_text": "Quiero una boda",
+        "context": {
+            "last_intent": "EVENT_INFORMATION",
+            "pending_action": "COLLECT_EVENT_TYPE",
+            "last_question_code": "RESP-DISCOVERY-002",
+            "known_fields": {"event_type": "WEDDING"},
+            "failed_understanding_count": 1,
+            "pending_confirmation": {"type": "EVENT_TYPE"},
+        },
+    }

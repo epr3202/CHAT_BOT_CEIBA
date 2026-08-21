@@ -31,6 +31,34 @@ EXPECTED_AI_EXECUTION_COLUMNS = {
     "validation_status",
     "latency_ms",
     "error",
+    "success",
+    "error_reason",
+    "conversation_id",
+    "input_character_count",
+}
+
+EXPECTED_AI_EXECUTION_CHECKS = {
+    "ck_ai_execution_task",
+    "ck_ai_execution_validation_status",
+}
+EXPECTED_NULLABILITY = {
+    "id": False,
+    "created_at": False,
+    "task": False,
+    "model": False,
+    "prompt_version": False,
+    "latency_ms": False,
+    "success": False,
+    "error_reason": True,
+    "conversation_id": True,
+    "input_character_count": False,
+    "request_id": True,
+    "external_message_id": True,
+    "input_payload": True,
+    "raw_output": True,
+    "parsed_output": True,
+    "validation_status": True,
+    "error": True,
 }
 
 
@@ -123,6 +151,11 @@ async def test_tc_parity_001_ai_execution_metadata_matches_migrated_database(
             reflected_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("ai_execution")
             )
+            reflected_checks = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_check_constraints(
+                    "ai_execution"
+                )
+            )
     finally:
         await engine.dispose()
 
@@ -131,6 +164,18 @@ async def test_tc_parity_001_ai_execution_metadata_matches_migrated_database(
 
     assert set(metadata_columns) == EXPECTED_AI_EXECUTION_COLUMNS
     assert set(migrated_columns) == EXPECTED_AI_EXECUTION_COLUMNS
+    assert {name: column.nullable for name, column in metadata_columns.items()} == (
+        EXPECTED_NULLABILITY
+    )
+    assert {name: column["nullable"] for name, column in migrated_columns.items()} == (
+        EXPECTED_NULLABILITY
+    )
     assert {name: column_contract(column) for name, column in metadata_columns.items()} == {
         name: reflected_column_contract(column) for name, column in migrated_columns.items()
     }
+    assert {
+        constraint.name
+        for constraint in AIExecution.__table__.constraints
+        if constraint.name in EXPECTED_AI_EXECUTION_CHECKS
+    } == EXPECTED_AI_EXECUTION_CHECKS
+    assert {check["name"] for check in reflected_checks} >= EXPECTED_AI_EXECUTION_CHECKS

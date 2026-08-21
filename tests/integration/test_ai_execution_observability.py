@@ -15,6 +15,7 @@ from sqlalchemy import UniqueConstraint, select
 
 from app.ai.client import OpenRouterIntentClient
 from app.ai.models import AIExecution
+from app.channel.models import WebhookEvent
 from app.conversation.models import Conversation
 from app.main import app
 from tests.integration.helpers import (
@@ -26,7 +27,7 @@ from tests.integration.helpers import (
 )
 
 OPENROUTER_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
-ORCHESTRATOR_LOGGER = "ceiba.orchestrator"
+ORCHESTRATOR_LOGGER = "app.orchestrator.service"
 DECISION_FIELDS = {
     "request_id",
     "intent",
@@ -93,12 +94,16 @@ async def post_message(
     external_message_id: str,
     *,
     text: str = "Hola",
+    external_request_id: str | None = None,
 ) -> httpx.Response:
     body = whatsapp_message_payload(external_message_id, text=text)
+    headers = {"X-Hub-Signature-256": signature(body)}
+    if external_request_id is not None:
+        headers["X-Request-ID"] = external_request_id
     return await client.post(
         "/webhook",
         content=body,
-        headers={"X-Hub-Signature-256": signature(body)},
+        headers=headers,
     )
 
 
@@ -134,6 +139,7 @@ def assert_single_decision_record(
     assert len(records) == 1
     record = records[0]
     assert record.levelno == logging.INFO
+    assert getattr(record, "event", None) == "orchestrator_decision"
     assert DECISION_FIELDS <= vars(record).keys()
     assert record.decision_source == decision_source  # type: ignore[attr-defined]
     if intent is not None:
@@ -157,6 +163,8 @@ async def test_tc_aiexec_005_http_error_persists_error_without_raw_output(
     assert len(executions) == 1
     execution = executions[0]
     assert execution.validation_status == "HTTP_ERROR"
+    assert execution.success is False
+    assert execution.error_reason == "HTTP_ERROR"
     assert execution.error
     assert execution.raw_output is None
 
@@ -186,6 +194,11 @@ async def test_tc_aiexec_006_every_execution_has_prompt_version_and_model(
     assert len(executions) == 2
     assert all(execution.prompt_version for execution in executions)
     assert all(execution.model for execution in executions)
+    assert all(execution.task == "INTENT_CLASSIFICATION" for execution in executions)
+    assert all(execution.input_payload for execution in executions)
+    assert all(execution.validation_status for execution in executions)
+    assert all(execution.external_message_id for execution in executions)
+    assert all(execution.request_id for execution in executions)
 
 
 @pytest.mark.asyncio
@@ -197,14 +210,23 @@ async def test_tc_aiexec_007_webhook_request_id_reaches_persisted_execution(
         return_value=httpx.Response(200, json=completion_payload(valid_classification()))
     )
 
-    response = await post_message(client, "wamid.aiexec.007")
+    response = await post_message(
+        client,
+        "wamid.aiexec.007",
+        external_request_id="caller-controlled-request-id",
+    )
     executions = await stored_executions()
+    async with app.state.db_sessionmaker() as session:
+        webhook_event = await session.scalar(select(WebhookEvent))
 
     assert response.status_code == 200
     assert len(executions) == 1
     execution = executions[0]
     assert UUID(str(execution.request_id)).version == 4
+    assert str(execution.request_id) != "caller-controlled-request-id"
     assert execution.external_message_id == "wamid.aiexec.007"
+    assert webhook_event is not None
+    assert str(webhook_event.request_id) == str(execution.request_id)
 
 
 @pytest.mark.asyncio
@@ -223,6 +245,10 @@ async def test_tc_aiexec_008_two_tasks_share_external_message_id_without_unique_
         "validation_status",
         "latency_ms",
         "error",
+        "success",
+        "error_reason",
+        "conversation_id",
+        "input_character_count",
     }
     assert required_columns <= set(AIExecution.__table__.columns.keys())
     assert not any(
@@ -235,27 +261,29 @@ async def test_tc_aiexec_008_two_tasks_share_external_message_id_without_unique_
     request_id = uuid4()
     common = {
         "model": "openai/test-model",
-        "prompt_version": "intent-v4",
+        "prompt_version": "intent_v4",
         "input_payload": {"message_text": "Hola", "context": {}},
         "raw_output": '{"primary_intent":"GREETING"}',
         "parsed_output": {"primary_intent": "GREETING"},
         "validation_status": "VALID",
         "latency_ms": 1,
         "error": None,
+        "success": True,
+        "error_reason": None,
+        "conversation_id": None,
+        "input_character_count": 4,
     }
     async with app.state.db_sessionmaker() as session:
         async with session.begin():
             session.add_all(
                 [
                     AIExecution(
-                        id=uuid4(),
                         request_id=request_id,
                         external_message_id=external_message_id,
                         task="INTENT_CLASSIFICATION",
                         **common,
                     ),
                     AIExecution(
-                        id=uuid4(),
                         request_id=request_id,
                         external_message_id=external_message_id,
                         task="SERVICES_CLASSIFICATION",
