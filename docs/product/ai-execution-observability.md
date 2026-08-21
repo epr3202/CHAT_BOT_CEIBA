@@ -132,3 +132,45 @@ fue escrita contra el esquema legacy y v1.1 es el contrato vigente.
 * Retención/purga (backlog; anotar volumen estimado en G3).
 * Enforcement DB de append-only (trigger/permiso): anotado como candidato
   de backlog para las tres tablas append-only a la vez, no solo esta.
+  # Enmienda v1.1.1 — anexar al final de docs/product/ai-execution-observability.md
+
+
+## 7. Enmiendas v1.1.1 (decisiones de implementación y post-deploy, 2026-08-21)
+
+1. **Semántica de `INVALID_SCHEMA` en excepciones inesperadas:** una
+   excepción que no es HTTP ni de parseo persiste `validation_status=
+   'INVALID_SCHEMA'` por el default del escritor. El caso es distinguible
+   forensicamente: `error_reason` NULL + `error` poblado. Aceptado; no se
+   introduce un sexto estado para un camino excepcional.
+2. **Representación de `transition`:** string `"STATE_BEFORE->STATE_AFTER"`;
+   `None` cuando el estado no cambia.
+3. **`NORMALIZED` y `DISCARDED` sin escritor en `INTENT_CLASSIFICATION`:**
+   la normalización ocurre en el orquestador, después del cliente. Ambos
+   estados quedan reservados; PR-B los activa diseñando sus tareas
+   (`SERVICES_CLASSIFICATION`, `EVENT_TYPE_EXTRACTION`) con la validación y
+   normalización dentro del camino del cliente antes de persistir.
+   Confirmado en producción (fila 531): el clasificador devuelve
+   `normalized_value` igual al `raw_value` — no normaliza a enum.
+4. **Sanitización de `input_payload` por allowlist:**
+   `TELEMETRY_SAFE_KNOWN_FIELDS` (hoy: `event_type`,
+   `preferred_visit_date`). Política fail-closed: clave no listada no se
+   persiste, sea de contacto o no. Añadir claves a telemetría es decisión
+   explícita, no efecto colateral.
+5. **Caching de structlog condicionado:** `cache_logger_on_first_use` solo
+   en producción. Precondición documentada de
+   `structlog.testing.capture_logs`: loggers no cacheados.
+6. **Regla de captura en tests:** el captor vive en el mismo pipeline que
+   el emisor — stdlib se aserta con `caplog`, structlog con
+   `capture_logs`; todo test que cruce el puente depende de config global
+   y orden de ejecución (pasa por accidente). `caplog` quedó erradicado de
+   aserciones de eventos structlog. Emisor stdlib residual conocido:
+   `app/ai/schemas.py` (`ai_invalid_information_category`) — backlog,
+   nadie lo aserta hoy.
+7. **Focal en Windows:** el pytest focal pre-push solo incluye tests
+   colectables sin PostgreSQL; para la suite con DB, CI del PR ES el focal
+   (los SHAs validados llegan bit a bit idénticos al merge ff-only). Un
+   focal que no puede pasar localmente no es gate.
+8. **`DEFAULT_INTENT_MODEL` es letra muerta:** producción usa
+   `google/gemini-2.5-flash-lite` vía settings (confirmado por
+   `SELECT DISTINCT model`); el default `openai/gpt-4o-mini` en `client.py`
+   nunca aplica. Backlog: alinearlo o eliminarlo.
