@@ -9,6 +9,7 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import structlog
 
 from app.conversation import knowledge
 from app.conversation.presentation import (
@@ -238,7 +239,7 @@ def test_internal_slot_labels_use_approved_customer_text(
 @pytest.mark.asyncio
 async def test_unregistered_variable_uses_controlled_render_failure_path(
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     entries = {
         "RESP-TEST-PRESENTATION": SimpleNamespace(
@@ -262,19 +263,45 @@ async def test_unregistered_variable_uses_controlled_render_failure_path(
     customer = SimpleNamespace(phone_number="+573001112233")
     inbound_message = SimpleNamespace(id=202)
 
-    await orchestrator_service.enqueue_template(
-        session,
-        object(),
-        conversation,
-        customer,
-        inbound_message,
-        "RESP-TEST-PRESENTATION",
-        {"invented_slot": "INTERNAL_SLOT"},
+    previous_structlog_config = structlog.get_config()
+    structlog.configure(
+        processors=[structlog.stdlib.render_to_log_kwargs],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=False,
     )
+    try:
+        with caplog.at_level("ERROR", logger="app.orchestrator.service"):
+            await orchestrator_service.enqueue_template(
+                session,
+                object(),
+                conversation,
+                customer,
+                inbound_message,
+                "RESP-TEST-PRESENTATION",
+                {"invented_slot": "INTERNAL_SLOT"},
+            )
+    finally:
+        structlog.configure(
+            **previous_structlog_config,
+        )
 
     outbox = session.add.call_args.args[0]
     body = outbox.payload["text"]["body"]
     assert body == "Respuesta aprobada de respaldo."
     assert "Texto parcial" not in body
     assert "INTERNAL_SLOT" not in body
-    assert "approved_response_render_failed" in capsys.readouterr().out
+    assert any(
+        (
+            getattr(record, "event", None) == "approved_response_render_failed"
+            or "approved_response_render_failed" in record.getMessage()
+        )
+        and (
+            getattr(record, "response_code", None) == "RESP-TEST-PRESENTATION"
+            or (
+                isinstance(record.msg, dict)
+                and record.msg.get("response_code") == "RESP-TEST-PRESENTATION"
+            )
+        )
+        for record in caplog.records
+    )
