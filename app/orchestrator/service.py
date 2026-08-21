@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -124,10 +124,52 @@ class OrchestrationInput:
     customer: Customer
     inbound_message: Message
     message_text: str
-    request_id: uuid.UUID | str | None = None
+    request_id: uuid.UUID | None = None
+    decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "LLM"
 
 
 async def orchestrate_inbound_message(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification | None,
+    ai_error_reason: AIErrorReason | None = None,
+) -> None:
+    conversation = orchestration_input.conversation
+    state_before = ConversationState(conversation.state).value
+    intent = classification.primary_intent if classification is not None else "UNKNOWN"
+    try:
+        await _orchestrate_inbound_message(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            ai_error_reason,
+        )
+    finally:
+        state_after = ConversationState(conversation.state).value
+        transition = (
+            f"{state_before}->{state_after}" if state_before != state_after else None
+        )
+        logger.info(
+            "orchestrator_decision",
+            request_id=(
+                str(orchestration_input.request_id)
+                if orchestration_input.request_id is not None
+                else None
+            ),
+            intent=intent,
+            state_before=state_before,
+            state_after=state_after,
+            transition=transition,
+            decision_source=orchestration_input.decision_source,
+            pending_action=conversation.pending_action,
+        )
+
+
+async def _orchestrate_inbound_message(
     session: AsyncSession,
     settings: Settings,
     knowledge_sessionmaker: Any,

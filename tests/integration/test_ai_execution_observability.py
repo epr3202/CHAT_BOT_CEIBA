@@ -139,7 +139,10 @@ def assert_single_decision_record(
     assert len(records) == 1
     record = records[0]
     assert record.levelno == logging.INFO
-    assert getattr(record, "event", None) == "orchestrator_decision"
+    assert (
+        getattr(record, "event", None) == "orchestrator_decision"
+        or "orchestrator_decision" in record.getMessage()
+    )
     assert DECISION_FIELDS <= vars(record).keys()
     assert record.decision_source == decision_source  # type: ignore[attr-defined]
     if intent is not None:

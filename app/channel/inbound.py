@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from sqlalchemy import select
@@ -256,8 +256,10 @@ async def classify_and_orchestrate_phase_b_c(
             persisted.message_text,
             persisted.context,
         )
+        decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "DETERMINISTIC"
         ai_error_reason: AIErrorReason | None = None
         if classification is None:
+            decision_source = "LLM"
             async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
                 try:
                     classification = await classifier.classify_intent(
@@ -269,6 +271,7 @@ async def classify_and_orchestrate_phase_b_c(
                     )
                 except AIUnavailable as error:
                     ai_error_reason = error.reason
+                    decision_source = "FALLBACK"
 
         async with sessionmaker() as session:
             async with session.begin():
@@ -293,6 +296,7 @@ async def classify_and_orchestrate_phase_b_c(
                         inbound_message=message,
                         message_text=persisted.message_text,
                         request_id=request_id,
+                        decision_source=decision_source,
                     ),
                     classification=classification,
                     ai_error_reason=ai_error_reason,
