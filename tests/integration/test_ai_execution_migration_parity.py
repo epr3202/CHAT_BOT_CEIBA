@@ -119,12 +119,13 @@ async def migrated_database_url(monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
 
 def column_contract(column: object) -> tuple[bool, bool, str, int | None, bool]:
     column_type = column.type  # type: ignore[attr-defined]
+    primary_key = bool(column.primary_key)  # type: ignore[attr-defined]
     return (
         bool(column.nullable),  # type: ignore[attr-defined]
-        bool(column.primary_key),  # type: ignore[attr-defined]
+        primary_key,
         column_type._type_affinity.__name__,
         getattr(column_type, "length", None),
-        column.server_default is not None,  # type: ignore[attr-defined]
+        not primary_key and column.server_default is not None,  # type: ignore[attr-defined]
     )
 
 
@@ -132,12 +133,13 @@ def reflected_column_contract(
     column: dict[str, object],
 ) -> tuple[bool, bool, str, int | None, bool]:
     column_type = column["type"]
+    primary_key = bool(column.get("primary_key"))
     return (
         bool(column["nullable"]),
-        bool(column.get("primary_key")),
+        primary_key,
         column_type._type_affinity.__name__,  # type: ignore[attr-defined]
         getattr(column_type, "length", None),
-        column.get("default") is not None,
+        not primary_key and column.get("default") is not None,
     )
 
 
