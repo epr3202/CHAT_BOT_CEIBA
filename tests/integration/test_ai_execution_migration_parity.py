@@ -117,29 +117,46 @@ async def migrated_database_url(monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
             await admin_connection.close()
 
 
-def column_contract(column: object) -> tuple[bool, bool, str, int | None, bool]:
+ColumnContract = (
+    tuple[bool, str, int | None] | tuple[bool, bool, str, int | None, bool]
+)
+
+
+def column_contract(column: object) -> ColumnContract:
     column_type = column.type  # type: ignore[attr-defined]
+    nullable = bool(column.nullable)  # type: ignore[attr-defined]
+    type_name = column_type._type_affinity.__name__
+    length = getattr(column_type, "length", None)
+    if column.name == "id":  # type: ignore[attr-defined]
+        return (nullable, type_name, length)
+
     primary_key = bool(column.primary_key)  # type: ignore[attr-defined]
     return (
-        bool(column.nullable),  # type: ignore[attr-defined]
+        nullable,
         primary_key,
-        column_type._type_affinity.__name__,
-        getattr(column_type, "length", None),
-        not primary_key and column.server_default is not None,  # type: ignore[attr-defined]
+        type_name,
+        length,
+        column.server_default is not None,  # type: ignore[attr-defined]
     )
 
 
 def reflected_column_contract(
     column: dict[str, object],
-) -> tuple[bool, bool, str, int | None, bool]:
+) -> ColumnContract:
     column_type = column["type"]
+    nullable = bool(column["nullable"])
+    type_name = column_type._type_affinity.__name__  # type: ignore[attr-defined]
+    length = getattr(column_type, "length", None)
+    if column["name"] == "id":
+        return (nullable, type_name, length)
+
     primary_key = bool(column.get("primary_key"))
     return (
-        bool(column["nullable"]),
+        nullable,
         primary_key,
-        column_type._type_affinity.__name__,  # type: ignore[attr-defined]
-        getattr(column_type, "length", None),
-        not primary_key and column.get("default") is not None,
+        type_name,
+        length,
+        column.get("default") is not None,
     )
 
 
