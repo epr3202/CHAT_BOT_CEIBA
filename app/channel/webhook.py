@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import uuid
 from typing import Any
 
 import structlog
@@ -41,10 +42,12 @@ async def receive_webhook(
     x_request_id: str | None = Header(default=None, alias="X-Request-ID"),
 ) -> JSONResponse:
     settings: Settings = request.app.state.settings
+    request_id = uuid.uuid4()
     if is_body_too_large_from_header(content_length, settings.webhook_max_body_bytes):
         logger.warning(
             "whatsapp_webhook_rejected_body_too_large",
-            request_id=x_request_id,
+            request_id=str(request_id),
+            external_request_id=x_request_id,
             content_length=content_length,
             max_body_bytes=settings.webhook_max_body_bytes,
         )
@@ -54,7 +57,8 @@ async def receive_webhook(
     if len(body) > settings.webhook_max_body_bytes:
         logger.warning(
             "whatsapp_webhook_rejected_body_too_large",
-            request_id=x_request_id,
+            request_id=str(request_id),
+            external_request_id=x_request_id,
             body_bytes=len(body),
             max_body_bytes=settings.webhook_max_body_bytes,
         )
@@ -63,7 +67,7 @@ async def receive_webhook(
     if not is_valid_signature(body, x_hub_signature_256, settings.meta_app_secret):
         await record_invalid_signature_attempt(
             request.app.state.db_sessionmaker,
-            request_id=x_request_id,
+            request_id=request_id,
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
@@ -71,7 +75,7 @@ async def receive_webhook(
     webhook_event_id = await store_webhook_event(
         payload,
         request.app.state.db_sessionmaker,
-        request_id=x_request_id,
+        request_id=request_id,
     )
     background_tasks.add_task(
         process_webhook_event,
@@ -80,7 +84,8 @@ async def receive_webhook(
     )
     logger.info(
         "whatsapp_webhook_accepted",
-        request_id=x_request_id,
+        request_id=str(request_id),
+        external_request_id=x_request_id,
         webhook_event_id=webhook_event_id,
     )
     return JSONResponse({"status": "accepted"})

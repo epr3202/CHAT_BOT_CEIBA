@@ -1,8 +1,9 @@
+import uuid
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON, DateTime, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.config.database import Base
 
@@ -22,3 +23,11 @@ class AuditEvent(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    @validates("request_id")
+    def serialize_request_id(
+        self,
+        key: str,
+        value: uuid.UUID | str | None,
+    ) -> str | None:
+        del key
+        return str(value) if value is not None else None

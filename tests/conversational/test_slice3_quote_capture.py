@@ -409,6 +409,7 @@ async def test_p0a_confirm_pending_action_is_resolved_before_llm(
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         raise AssertionError("LLM classifier must not run for deterministic CONFIRM")
 
@@ -964,6 +965,7 @@ async def test_tc_collect_013_duplicate_webhook_is_idempotent_during_capture(
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return classification(entities=complete_entities())
 
@@ -1011,6 +1013,7 @@ async def test_event_type_entity_never_aborts_webhook_turn(
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return classification(
             "EVENT_INFORMATION",

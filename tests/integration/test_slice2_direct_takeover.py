@@ -76,6 +76,7 @@ def mock_classifier(monkeypatch: pytest.MonkeyPatch, result: IntentClassificatio
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return result
 

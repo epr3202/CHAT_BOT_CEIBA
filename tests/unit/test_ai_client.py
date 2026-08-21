@@ -383,7 +383,7 @@ async def test_tc_aiexec_003_http_finishes_before_persistence_transaction(
     monkeypatch.setattr(client, "_post_with_retries", fake_post)
     monkeypatch.setattr(client, "_record_execution", tracking_record)
 
-    await client.classify_intent("Hola", context={})
+    await client.classify_intent("Hola", context={}, request_id=None)
     await client._http_client.aclose()  # type: ignore[union-attr]
 
     assert order == ["http_started", "http_finished", "persistence_started"]

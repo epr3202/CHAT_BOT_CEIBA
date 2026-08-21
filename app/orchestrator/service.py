@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
@@ -123,7 +124,7 @@ class OrchestrationInput:
     customer: Customer
     inbound_message: Message
     message_text: str
-    request_id: str | None = None
+    request_id: uuid.UUID | str | None = None
 
 
 async def orchestrate_inbound_message(

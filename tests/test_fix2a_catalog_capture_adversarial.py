@@ -559,6 +559,7 @@ async def test_tc_catcap_011_duplicate_webhook_enqueues_one_catalog(
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return classification(
             "GENERAL_INFORMATION", confidence=0.65, event_type="ROMANTIC_DINNER"
@@ -730,6 +731,7 @@ async def test_tc_catcap_016_duplicate_unavailable_webhook_creates_one_handoff(
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return catalog_request(event_type="GENDER_REVEAL")
 

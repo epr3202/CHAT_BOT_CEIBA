@@ -55,6 +55,7 @@ class ClassifierQueue:
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return self.by_text[message_text]
 
@@ -80,6 +81,7 @@ async def wiring_context(
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return await classifier.classify(client, message_text, context, conversation_id)
 

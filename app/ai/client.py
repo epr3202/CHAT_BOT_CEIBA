@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from typing import Any
 
 import httpx
@@ -50,6 +51,9 @@ class OpenRouterIntentClient:
         message_text: str,
         context: dict[str, Any],
         conversation_id: int | None = None,
+        *,
+        request_id: uuid.UUID | None,
+        external_message_id: str | None = None,
     ) -> IntentClassification:
         if self._http_client is None:
             raise RuntimeError("OpenRouterIntentClient must be used as an async context manager")
@@ -83,6 +87,8 @@ class OpenRouterIntentClient:
                 error_reason=error_reason,
                 conversation_id=conversation_id,
                 input_character_count=len(message_text),
+                request_id=request_id,
+                external_message_id=external_message_id,
             )
 
     def _build_payload(self, message_text: str, context: dict[str, Any]) -> dict[str, Any]:
@@ -151,12 +157,14 @@ class OpenRouterIntentClient:
         error_reason: AIErrorReason | None,
         conversation_id: int | None,
         input_character_count: int,
+        request_id: uuid.UUID | None,
+        external_message_id: str | None,
     ) -> None:
         async with self._sessionmaker() as session:
             async with session.begin():
                 session.add(
                     AIExecution(
-                        function=INTENT_CLASSIFICATION_FUNCTION,
+                        task=INTENT_CLASSIFICATION_FUNCTION,
                         model=self._model,
                         latency_ms=latency_ms,
                         success=success,
@@ -164,6 +172,8 @@ class OpenRouterIntentClient:
                         prompt_version=self._prompt.version,
                         conversation_id=conversation_id,
                         input_character_count=input_character_count,
+                        request_id=request_id,
+                        external_message_id=external_message_id,
                     )
                 )
 

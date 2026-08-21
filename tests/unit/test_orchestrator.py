@@ -32,6 +32,7 @@ class StaticClassifier:
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         if isinstance(self.result, AIUnavailable):
             raise self.result

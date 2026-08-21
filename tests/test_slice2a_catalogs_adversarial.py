@@ -1022,6 +1022,7 @@ async def test_tc_cat_020_duplicate_catalog_webhook_is_idempotent(
         message_text: str,
         context: dict[str, object],
         conversation_id: int | None = None,
+        **_kwargs: object,
     ) -> IntentClassification:
         return catalog_request_classification()
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -45,6 +46,7 @@ class PersistedInboundMessage:
     customer_id: int
     message_text: str
     context: dict[str, Any]
+    external_message_id: str
 
 
 def normalize_phone_number(phone_number: str) -> str:
@@ -61,7 +63,7 @@ def normalize_phone_number(phone_number: str) -> str:
 async def process_whatsapp_webhook(
     payload: dict[str, Any],
     sessionmaker: async_sessionmaker[AsyncSession],
-    request_id: str | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     persisted_messages = await persist_payload_phase_a(payload, sessionmaker, request_id=request_id)
     await classify_and_orchestrate_phase_b_c(
@@ -75,14 +77,14 @@ async def process_whatsapp_webhook(
 async def store_webhook_event(
     payload: dict[str, Any],
     sessionmaker: async_sessionmaker[AsyncSession],
-    request_id: str | None = None,
+    request_id: uuid.UUID | None,
 ) -> int:
     async with sessionmaker() as session:
         async with session.begin():
             webhook_event = WebhookEvent(
                 payload=payload,
                 status="RECEIVED",
-                request_id=request_id,
+                request_id=str(request_id) if request_id is not None else None,
             )
             session.add(webhook_event)
             await session.flush()
@@ -94,7 +96,7 @@ async def process_webhook_event(
     sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
     payload: dict[str, Any] | None = None
-    request_id: str | None = None
+    request_id: uuid.UUID | None = None
     try:
         async with sessionmaker() as session:
             async with session.begin():
@@ -105,7 +107,7 @@ async def process_webhook_event(
                 if webhook_event.status == "PROCESSED":
                     return
                 payload = webhook_event.payload
-                request_id = webhook_event.request_id
+                request_id = parse_request_id(webhook_event.request_id)
 
         persisted_messages = await persist_payload_phase_a(
             payload,
@@ -163,7 +165,7 @@ async def process_whatsapp_payload_in_session(
     session: AsyncSession,
     payload: dict[str, Any],
     sessionmaker: async_sessionmaker[AsyncSession] | None = None,
-    request_id: str | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     persisted_messages: list[PersistedInboundMessage] = []
     inbound_messages = list(extract_inbound_messages(payload))
@@ -194,7 +196,7 @@ async def process_whatsapp_payload_in_session(
 async def persist_payload_phase_a(
     payload: dict[str, Any],
     sessionmaker: async_sessionmaker[AsyncSession],
-    request_id: str | None = None,
+    request_id: uuid.UUID | None,
 ) -> list[PersistedInboundMessage]:
     async with sessionmaker() as session:
         async with session.begin():
@@ -204,7 +206,7 @@ async def persist_payload_phase_a(
 async def persist_payload_phase_a_in_session(
     session: AsyncSession,
     payload: dict[str, Any],
-    request_id: str | None = None,
+    request_id: uuid.UUID | None,
 ) -> list[PersistedInboundMessage]:
     inbound_messages = list(extract_inbound_messages(payload))
     provider_statuses = list(extract_provider_statuses(payload))
@@ -236,7 +238,7 @@ async def persist_payload_phase_a_in_session(
 async def classify_and_orchestrate_phase_b_c(
     persisted_messages: list[PersistedInboundMessage],
     sessionmaker: async_sessionmaker[AsyncSession],
-    request_id: str | None,
+    request_id: uuid.UUID | None,
     webhook_event_id: int | None,
 ) -> None:
     if not persisted_messages:
@@ -262,6 +264,8 @@ async def classify_and_orchestrate_phase_b_c(
                         persisted.message_text,
                         context=persisted.context,
                         conversation_id=persisted.conversation_id,
+                        request_id=request_id,
+                        external_message_id=persisted.external_message_id,
                     )
                 except AIUnavailable as error:
                     ai_error_reason = error.reason
@@ -394,7 +398,7 @@ def parse_provider_timestamp(timestamp: Any) -> datetime | None:
 async def persist_inbound_message(
     inbound_message: InboundWhatsAppMessage,
     sessionmaker: async_sessionmaker[AsyncSession],
-    request_id: str | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> PersistedInboundMessage | None:
     async with sessionmaker() as session:
         async with session.begin():
@@ -410,7 +414,7 @@ async def persist_inbound_message_in_session(
     inbound_message: InboundWhatsAppMessage,
     session: AsyncSession,
     sessionmaker: async_sessionmaker[AsyncSession] | None = None,
-    request_id: str | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> PersistedInboundMessage | None:
     try:
         async with session.begin_nested():
@@ -455,7 +459,18 @@ def persisted_message_from_models(
             "failed_understanding_count": conversation.failed_understanding_count,
             "pending_confirmation": conversation.pending_confirmation,
         },
+        external_message_id=message.external_message_id,
     )
+
+
+def parse_request_id(value: str | None) -> uuid.UUID | None:
+    if value is None:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        logger.warning("legacy_webhook_request_id_ignored", legacy_request_id=value)
+        return None
 
 
 def deterministic_confirmation_classification(
@@ -552,7 +567,7 @@ async def get_or_create_active_conversation(
 async def record_provider_status(
     status_payload: dict[str, Any],
     sessionmaker: async_sessionmaker[AsyncSession],
-    request_id: str | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     async with sessionmaker() as session:
         async with session.begin():
@@ -562,7 +577,7 @@ async def record_provider_status(
 async def record_provider_status_in_session(
     status_payload: dict[str, Any],
     session: AsyncSession,
-    request_id: str | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     provider_message_id = status_payload["id"]
     try:
@@ -599,7 +614,7 @@ async def record_provider_status_in_session(
 
 async def record_invalid_signature_attempt(
     sessionmaker: async_sessionmaker[AsyncSession],
-    request_id: str | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     async with sessionmaker() as session:
         async with session.begin():
@@ -611,6 +626,6 @@ async def record_invalid_signature_attempt(
                     old_value=None,
                     new_value=None,
                     reason="Invalid X-Hub-Signature-256",
-                    request_id=request_id,
+                    request_id=str(request_id) if request_id is not None else None,
                 )
             )

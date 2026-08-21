@@ -1,5 +1,6 @@
 import json
 from collections.abc import AsyncIterator
+from uuid import UUID
 
 import pytest
 from fastapi import BackgroundTasks
@@ -146,7 +147,8 @@ async def test_post_valid_persists_received_webhook_event_before_background() ->
         assert response.status_code == 200
         assert webhook_event is not None
         assert webhook_event.status == "RECEIVED"
-        assert webhook_event.request_id == "req-inbox-received"
+        assert UUID(str(webhook_event.request_id)).version == 4
+        assert webhook_event.request_id != "req-inbox-received"
         assert await count_rows(Message) == 0
         assert await count_rows(Outbox) == 0
 

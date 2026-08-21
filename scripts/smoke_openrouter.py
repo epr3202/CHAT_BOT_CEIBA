@@ -66,7 +66,11 @@ async def main() -> None:
             for text, context in samples:
                 started = time.monotonic()
                 try:
-                    classification = await client.classify_intent(text, context=context)
+                    classification = await client.classify_intent(
+                        text,
+                        context=context,
+                        request_id=None,
+                    )
                 except AIUnavailable as error:
                     latency_ms = int((time.monotonic() - started) * 1000)
                     print(
