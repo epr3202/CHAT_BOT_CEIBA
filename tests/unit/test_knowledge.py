@@ -146,7 +146,7 @@ async def test_approved_templates_render_without_internal_enums_or_iso_dates(
     safe_values = {
         "adult_guest_count": "40",
         "advisor_name": "Natalia",
-        "appointment_options": "martes 18 de agosto a las 08:00",
+        "appointment_options": "08:00, 09:00 y 11:00",
         "child_guest_count": "5",
         "customer_name": "Natalia",
         "email": "natalia@example.com",

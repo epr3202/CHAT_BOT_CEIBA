@@ -145,6 +145,71 @@ def test_quote_summary_normalizes_literal_requested_services_incident() -> None:
 
 
 @pytest.mark.parametrize(
+    "variable",
+    ["visit_date", "event_date", "resolved_date", "new_visit_date"],
+)
+def test_date_presenters_reject_non_formatter_text(variable: str) -> None:
+    present_variables, _, presentation_error = presentation_api()
+
+    with pytest.raises(presentation_error):
+        present_variables({variable: "el 4 de septiembre"})
+
+
+@pytest.mark.parametrize(
+    "variable",
+    ["visit_date", "event_date", "resolved_date", "new_visit_date"],
+)
+def test_date_presenters_accept_exact_formatter_text_and_date(variable: str) -> None:
+    present_variables, _, _ = presentation_api()
+
+    assert present_variables({variable: "19 de agosto de 2026"}) == {
+        variable: "19 de agosto de 2026"
+    }
+    assert present_variables({variable: date(2026, 8, 19)}) == {
+        variable: "19 de agosto de 2026"
+    }
+
+
+def test_month_presenter_requires_exact_formatter_text() -> None:
+    present_variables, _, presentation_error = presentation_api()
+
+    with pytest.raises(presentation_error):
+        present_variables({"event_month": "septiembre"})
+    assert present_variables({"event_month": "septiembre de 2026"}) == {
+        "event_month": "septiembre de 2026"
+    }
+
+
+@pytest.mark.parametrize("variable", ["visit_time", "new_visit_time"])
+def test_time_presenters_require_exact_formatter_text(variable: str) -> None:
+    present_variables, _, presentation_error = presentation_api()
+
+    with pytest.raises(presentation_error):
+        present_variables({variable: "a las 8"})
+    assert present_variables({variable: "08:00"}) == {variable: "08:00"}
+
+
+def test_appointment_options_require_exact_formatter_text() -> None:
+    present_variables, _, presentation_error = presentation_api()
+
+    with pytest.raises(presentation_error):
+        present_variables({"appointment_options": "varias horas disponibles"})
+    assert present_variables({"appointment_options": "08:00, 09:00 y 11:00"}) == {
+        "appointment_options": "08:00, 09:00 y 11:00"
+    }
+
+
+def test_guest_count_range_requires_exact_formatter_text() -> None:
+    present_variables, _, presentation_error = presentation_api()
+
+    with pytest.raises(presentation_error):
+        present_variables({"guest_count_range": "más o menos cuarenta"})
+    assert present_variables({"guest_count_range": "entre 40 y 50"}) == {
+        "guest_count_range": "entre 40 y 50"
+    }
+
+
+@pytest.mark.parametrize(
     ("variable", "raw_value", "expected"),
     [
         ("missing_field", "event_type", "el tipo de evento"),
