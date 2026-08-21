@@ -18,18 +18,7 @@ from app.config.settings import Settings
 
 INTENT_CLASSIFICATION_FUNCTION = "INTENT_CLASSIFICATION"
 DEFAULT_INTENT_MODEL = "openai/gpt-4o-mini"
-CONTACT_KNOWN_FIELDS = frozenset(
-    {
-        "customer_name",
-        "email",
-        "first_name",
-        "full_name",
-        "last_name",
-        "name",
-        "phone",
-        "phone_number",
-    }
-)
+TELEMETRY_SAFE_KNOWN_FIELDS = frozenset({"event_type", "preferred_visit_date"})
 logger = structlog.get_logger(__name__)
 
 
@@ -234,7 +223,11 @@ class OpenRouterIntentClient:
 def telemetry_context(context: dict[str, Any]) -> dict[str, Any]:
     known_fields = context.get("known_fields", {})
     sanitized_known_fields = (
-        {key: value for key, value in known_fields.items() if key not in CONTACT_KNOWN_FIELDS}
+        {
+            key: value
+            for key, value in known_fields.items()
+            if key in TELEMETRY_SAFE_KNOWN_FIELDS
+        }
         if isinstance(known_fields, dict)
         else {}
     )

@@ -451,9 +451,9 @@ async def test_persistence_failure_preserves_original_ai_error(
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_input_payload_excludes_contact_fields_from_known_fields(
+async def test_input_payload_allows_only_safe_known_fields(
     settings: Settings,
-    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=completion_payload(valid_classification()))
@@ -466,25 +466,31 @@ async def test_input_payload_excludes_contact_fields_from_known_fields(
             "phone_number": "+573001112233",
             "full_name": "Cliente de prueba",
             "event_type": "WEDDING",
+            "preferred_visit_date": "2026-09-12",
+            "event_month": "2026-09",
         },
         "failed_understanding_count": 1,
         "pending_confirmation": {"type": "EVENT_TYPE"},
     }
+    recorded: dict[str, object] = {}
 
-    async with OpenRouterIntentClient(settings, sessionmaker_fixture) as client:
+    async def capture_execution(**kwargs: object) -> None:
+        recorded.update(kwargs)
+
+    async with OpenRouterIntentClient(settings, Mock()) as client:
+        monkeypatch.setattr(client, "_record_execution", capture_execution)
         await client.classify_intent("Quiero una boda", context=context, request_id=None)
 
-    async with sessionmaker_fixture() as session:
-        execution = await session.scalar(select(AIExecution))
-
-    assert execution is not None
-    assert execution.input_payload == {
+    assert recorded["input_payload"] == {
         "message_text": "Quiero una boda",
         "context": {
             "last_intent": "EVENT_INFORMATION",
             "pending_action": "COLLECT_EVENT_TYPE",
             "last_question_code": "RESP-DISCOVERY-002",
-            "known_fields": {"event_type": "WEDDING"},
+            "known_fields": {
+                "event_type": "WEDDING",
+                "preferred_visit_date": "2026-09-12",
+            },
             "failed_understanding_count": 1,
             "pending_confirmation": {"type": "EVENT_TYPE"},
         },
