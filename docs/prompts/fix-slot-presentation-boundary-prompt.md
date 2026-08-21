@@ -137,3 +137,34 @@ hace Emerson.
   futuro; este fix construye la frontera de presentación que ese CRUD
   necesitará, nada más).
 - Recordatorios, interruption policy, y cualquier plantilla nueva.
+
+## Resoluciones aprobadas en G1
+
+Emerson aprobó el 2026-08-20 la frontera única en `render_response`, sin
+partición del alcance, y las siguientes transformaciones de presentación:
+
+- `requested_services_summary`: normalización determinista de casing y
+  espacios, eliminando únicamente los prefijos exactos `solo ` o
+  `solamente `. Ejemplo aprobado: `Solo el espacio` → `el espacio`.
+- `missing_field`: tabla cerrada `event_type` → `el tipo de evento`,
+  `guest_count` → `la cantidad de invitados`, `event_date` →
+  `la fecha del evento` y `requested_services` →
+  `los servicios que deseas incluir`. También admite el texto aprobado
+  preexistente `la confirmación de la solicitud`, usado por `RESP-QUOTE-001`.
+- `pending_topic`: `requested_services` o `COLLECT_SERVICES` →
+  `los servicios`.
+- `service_name`: texto normalizado por ahora. La tabla completa
+  código→label queda pendiente del futuro catálogo de configuración.
+- `approved_price`, `package_name`, `advisor_name` y
+  `rejection_reason_customer_safe`: rechazar valores que no provengan de la
+  fuente de backend aprobada correspondiente.
+- `event_type`: igualdad exacta normalizada contra enum, labels canónicos y
+  labels de presentación. Ante no-match devuelve `format_event_type(None)`
+  (`tu celebración`) y emite un warning estructurado con el valor descartado;
+  no genera `VariablePresentationError` porque `visit_reason` admite texto
+  libre legítimo.
+
+Para cualquier otra variable sin registro o valor no presentable se conserva
+el error duro `VariablePresentationError`. `render_response` debe integrarlo al
+camino controlado de fallo de render ya usado por sus callers, con señal
+estructurada observable y sin enviar texto parcial al cliente.
