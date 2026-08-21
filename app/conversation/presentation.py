@@ -102,20 +102,65 @@ def _present_count(value: Any) -> str:
     return normalized
 
 
+_MONTH_NUMBER_BY_NAME = {name: number for number, name in MONTH_NAMES.items()}
+_MONTH_NAME_PATTERN = "|".join(re.escape(name) for name in MONTH_NAMES.values())
+_NATURAL_DATE_PATTERN = re.compile(
+    rf"(?P<day>[1-9]|[12]\d|3[01]) de "
+    rf"(?P<month>{_MONTH_NAME_PATTERN}) de (?P<year>[1-9]\d{{0,3}})"
+)
+_NATURAL_MONTH_PATTERN = re.compile(rf"(?:{_MONTH_NAME_PATTERN}) de [1-9]\d{{0,3}}")
+_EVENT_MONTH_PATTERN = re.compile(r"[1-9]\d{3}-(?:0[1-9]|1[0-2])")
+_TIME_PATTERN = r"(?:[01]\d|2[0-3]):[0-5]\d"
+_APPOINTMENT_OPTIONS_PATTERN = re.compile(
+    rf"(?:{_TIME_PATTERN}|{_TIME_PATTERN}(?:, {_TIME_PATTERN})* y {_TIME_PATTERN})"
+)
+_GUEST_COUNT_RANGE_PATTERN = re.compile(r"entre (?:0|[1-9]\d*) y (?:0|[1-9]\d*)")
+
+
 def _present_date(value: Any) -> str:
     if isinstance(value, date):
         return format_date_natural(value)
-    normalized = _normalized_text(value)
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
-        return format_date_natural(date.fromisoformat(normalized))
-    return normalized
+    if not isinstance(value, str):
+        raise TypeError("Expected date or preformatted date text")
+    matched = _NATURAL_DATE_PATTERN.fullmatch(value)
+    if matched is None:
+        raise ValueError("Invalid natural date format")
+    parsed = date(
+        int(matched.group("year")),
+        _MONTH_NUMBER_BY_NAME[matched.group("month")],
+        int(matched.group("day")),
+    )
+    if format_date_natural(parsed) != value:
+        raise ValueError("Invalid natural date value")
+    return value
 
 
 def _present_month(value: Any) -> str:
-    normalized = _normalized_text(value)
-    if re.fullmatch(r"\d{4}-\d{2}", normalized):
-        return format_month_natural(normalized)
-    return normalized
+    if not isinstance(value, str):
+        raise TypeError("Expected event month text")
+    if _EVENT_MONTH_PATTERN.fullmatch(value) is not None:
+        return format_month_natural(value)
+    if _NATURAL_MONTH_PATTERN.fullmatch(value) is None:
+        raise ValueError("Invalid natural month format")
+    return value
+
+
+def _present_time(value: Any) -> str:
+    if not isinstance(value, str) or re.fullmatch(_TIME_PATTERN, value) is None:
+        raise ValueError("Invalid time format")
+    return value
+
+
+def _present_appointment_options(value: Any) -> str:
+    if not isinstance(value, str) or _APPOINTMENT_OPTIONS_PATTERN.fullmatch(value) is None:
+        raise ValueError("Invalid appointment options format")
+    return value
+
+
+def _present_guest_count_range(value: Any) -> str:
+    if not isinstance(value, str) or _GUEST_COUNT_RANGE_PATTERN.fullmatch(value) is None:
+        raise ValueError("Invalid guest count range format")
+    return value
 
 
 def _present_requested_services_summary(value: Any) -> str:
@@ -186,7 +231,7 @@ def _present_event_type(value: Any) -> str:
 VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
     "adult_guest_count": _present_count,
     "advisor_name": _normalized_text,
-    "appointment_options": _normalized_text,
+    "appointment_options": _present_appointment_options,
     "approved_price": _normalized_text,
     "child_guest_count": _present_count,
     "customer_name": _normalized_text,
@@ -195,11 +240,11 @@ VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
     "event_month": _present_month,
     "event_type": _present_event_type,
     "guest_count": _present_count,
-    "guest_count_range": _normalized_text,
+    "guest_count_range": _present_guest_count_range,
     "map_url": _normalized_text,
     "missing_field": lambda value: _present_closed_label(value, _MISSING_FIELD_LABELS),
     "new_visit_date": _present_date,
-    "new_visit_time": _normalized_text,
+    "new_visit_time": _present_time,
     "package_name": _normalized_text,
     "pending_topic": lambda value: _present_closed_label(value, _PENDING_TOPIC_LABELS),
     "rejection_reason_customer_safe": _normalized_text,
@@ -209,7 +254,7 @@ VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
     "total_guest_count": _present_count,
     "visit_attendee_count": _present_count,
     "visit_date": _present_date,
-    "visit_time": _normalized_text,
+    "visit_time": _present_time,
 }
 
 
