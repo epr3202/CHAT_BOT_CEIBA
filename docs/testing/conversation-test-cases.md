@@ -3152,6 +3152,68 @@ Bloquear respuesta y registrar incidente.
 
 ---
 
+## Casos PR-B.2 — Rescate de entidad en banda incierta
+
+### TC-B2-001 — Replay literal de producción
+
+Con el `input_payload` y `parsed_output` literales de `ai_execution` 3120, una
+clasificación `EVENT_INFORMATION@0.65` en respuesta a `RESP-GREETING-001` contiene
+`event_type=wedding@0.9`, `PROVIDED` y sin confirmación pendiente.
+
+**Esperado:** El backend aplica `WEDDING`, pregunta el siguiente slot y no emite
+`RESP-FALLBACK-004`. Audita `AI_CONFIDENCE_DECISION / UNCERTAIN_ENTITY_RESCUE` con las
+confianzas y el contexto originales; `ai_execution` conserva 0.65 y el payload literal.
+
+### TC-B2-002 — Entidad por debajo de SAFE
+
+En la misma posición, `event_type@0.7` queda por debajo de `AI_CONFIDENCE_SAFE`.
+
+**Esperado:** No hay rescate; se conserva la aclaración de banda incierta.
+
+### TC-B2-003 — Posición no dirigida
+
+La confianza global está en banda incierta y la entidad es fuerte, pero
+`last_question_code` no pertenece a `EVENT_TYPE_QUESTION_CODES`.
+
+**Esperado:** No hay rescate; se conserva la aclaración de banda incierta.
+
+### TC-B2-004 — Camino probable normal
+
+La confianza global es mayor o igual a `AI_CONFIDENCE_PROBABLE`.
+
+**Esperado:** El rescate no interviene y el despacho confiado vigente aplica la entidad.
+
+### TC-B2-005 — Entidad no normalizable
+
+La clasificación está en banda incierta y posición dirigida, pero el valor de
+`event_type` no puede normalizarse.
+
+**Esperado:** No hay rescate; se conserva la aclaración de banda incierta.
+
+### TC-B2-006 — Intención sensible
+
+Una intención sensible en banda incierta contiene además una entidad `event_type` fuerte
+en posición dirigida.
+
+**Esperado:** La intención no se reinterpreta como `EVENT_INFORMATION`; conserva el régimen
+de confianza y el flujo sensible vigentes.
+
+### TC-B2-007 — Entidad inferida
+
+Una entidad `event_type@0.9` tiene `quality_status=INFERRED` en posición dirigida y banda
+incierta.
+
+**Esperado:** No hay rescate; se conserva la aclaración de banda incierta.
+
+### TC-B2-008 — Entidad pendiente de confirmación
+
+Una entidad `event_type@0.9`, `PROVIDED`, tiene `needs_confirmation=true` en posición
+dirigida y banda incierta.
+
+**Esperado:** No hay rescate; se conserva la aclaración de banda incierta.
+
+---
+
 # 23. Suite N — Fallos de calendario y mensajería
 
 ## TC-CALENDAR-001 — Fallo al consultar horarios

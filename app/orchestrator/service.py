@@ -132,6 +132,7 @@ class OrchestrationInput:
     decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "LLM"
     directed_event_type: str | None = None
     services_resolution_failed: bool = False
+    confidence_entity_rescued: bool = False
 
 
 async def orchestrate_inbound_message(
@@ -250,6 +251,13 @@ async def _orchestrate_inbound_message(
         classification,
         orchestration_input.request_id,
     )
+    if orchestration_input.confidence_entity_rescued:
+        audit_uncertain_entity_rescue(
+            session,
+            conversation,
+            classification,
+            orchestration_input.request_id,
+        )
     if orchestration_input.services_resolution_failed:
         await handle_failed_services_resolution(
             session,
@@ -3418,6 +3426,33 @@ def audit_confidence_decision(
             "original_confidence": classification.confidence,
             "threshold": threshold,
             "decision": decision,
+        },
+    )
+
+
+def audit_uncertain_entity_rescue(
+    session: AsyncSession,
+    conversation: Conversation,
+    classification: IntentClassification,
+    request_id: str | None,
+) -> None:
+    context_reference = classification.context_reference
+    audit_orchestrator_event(
+        session,
+        "AI_CONFIDENCE_DECISION",
+        conversation,
+        reason="UNCERTAIN_ENTITY_RESCUE",
+        request_id=request_id,
+        extra={
+            "decision": "UNCERTAIN_ENTITY_RESCUE",
+            "original_global_confidence": context_reference.get(
+                "original_global_confidence"
+            ),
+            "rescued_entity_confidence": context_reference.get(
+                "rescued_entity_confidence"
+            ),
+            "last_question_code": context_reference.get("last_question_code"),
+            "original_reasoning_code": context_reference.get("original_reasoning_code"),
         },
     )
 

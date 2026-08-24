@@ -318,6 +318,7 @@ async def classify_and_orchestrate_phase_b_c(
             )
             decision_source = "DETERMINISTIC"
         directed_event_type: str | None = None
+        confidence_entity_rescued = False
         if classification is None:
             decision_source = "LLM"
             async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
@@ -361,6 +362,15 @@ async def classify_and_orchestrate_phase_b_c(
                 classification,
                 directed_event_type,
             )
+            rescued_classification = uncertain_event_type_entity_rescue_classification(
+                persisted.context,
+                classification,
+                uncertain_threshold=settings.ai_confidence_uncertain,
+                probable_threshold=settings.ai_confidence_probable,
+                safe_threshold=settings.ai_confidence_safe,
+            )
+            confidence_entity_rescued = rescued_classification is not classification
+            classification = rescued_classification
 
         async with sessionmaker() as session:
             async with session.begin():
@@ -388,6 +398,7 @@ async def classify_and_orchestrate_phase_b_c(
                         decision_source=decision_source,
                         directed_event_type=directed_event_type,
                         services_resolution_failed=services_resolution_failed,
+                        confidence_entity_rescued=confidence_entity_rescued,
                     ),
                     classification=classification,
                     ai_error_reason=ai_error_reason,
@@ -622,6 +633,72 @@ def directed_event_type_bridge_classification(
             "source_intent": "UNKNOWN",
         },
         reasoning_code="DIRECTED_EVENT_TYPE_BRIDGE",
+    )
+
+
+def uncertain_event_type_entity_rescue_classification(
+    context: dict[str, Any],
+    classification: IntentClassification,
+    *,
+    uncertain_threshold: float,
+    probable_threshold: float,
+    safe_threshold: float,
+) -> IntentClassification:
+    if (
+        classification.primary_intent != "EVENT_INFORMATION"
+        or not uncertain_threshold <= classification.confidence < probable_threshold
+        or context.get("last_question_code") not in EVENT_TYPE_QUESTION_CODES
+    ):
+        return classification
+
+    rescued_entity: ExtractedEntity | None = None
+    for entity in classification.extracted_entities:
+        if entity.entity != "event_type":
+            continue
+        normalized_event_type = normalize_event_type(
+            entity.normalized_value or entity.raw_value
+        )
+        if (
+            entity.quality_status in {"PROVIDED", "CORRECTED"}
+            and not entity.needs_confirmation
+            and entity.confidence >= safe_threshold
+            and normalized_event_type is not None
+        ):
+            rescued_entity = ExtractedEntity(
+                entity="event_type",
+                raw_value=entity.raw_value,
+                normalized_value=normalized_event_type,
+                quality_status=entity.quality_status,
+                confidence=entity.confidence,
+                needs_confirmation=False,
+                validation_errors=list(entity.validation_errors),
+            )
+            break
+
+    if rescued_entity is None:
+        return classification
+
+    return IntentClassification(
+        primary_intent="EVENT_INFORMATION",
+        secondary_intents=[],
+        sub_intent=None,
+        confidence=rescued_entity.confidence,
+        information_category=None,
+        entities={},
+        extracted_entities=[rescued_entity],
+        requested_action=None,
+        missing_fields=[],
+        needs_confirmation=False,
+        needs_human=False,
+        handoff_reason=None,
+        priority="NORMAL",
+        context_reference={
+            "original_global_confidence": classification.confidence,
+            "rescued_entity_confidence": rescued_entity.confidence,
+            "last_question_code": context.get("last_question_code"),
+            "original_reasoning_code": classification.reasoning_code,
+        },
+        reasoning_code="UNCERTAIN_ENTITY_RESCUE",
     )
 
 

@@ -1799,6 +1799,10 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 * generación de PDF;
 * aprobación digital;
 * mayor automatización de seguimiento.
+* corregir el bucle de confirmación de clasificaciones en banda incierta: una intención
+  aceptada explícitamente por el cliente debe recibir un uplift definitivo antes de volver
+  a evaluar las bandas. Requiere censo propio porque afecta todas las intenciones; no forma
+  parte de PR-B.2.
 
 ## Prioridad media
 
