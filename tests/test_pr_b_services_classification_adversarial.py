@@ -355,7 +355,16 @@ async def test_tc_svc_009_empty_result_retries_once_then_uses_other_or_handoff(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     retry_entry = next(
-        entry for entry in iter_seed_entries() if entry.code == "RESP-SERVICES-RETRY-001"
+        (
+            entry
+            for entry in iter_seed_entries()
+            if entry.code == "RESP-SERVICES-RETRY-001"
+        ),
+        None,
+    )
+    assert retry_entry is not None, (
+        "RESP-SERVICES-RETRY-001 debe existir en approved-responses.md "
+        "(entregable G3 commit 1)"
     )
     assert retry_entry.status == "APPROVED"
     assert retry_entry.answer_template == RETRY_TEXT

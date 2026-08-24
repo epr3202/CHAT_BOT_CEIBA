@@ -192,3 +192,36 @@ El GATE G2 queda **PENDIENTE DE RE-CERTIFICACIÓN**: el rojo reportado es legít
 Del log del CI: conteo exacto rojo/verde, lista de los 21 TC con su causa de fallo (`NotImplementedError` vs aserción), y confirmación explícita de cero verdes prematuros. Con ese reporte se resuelve el gate y se autoriza (o no) G3.
 
 El corte de G3 propuesto en el reporte anterior (5 commits: docs v1.0.1 + plantilla → catálogo/matcher/paridad → ejecutor parametrizado + `SERVICES_CLASSIFICATION` → `EVENT_TYPE_EXTRACTION` + disparador R2 → persistencia por códigos + reintentos + composición en presentación) queda **PRE-APROBADO condicionado a la re-certificación**; no lo inicies hasta la resolución explícita del gate.
+
+---
+
+# Enmienda 4 al prompt PR-B — Resolución TC-SVC-009 y certificación de G2
+
+## 1. Corrección autorizada de TC-SVC-009
+
+La dependencia del test sobre `RESP-SERVICES-RETRY-001` en el seed real es **correcta y se conserva** (verifica paridad docs→runtime; prohibido sustituirla por un template inyectado en fixture). Lo que se corrige es la forma del fallo:
+
+- Reemplazar el `next(...)` desnudo por una aserción explícita con mensaje, p. ej.: `entry = find_seed_entry("RESP-SERVICES-RETRY-001"); assert entry is not None, "RESP-SERVICES-RETRY-001 debe existir en approved-responses.md (entregable G3 commit 1)"` — o `pytest.fail(...)` equivalente. Nunca un `StopIteration` implícito.
+- Commit: `test: assert seed template presence explicitly in TC-SVC-009`.
+- Push → CI re-run. Resultado esperado: **21/21 rojos por causa admitida** (aserción o NotImplementedError), preexistentes verdes.
+
+## 2. Aclaración requerida sobre TC-SVC-012 (y TC-SVC-013)
+
+Reporta si cada uno ejercita (a) el camino completo webhook→orquestador, o (b) el módulo/presentador directamente.
+
+- **TC-SVC-012** es un caso de CABLEADO (el guard de `COLLECT_SERVICES` vive en el orquestador). Si hoy es (b), ajústalo en el mismo commit del punto 1 para que atraviese el pipeline real: mensaje con "espacio" en conversación SIN `pending_action = COLLECT_SERVICES` → aserción de que no se persiste ningún `EventServiceRequest` y de que el matcher no gobernó el turno. Un test directo al módulo no detectaría un orquestador que llame al matcher incondicionalmente.
+- Si TC-SVC-012 cae en `NotImplementedError` porque **código existente ya invoca el esqueleto**, eso es una violación de la Enmienda 2: DETENTE y reporta el punto exacto de invocación antes de tocar nada.
+- **TC-SVC-013** en modalidad (b) (unitario contra el presentador) es aceptable; solo decláralo.
+
+## 3. Certificación de G2
+
+Con el re-run del punto 1 mostrando 21/21 por causas admitidas, 0 verdes prematuros y preexistentes en verde, **el GATE G2 queda CERTIFICADO** sin nueva ronda de autorización — procede directo a G3 con el corte pre-aprobado de la Enmienda 3. Si cualquier condición no se cumple, DETENTE y reporta.
+
+## 4. Evidencia escalonada obligatoria en G3
+
+El commit 1 de G3 (docs v1.0.1 + `RESP-SERVICES-RETRY-001` en `approved-responses.md`) se **pushea SOLO**, antes de cualquier implementación. En ese run del CI:
+
+- TC-SVC-009 debe transicionar de "template ausente" a **rojo por su aserción conductual** (la cadena repregunta → segunda falla → `OTHER` no existe aún). Ese rojo es la evidencia anti-falso-verde del caso más crítico del PR; registra el id del run.
+- Ningún otro TC debe cambiar de causa por ese commit.
+
+Cumplido esto, continúa los commits 2–5 de G3 sin detenerte (pushes libres; el CI documenta la transición a verde). El reporte final de G3 incluye: id del run escalonado del commit 1, verde final, y la tabla TC por TC confirmando que cada rojo volteó por implementación — con declaración explícita de cualquier edición a un archivo de tests posterior a esta enmienda, que requiere justificación caso por caso.
