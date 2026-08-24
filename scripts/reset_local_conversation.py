@@ -50,6 +50,7 @@ async def reset_local_conversation(
     *,
     dry_run: bool = True,
     request_id: str | None = None,
+    allow_production_phone: bool = False,
 ) -> ResetSummary:
     phone_number = normalize_phone_number(raw_phone_number)
     request_id = request_id or f"local-reset-{uuid.uuid4()}"
@@ -173,6 +174,7 @@ async def reset_local_conversation(
                         "full_name": None,
                         "active_lead_id": None,
                         "pending_outbox_status": "FAILED",
+                        "allow_production_phone": allow_production_phone,
                     },
                     reason=RESET_REASON,
                     request_id=request_id,
@@ -230,7 +232,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Reset a local test phone without deleting append-only history."
     )
-    parser.add_argument("--phone", default=DEFAULT_PHONE, help="Phone number to reset.")
+    parser.add_argument(
+        "--phone",
+        help=f"Phone number to reset. Defaults to {DEFAULT_PHONE} outside production.",
+    )
+    parser.add_argument(
+        "--allow-production-phone",
+        action="store_true",
+        help="Allow resetting one explicitly provided phone when ENVIRONMENT=production.",
+    )
     parser.add_argument(
         "--execute",
         action="store_true",
@@ -264,8 +274,13 @@ def print_summary(summary: ResetSummary) -> None:
 async def async_main() -> None:
     args = parse_args()
     settings = get_settings()
-    if settings.environment == "production":
-        raise SystemExit("Refusing to reset conversations when ENVIRONMENT=production.")
+    if settings.environment == "production" and not args.allow_production_phone:
+        raise SystemExit(
+            "Refusing to reset a production conversation without --allow-production-phone."
+        )
+    if settings.environment == "production" and args.phone is None:
+        raise SystemExit("Production resets require an explicit --phone.")
+    phone_number = args.phone or DEFAULT_PHONE
 
     engine = create_async_engine(
         settings.database_url,
@@ -281,8 +296,9 @@ async def async_main() -> None:
         sessionmaker = create_sessionmaker(engine)
         summary = await reset_local_conversation(
             sessionmaker,
-            args.phone,
+            phone_number,
             dry_run=not args.execute,
+            allow_production_phone=args.allow_production_phone,
         )
         print_summary(summary)
     finally:

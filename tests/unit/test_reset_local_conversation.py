@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import argparse
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import scripts.reset_local_conversation as reset_script
 from app.audit.models import AuditEvent
 from app.channel.inbound import get_or_create_active_conversation
 from app.channel.models import Message, Outbox
@@ -15,7 +19,7 @@ from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.handoff.models import Handoff
 from app.lead.models import Lead
-from scripts.reset_local_conversation import RESET_ACTION, reset_local_conversation
+from scripts.reset_local_conversation import RESET_ACTION, ResetSummary, reset_local_conversation
 from tests.integration.helpers import reset_test_database
 
 
@@ -156,6 +160,7 @@ async def test_execute_resets_phone_for_new_conversation_without_deleting_histor
         "3016976242",
         dry_run=False,
         request_id="test-reset",
+        allow_production_phone=True,
     )
 
     assert summary.phone_number == "+573016976242"
@@ -201,6 +206,7 @@ async def test_execute_resets_phone_for_new_conversation_without_deleting_histor
         assert outbox.status == "FAILED"
         assert outbox.last_error == "Cancelled by local conversation reset"
         assert reset_audit.request_id == "test-reset"
+        assert reset_audit.new_value["allow_production_phone"] is True
 
 
 async def test_unknown_phone_is_noop(
@@ -219,3 +225,123 @@ async def test_unknown_phone_is_noop(
     async with sessionmaker_fixture() as session:
         assert await count_rows(session, Customer) == 0
         assert await count_rows(session, AuditEvent) == 0
+
+
+def production_args(
+    *,
+    phone: str | None,
+    allow_production_phone: bool,
+    execute: bool = True,
+) -> argparse.Namespace:
+    return argparse.Namespace(
+        phone=phone,
+        allow_production_phone=allow_production_phone,
+        execute=execute,
+        connect_timeout=5.0,
+    )
+
+
+def production_settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        environment="production",
+        database_url="postgresql+asyncpg://unused/unused",
+        db_pool_size=1,
+        db_max_overflow=0,
+    )
+
+
+async def test_production_without_allow_flag_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        reset_script,
+        "parse_args",
+        lambda: production_args(phone="+573001112233", allow_production_phone=False),
+    )
+    monkeypatch.setattr(reset_script, "get_settings", production_settings)
+
+    with pytest.raises(SystemExit, match="--allow-production-phone"):
+        await reset_script.async_main()
+
+
+async def test_production_with_allow_flag_phone_and_execute_proceeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        reset_script,
+        "parse_args",
+        lambda: production_args(phone="+573001112233", allow_production_phone=True),
+    )
+    monkeypatch.setattr(reset_script, "get_settings", production_settings)
+    engine = SimpleNamespace(dispose=None)
+
+    async def dispose() -> None:
+        return None
+
+    engine.dispose = dispose
+    sessionmaker = object()
+    reset_calls: list[dict[str, Any]] = []
+
+    def fake_create_async_engine(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return engine
+
+    async def fake_reset(
+        received_sessionmaker: object,
+        raw_phone_number: str,
+        *,
+        dry_run: bool,
+        request_id: str | None = None,
+        allow_production_phone: bool = False,
+    ) -> ResetSummary:
+        reset_calls.append(
+            {
+                "sessionmaker": received_sessionmaker,
+                "phone": raw_phone_number,
+                "dry_run": dry_run,
+                "request_id": request_id,
+                "allow_production_phone": allow_production_phone,
+            }
+        )
+        return ResetSummary(
+            phone_number=raw_phone_number,
+            customer_id=None,
+            conversations_found=0,
+            conversations_closed=0,
+            active_lead_links_cleared=0,
+            handoffs_resolved=0,
+            pending_outbox_failed=0,
+            customer_name_cleared=False,
+            audit_events_added=0,
+            dry_run=dry_run,
+        )
+
+    monkeypatch.setattr(reset_script, "create_async_engine", fake_create_async_engine)
+    monkeypatch.setattr(reset_script, "create_sessionmaker", lambda _engine: sessionmaker)
+    monkeypatch.setattr(reset_script, "reset_local_conversation", fake_reset)
+    monkeypatch.setattr(reset_script, "print_summary", lambda _summary: None)
+
+    await reset_script.async_main()
+
+    assert reset_calls == [
+        {
+            "sessionmaker": sessionmaker,
+            "phone": "+573001112233",
+            "dry_run": False,
+            "request_id": None,
+            "allow_production_phone": True,
+        }
+    ]
+
+
+async def test_production_allow_flag_without_explicit_phone_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        reset_script,
+        "parse_args",
+        lambda: production_args(phone=None, allow_production_phone=True),
+    )
+    monkeypatch.setattr(reset_script, "get_settings", production_settings)
+
+    with pytest.raises(SystemExit, match="--phone"):
+        await reset_script.async_main()

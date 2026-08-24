@@ -3380,6 +3380,8 @@ def persist_classification_context(
 
 def set_pending_action(conversation: Conversation, pending_action: str | None) -> None:
     conversation.pending_action = validate_pending_action(pending_action)
+    if pending_action == "COLLECT_SERVICES":
+        conversation.services_failed_understanding_count = 0
 
 
 def is_affirmative(message_text: str) -> bool:
