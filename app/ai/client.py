@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -13,13 +15,24 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.models import AIExecution
 from app.ai.prompts import get_intent_prompt
-from app.ai.schemas import IntentClassification
+from app.ai.prompts.services_v1 import (
+    SERVICES_PROMPT_VERSION,
+    services_classification_prompt,
+)
+from app.ai.schemas import IntentClassification, ServicesClassification
 from app.config.settings import Settings
 
 INTENT_CLASSIFICATION_FUNCTION = "INTENT_CLASSIFICATION"
+SERVICES_CLASSIFICATION_FUNCTION = "SERVICES_CLASSIFICATION"
 DEFAULT_INTENT_MODEL = "openai/gpt-4o-mini"
 TELEMETRY_SAFE_KNOWN_FIELDS = frozenset({"event_type", "preferred_visit_date"})
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class _TaskResult[TaskValue]:
+    value: TaskValue
+    validation_status: str = "VALID"
 
 
 class OpenRouterIntentClient:
@@ -58,6 +71,70 @@ class OpenRouterIntentClient:
         request_id: uuid.UUID | None,
         external_message_id: str | None = None,
     ) -> IntentClassification:
+        result = await self._execute_task(
+            task=INTENT_CLASSIFICATION_FUNCTION,
+            prompt_version=self._prompt.version,
+            system_prompt=self._prompt.content,
+            instruction="Clasifica el siguiente mensaje.",
+            message_text=message_text,
+            context=context,
+            conversation_id=conversation_id,
+            request_id=request_id,
+            external_message_id=external_message_id,
+            parse_result=lambda output: _TaskResult(IntentClassification.model_validate(output)),
+        )
+        return result
+
+    async def classify_services(
+        self,
+        message_text: str,
+        context: dict[str, Any],
+        conversation_id: int | None = None,
+        *,
+        request_id: uuid.UUID | None,
+        external_message_id: str | None = None,
+    ) -> list[str]:
+        result = await self._execute_task(
+            task=SERVICES_CLASSIFICATION_FUNCTION,
+            prompt_version=SERVICES_PROMPT_VERSION,
+            system_prompt=services_classification_prompt(),
+            instruction="Clasifica los servicios solicitados en el mensaje.",
+            message_text=message_text,
+            context=context,
+            conversation_id=conversation_id,
+            request_id=request_id,
+            external_message_id=external_message_id,
+            parse_result=lambda output: _TaskResult(
+                list(ServicesClassification.model_validate(output).service_codes)
+            ),
+        )
+        return result
+
+    async def extract_event_type(
+        self,
+        message_text: str,
+        context: dict[str, Any],
+        conversation_id: int | None = None,
+        *,
+        request_id: uuid.UUID | None,
+        external_message_id: str | None = None,
+    ) -> str | None:
+        raise NotImplementedError
+
+    async def _execute_task[TaskValue](
+        self,
+        *,
+        task: str,
+        prompt_version: str,
+        system_prompt: str,
+        instruction: str,
+        message_text: str,
+        context: dict[str, Any],
+        conversation_id: int | None,
+        request_id: uuid.UUID | None,
+        external_message_id: str | None,
+        parse_result: Callable[[dict[str, Any]], _TaskResult[TaskValue]],
+    ) -> TaskValue:
         if self._http_client is None:
             raise RuntimeError("OpenRouterIntentClient must be used as an async context manager")
 
@@ -74,14 +151,19 @@ class OpenRouterIntentClient:
         }
 
         try:
-            payload = self._build_payload(message_text, context)
+            payload = self._build_payload(
+                message_text,
+                context,
+                system_prompt=system_prompt,
+                instruction=instruction,
+            )
             response = await self._post_with_retries("chat/completions", payload)
             raw_output = extract_message_content(response.json())
             parsed_output = parse_json_content(raw_output)
-            classification = IntentClassification.model_validate(parsed_output)
+            task_result = parse_result(parsed_output)
             success = True
-            validation_status = "VALID"
-            return classification
+            validation_status = task_result.validation_status
+            return task_result.value
         except AIUnavailable as error:
             error_reason = error.reason
             validation_status = "HTTP_ERROR"
@@ -102,6 +184,8 @@ class OpenRouterIntentClient:
             latency_ms = int((time.monotonic() - started) * 1000)
             try:
                 await self._record_execution(
+                    task=task,
+                    prompt_version=prompt_version,
                     latency_ms=latency_ms,
                     success=success,
                     error_reason=error_reason,
@@ -119,33 +203,18 @@ class OpenRouterIntentClient:
                 logger.warning(
                     "ai_execution_persist_failed",
                     request_id=str(request_id) if request_id is not None else None,
-                    task=INTENT_CLASSIFICATION_FUNCTION,
+                    task=task,
                     error=str(persistence_error),
                 )
 
-    async def classify_services(
+    def _build_payload(
         self,
         message_text: str,
         context: dict[str, Any],
-        conversation_id: int | None = None,
         *,
-        request_id: uuid.UUID | None,
-        external_message_id: str | None = None,
-    ) -> list[str]:
-        raise NotImplementedError
-
-    async def extract_event_type(
-        self,
-        message_text: str,
-        context: dict[str, Any],
-        conversation_id: int | None = None,
-        *,
-        request_id: uuid.UUID | None,
-        external_message_id: str | None = None,
-    ) -> str | None:
-        raise NotImplementedError
-
-    def _build_payload(self, message_text: str, context: dict[str, Any]) -> dict[str, Any]:
+        system_prompt: str,
+        instruction: str,
+    ) -> dict[str, Any]:
         normalized_context = {
             "last_intent": context.get("last_intent"),
             "pending_action": context.get("pending_action"),
@@ -156,11 +225,11 @@ class OpenRouterIntentClient:
         return {
             "model": self._model,
             "messages": [
-                {"role": "system", "content": self._prompt.content},
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": (
-                        "Clasifica el siguiente mensaje. Responde únicamente JSON válido, "
+                        f"{instruction} Responde únicamente JSON válido, "
                         "sin markdown ni fences.\n\n"
                         f"Contexto:\n{json.dumps(normalized_context, ensure_ascii=False)}\n\n"
                         f"Mensaje:\n{message_text}"
@@ -206,6 +275,8 @@ class OpenRouterIntentClient:
 
     async def _record_execution(
         self,
+        task: str,
+        prompt_version: str,
         latency_ms: int,
         success: bool,
         error_reason: AIErrorReason | None,
@@ -223,12 +294,12 @@ class OpenRouterIntentClient:
             async with session.begin():
                 session.add(
                     AIExecution(
-                        task=INTENT_CLASSIFICATION_FUNCTION,
+                        task=task,
                         model=self._model,
                         latency_ms=latency_ms,
                         success=success,
                         error_reason=error_reason.value if error_reason is not None else None,
-                        prompt_version=self._prompt.version,
+                        prompt_version=prompt_version,
                         conversation_id=conversation_id,
                         input_character_count=input_character_count,
                         request_id=request_id,
@@ -245,11 +316,7 @@ class OpenRouterIntentClient:
 def telemetry_context(context: dict[str, Any]) -> dict[str, Any]:
     known_fields = context.get("known_fields", {})
     sanitized_known_fields = (
-        {
-            key: value
-            for key, value in known_fields.items()
-            if key in TELEMETRY_SAFE_KNOWN_FIELDS
-        }
+        {key: value for key, value in known_fields.items() if key in TELEMETRY_SAFE_KNOWN_FIELDS}
         if isinstance(known_fields, dict)
         else {}
     )

@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.conversation.faq_catalog import FAQ_CATEGORY_VALUES
+from app.conversation.services_catalog import service_catalog_codes
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,13 @@ EntityQualityStatus = Literal[
     "CORRECTED",
     "INVALID",
 ]
+ServiceCode = Literal[*service_catalog_codes()]
+
+
+class ServicesClassification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    service_codes: list[ServiceCode]
 
 
 class ExtractedEntity(BaseModel):
