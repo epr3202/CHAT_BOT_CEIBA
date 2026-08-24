@@ -1,6 +1,6 @@
 # Catálogo canónico de servicios — CHAT_BOT_CEIBA
 
-**Estado:** APROBADO v1.0.1 — Emerson, 2026-08-21. Cambio editorial aplicado en aprobación: "bebidas" a secas excluido del match determinista (decisión b). v1.0.1 corrige el conteo del conjunto a 37 y explicita que `OTHER` no participa del match determinista.
+**Estado:** APROBADO v1.1 — Emerson, 2026-08-24. v1.1 documenta la decisión de negocio para expresiones de modalidad total. v1.0.1 excluyó "bebidas" a secas del match determinista, corrigió el conteo del conjunto a 37 y explicitó que `OTHER` no participa del match determinista.
 **Ubicación propuesta:** `docs/product/services-catalog.md` (o §13.2-bis de `entities.md`, a decidir en G1).
 **Fuente de códigos:** `entities.md` §13.2 (37 códigos, incluido `OTHER`, sin cambios). Este documento NO crea códigos nuevos; añade la capa de labels, presentación, aliases y descripciones.
 
@@ -120,6 +120,7 @@ Aplica **solo** cuando hay pregunta directa de servicios pendiente en el estado 
 4. **Negación detectada** ("no", "sin", "excepto", "menos" adyacente a un alias) → NO resolver determinista; pasa al clasificador LLM con el contexto completo.
 5. Texto sin ningún match → clasificador LLM (tarea `SERVICES_CLASSIFICATION`).
 6. LLM devuelve vacío o `INVALID_SCHEMA` → repregunta con ejemplo (RESP-SERVICES-RETRY-001). Segunda repregunta fallida → registrar `OTHER`/escalar según flujo vigente, nunca bucle.
+7. **Modalidad total aceptada.** "Todo incluido" y expresiones equivalentes no tienen expansión determinista. Se clasifican mediante `SERVICES_CLASSIFICATION` y conservan el comportamiento vigente: el LLM propone los códigos aplicables dentro del conjunto cerrado. Decisión Leandro/Emerson, 2026-08-24.
 
 ## 5. Plantilla de repregunta (propuesta para approved-responses.md)
 
