@@ -123,6 +123,28 @@ class OpenRouterIntentClient:
                     error=str(persistence_error),
                 )
 
+    async def classify_services(
+        self,
+        message_text: str,
+        context: dict[str, Any],
+        conversation_id: int | None = None,
+        *,
+        request_id: uuid.UUID | None,
+        external_message_id: str | None = None,
+    ) -> list[str]:
+        raise NotImplementedError
+
+    async def extract_event_type(
+        self,
+        message_text: str,
+        context: dict[str, Any],
+        conversation_id: int | None = None,
+        *,
+        request_id: uuid.UUID | None,
+        external_message_id: str | None = None,
+    ) -> str | None:
+        raise NotImplementedError
+
     def _build_payload(self, message_text: str, context: dict[str, Any]) -> dict[str, Any]:
         normalized_context = {
             "last_intent": context.get("last_intent"),
