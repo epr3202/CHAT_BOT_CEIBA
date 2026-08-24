@@ -68,6 +68,7 @@ MIGRATION_PATH = (
     / "versions"
     / "20260824_0023_pr_b1_capture_context.py"
 )
+REAL_CLASSIFY_INTENT = OpenRouterIntentClient.classify_intent
 
 
 @pytest.fixture
@@ -75,6 +76,11 @@ async def sessionmaker_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     await configure_test_environment(monkeypatch)
+    monkeypatch.setattr(
+        OpenRouterIntentClient,
+        "classify_intent",
+        REAL_CLASSIFY_INTENT,
+    )
     sessionmaker = await reset_test_database()
     await load_knowledge_entries(sessionmaker, list(iter_seed_entries()))
     yield sessionmaker
