@@ -2031,6 +2031,10 @@ async def handle_collecting_event_data(
         orchestration_input.message_text,
         normalized_entities(classification),
     )
+    captured_requested_services = any(
+        entity.entity == "requested_services" and entity.quality_status != "INVALID"
+        for entity in entities
+    )
     if not handled_name_confirmation:
         await apply_extracted_entities(
             session,
@@ -2060,6 +2064,8 @@ async def handle_collecting_event_data(
     next_action = select_next_question(progress)
     persist_classification_context(conversation, classification)
     conversation.failed_understanding_count = 0
+    if captured_requested_services:
+        conversation.services_failed_understanding_count = 0
 
     if next_action is not None:
         set_pending_action(conversation, next_action)
@@ -2261,9 +2267,11 @@ async def handle_failed_services_resolution(
     if conversation.pending_action != "COLLECT_SERVICES":
         return
 
-    conversation.failed_understanding_count += 1
+    conversation.services_failed_understanding_count = (
+        conversation.services_failed_understanding_count or 0
+    ) + 1
     persist_classification_context(conversation, classification)
-    if conversation.failed_understanding_count == 1:
+    if conversation.services_failed_understanding_count == 1:
         await enqueue_template(
             session,
             knowledge_sessionmaker,
@@ -2298,7 +2306,7 @@ async def handle_failed_services_resolution(
     conversation.pending_fields = [
         field for field in conversation.pending_fields if field != "requested_services"
     ]
-    conversation.failed_understanding_count = 0
+    conversation.services_failed_understanding_count = 0
     await create_handoff_and_pause(
         session,
         settings,
@@ -2703,6 +2711,7 @@ def apply_requested_services(
     values = entity.normalized_value
     services = values if isinstance(values, list) else [entity.raw_value]
     allowed_codes = frozenset(service_catalog_codes())
+    position = 0
     for service_name in services:
         raw_service = str(service_name).strip()
         normalized_code = raw_service.upper()
@@ -2724,6 +2733,7 @@ def apply_requested_services(
                     event_id=event.event_id,
                     service_name=service_code,
                     status="REQUESTED",
+                    position=position,
                 )
             )
             audit_domain_change(
@@ -2731,10 +2741,15 @@ def apply_requested_services(
                 "SERVICE_REQUESTED",
                 "event_service_request",
                 None,
-                {"event_id": str(event.event_id), "service_name": service_code},
+                {
+                    "event_id": str(event.event_id),
+                    "service_name": service_code,
+                    "position": position,
+                },
                 "Customer requested event service",
                 request_id,
             )
+            position += 1
 
 
 def apply_special_requests(
@@ -3130,7 +3145,11 @@ async def requested_services_summary(session: AsyncSession, event: Event) -> lis
                 EventServiceRequest.event_id == event.event_id,
                 EventServiceRequest.status == "REQUESTED",
             )
-            .order_by(EventServiceRequest.created_at, EventServiceRequest.id)
+            .order_by(
+                EventServiceRequest.position.asc().nulls_last(),
+                EventServiceRequest.created_at,
+                EventServiceRequest.id,
+            )
         )
     ).all()
     if not services:
@@ -3312,6 +3331,7 @@ async def create_handoff_and_pause(
     )
     persist_classification_context(conversation, classification)
     set_pending_action(conversation, "WAIT_FOR_HUMAN")
+    conversation.services_failed_understanding_count = 0
     conversation.pending_confirmation = None
 
 
