@@ -135,6 +135,12 @@ class OrchestrationInput:
     confidence_entity_rescued: bool = False
 
 
+@dataclass(frozen=True)
+class PendingConfirmationResolution:
+    classification: IntentClassification
+    confirmation_uplifted: bool
+
+
 async def orchestrate_inbound_message(
     session: AsyncSession,
     settings: Settings,
@@ -278,20 +284,28 @@ async def _orchestrate_inbound_message(
     )
     if catalog_handled:
         return
-    classification = await resolve_pending_confirmation(
+    pending_confirmation_resolution = await resolve_pending_confirmation(
         session,
         conversation,
         classification,
         orchestration_input.message_text,
         orchestration_input.request_id,
     )
+    classification = pending_confirmation_resolution.classification
     classification = normalize_classification_event_type_entities(
         session,
         classification,
         orchestration_input.request_id,
     )
 
-    if classification.confidence < settings.ai_confidence_uncertain:
+    if pending_confirmation_resolution.confirmation_uplifted:
+        audit_confirmation_uplift(
+            session,
+            conversation,
+            classification,
+            orchestration_input.request_id,
+        )
+    elif classification.confidence < settings.ai_confidence_uncertain:
         audit_confidence_decision(
             session,
             conversation,
@@ -366,13 +380,13 @@ async def resolve_pending_confirmation(
     classification: IntentClassification,
     message_text: str,
     request_id: str | None,
-) -> IntentClassification:
+) -> PendingConfirmationResolution:
     if not conversation.pending_confirmation:
-        return classification
+        return PendingConfirmationResolution(classification, False)
 
     pending = conversation.pending_confirmation
     if isinstance(pending, dict) and pending.get("type") == "FULL_NAME_CONFIRMATION":
-        return classification
+        return PendingConfirmationResolution(classification, False)
 
     if is_affirmative(message_text):
         confirmed = IntentClassification.model_validate(pending["classification"])
@@ -388,7 +402,9 @@ async def resolve_pending_confirmation(
             },
         )
         conversation.pending_confirmation = None
-        return confirmed
+        if conversation.pending_action == "CLASSIFY_MESSAGE":
+            set_pending_action(conversation, None)
+        return PendingConfirmationResolution(confirmed, True)
 
     audit_orchestrator_event(
         session,
@@ -399,7 +415,7 @@ async def resolve_pending_confirmation(
         extra={"pending_confirmation": pending},
     )
     conversation.pending_confirmation = None
-    return classification
+    return PendingConfirmationResolution(classification, False)
 
 
 async def resolve_catalog_event_type_capture(
@@ -3455,6 +3471,28 @@ def audit_uncertain_entity_rescue(
             ),
             "last_question_code": context_reference.get("last_question_code"),
             "original_reasoning_code": context_reference.get("original_reasoning_code"),
+        },
+    )
+
+
+def audit_confirmation_uplift(
+    session: AsyncSession,
+    conversation: Conversation,
+    classification: IntentClassification,
+    request_id: str | None,
+) -> None:
+    audit_orchestrator_event(
+        session,
+        "AI_CONFIDENCE_DECISION",
+        conversation,
+        reason="CONFIRMATION_UPLIFT",
+        request_id=request_id,
+        extra={
+            "decision": "CONFIRMATION_UPLIFT",
+            "confirmed_intent": classification.primary_intent,
+            "original_global_confidence": classification.confidence,
+            "original_reasoning_code": classification.reasoning_code,
+            "last_question_code": conversation.last_question_code,
         },
     )
 

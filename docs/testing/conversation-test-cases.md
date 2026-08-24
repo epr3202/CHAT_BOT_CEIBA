@@ -3214,6 +3214,52 @@ dirigida y banda incierta.
 
 ---
 
+## Casos PR-B.3 — Uplift por confirmación humana
+
+### TC-B3-001 — Clasificación incierta confirmada
+
+Una clasificación `EVENT_INFORMATION@0.65` con entidad queda almacenada en
+`pending_confirmation`; el cliente responde “sí”.
+
+**Esperado:** La entidad se aplica una vez, no se repiten `ASK_CONFIRMATION` ni
+`RESP-FALLBACK-004`, se limpia el contexto de confirmación y se auditan
+`AI_CONFIRMATION_ACCEPTED` y `CONFIRMATION_UPLIFT`.
+
+### TC-B3-002 — Segundo sí sin confirmación pendiente
+
+Después del uplift, el cliente envía otro “sí” sin `pending_confirmation` vigente.
+
+**Esperado:** El turno se trata como clasificación fresca y no genera un segundo uplift.
+
+### TC-B3-003 — Respuesta no afirmativa
+
+Con una clasificación pendiente, el cliente responde “es para diciembre”.
+
+**Esperado:** Se descarta la clasificación pendiente y gobierna la clasificación nueva del
+turno, sin uplift.
+
+### TC-B3-004 — Intención sensible confirmada
+
+Una clasificación `EMERGENCY@0.6` almacenada es confirmada explícitamente.
+
+**Esperado:** Omite las bandas, ejecuta el flujo sensible y audita
+`CONFIRMATION_UPLIFT`.
+
+### TC-B3-005 — Clasificación fresca incierta
+
+Una clasificación fresca `@0.65` no procede de `pending_confirmation`.
+
+**Esperado:** Conserva `ASK_CONFIRMATION` y `RESP-FALLBACK-004`; no hay uplift.
+
+### TC-B3-006 — Ejecuciones de IA inmutables
+
+El ciclo contiene una `ai_execution` original y otra correspondiente al turno afirmativo.
+
+**Esperado:** Ambas filas conservan literalmente sus entradas y salidas después de la
+decisión del backend.
+
+---
+
 # 23. Suite N — Fallos de calendario y mensajería
 
 ## TC-CALENDAR-001 — Fallo al consultar horarios

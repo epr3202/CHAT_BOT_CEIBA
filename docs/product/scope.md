@@ -1803,6 +1803,10 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
   aceptada explícitamente por el cliente debe recibir un uplift definitivo antes de volver
   a evaluar las bandas. Requiere censo propio porque afecta todas las intenciones; no forma
   parte de PR-B.2.
+* persistir y restaurar la `pending_action` previa en el payload de `pending_confirmation`;
+  PR-B.3 solo limpia `CLASSIFY_MESSAGE` tras una confirmación aceptada.
+* normalizar puntuación en `is_affirmative`: actualmente `«Sí.»` no cuenta como afirmativo.
+  Requiere censo de semántica de confirmaciones y queda como candidato M2.
 
 ## Prioridad media
 
