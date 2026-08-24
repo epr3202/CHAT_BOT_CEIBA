@@ -60,6 +60,12 @@ class ServicesClassification(BaseModel):
     service_codes: list[ServiceCode]
 
 
+class EventTypeExtraction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: str = Field(min_length=1)
+
+
 class ExtractedEntity(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

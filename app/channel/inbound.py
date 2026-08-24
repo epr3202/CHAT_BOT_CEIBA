@@ -22,6 +22,7 @@ from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
+from app.event.event_type import normalize_event_type
 from app.orchestrator.service import OrchestrationInput, orchestrate_inbound_message
 
 logger = structlog.get_logger(__name__)
@@ -258,6 +259,7 @@ async def classify_and_orchestrate_phase_b_c(
         )
         decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "DETERMINISTIC"
         ai_error_reason: AIErrorReason | None = None
+        directed_event_type: str | None = None
         if classification is None:
             decision_source = "LLM"
             async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
@@ -272,6 +274,28 @@ async def classify_and_orchestrate_phase_b_c(
                 except AIUnavailable as error:
                     ai_error_reason = error.reason
                     decision_source = "FALLBACK"
+
+        if (
+            classification is not None
+            and decision_source == "LLM"
+            and should_extract_event_type(persisted.context, classification)
+        ):
+            async with OpenRouterIntentClient(settings, sessionmaker) as extractor:
+                try:
+                    directed_event_type = await extractor.extract_event_type(
+                        persisted.message_text,
+                        context=persisted.context,
+                        conversation_id=persisted.conversation_id,
+                        request_id=request_id,
+                        external_message_id=persisted.external_message_id,
+                    )
+                except AIUnavailable as error:
+                    logger.warning(
+                        "event_type_extraction_unavailable",
+                        conversation_id=persisted.conversation_id,
+                        request_id=str(request_id) if request_id is not None else None,
+                        reason=error.reason.value,
+                    )
 
         async with sessionmaker() as session:
             async with session.begin():
@@ -297,6 +321,7 @@ async def classify_and_orchestrate_phase_b_c(
                         message_text=persisted.message_text,
                         request_id=request_id,
                         decision_source=decision_source,
+                        directed_event_type=directed_event_type,
                     ),
                     classification=classification,
                     ai_error_reason=ai_error_reason,
@@ -462,9 +487,31 @@ def persisted_message_from_models(
             "known_fields": {},
             "failed_understanding_count": conversation.failed_understanding_count,
             "pending_confirmation": conversation.pending_confirmation,
+            "pending_fields": conversation.pending_fields,
         },
         external_message_id=message.external_message_id,
     )
+
+
+def should_extract_event_type(
+    context: dict[str, Any],
+    classification: IntentClassification,
+) -> bool:
+    pending_fields = context.get("pending_fields")
+    event_type_pending = context.get("pending_action") == "COLLECT_EVENT_TYPE" and (
+        not isinstance(pending_fields, list) or "event_type" in pending_fields
+    )
+    if not event_type_pending:
+        return False
+    candidates = [
+        entity.normalized_value or entity.raw_value
+        for entity in classification.extracted_entities
+        if entity.entity == "event_type" and entity.quality_status != "INVALID"
+    ]
+    legacy_candidate = classification.entities.get("event_type")
+    if legacy_candidate is not None:
+        candidates.append(legacy_candidate)
+    return not any(normalize_event_type(candidate) is not None for candidate in candidates)
 
 
 def parse_request_id(value: str | None) -> uuid.UUID | None:

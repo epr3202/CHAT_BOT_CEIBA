@@ -126,6 +126,7 @@ class OrchestrationInput:
     message_text: str
     request_id: uuid.UUID | None = None
     decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "LLM"
+    directed_event_type: str | None = None
 
 
 async def orchestrate_inbound_message(
@@ -234,6 +235,10 @@ async def _orchestrate_inbound_message(
         conversation,
         orchestration_input.message_text,
         classification,
+    )
+    classification = with_directed_event_type(
+        classification,
+        orchestration_input.directed_event_type,
     )
     classification = normalize_classification_event_type_entities(
         session,
@@ -2835,6 +2840,32 @@ def normalize_classification_event_type_entities(
             "entities": legacy_entities,
             "extracted_entities": entities,
         }
+    )
+
+
+def with_directed_event_type(
+    classification: IntentClassification,
+    directed_event_type: str | None,
+) -> IntentClassification:
+    if directed_event_type is None:
+        return classification
+    if any(
+        entity.entity == "event_type"
+        and normalize_event_type(entity.normalized_value or entity.raw_value) is not None
+        for entity in normalized_entities(classification)
+    ):
+        return classification
+    entity = ExtractedEntity(
+        entity="event_type",
+        raw_value=directed_event_type,
+        normalized_value=directed_event_type,
+        quality_status="PROVIDED",
+        confidence=1.0,
+        needs_confirmation=False,
+        validation_errors=[],
+    )
+    return classification.model_copy(
+        update={"extracted_entities": [*classification.extracted_entities, entity]}
     )
 
 

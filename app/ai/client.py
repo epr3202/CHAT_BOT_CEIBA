@@ -15,15 +15,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.models import AIExecution
 from app.ai.prompts import get_intent_prompt
+from app.ai.prompts.event_type_extraction_v1 import (
+    EVENT_TYPE_EXTRACTION_PROMPT_VERSION,
+    event_type_extraction_prompt,
+)
 from app.ai.prompts.services_v1 import (
     SERVICES_PROMPT_VERSION,
     services_classification_prompt,
 )
-from app.ai.schemas import IntentClassification, ServicesClassification
+from app.ai.schemas import (
+    EventTypeExtraction,
+    IntentClassification,
+    ServicesClassification,
+)
 from app.config.settings import Settings
+from app.event.event_type import normalize_event_type
 
 INTENT_CLASSIFICATION_FUNCTION = "INTENT_CLASSIFICATION"
 SERVICES_CLASSIFICATION_FUNCTION = "SERVICES_CLASSIFICATION"
+EVENT_TYPE_EXTRACTION_FUNCTION = "EVENT_TYPE_EXTRACTION"
 DEFAULT_INTENT_MODEL = "openai/gpt-4o-mini"
 TELEMETRY_SAFE_KNOWN_FIELDS = frozenset({"event_type", "preferred_visit_date"})
 logger = structlog.get_logger(__name__)
@@ -119,7 +129,19 @@ class OpenRouterIntentClient:
         request_id: uuid.UUID | None,
         external_message_id: str | None = None,
     ) -> str | None:
-        raise NotImplementedError
+        result = await self._execute_task(
+            task=EVENT_TYPE_EXTRACTION_FUNCTION,
+            prompt_version=EVENT_TYPE_EXTRACTION_PROMPT_VERSION,
+            system_prompt=event_type_extraction_prompt(),
+            instruction="Extrae el tipo de celebración del mensaje.",
+            message_text=message_text,
+            context=context,
+            conversation_id=conversation_id,
+            request_id=request_id,
+            external_message_id=external_message_id,
+            parse_result=_parse_event_type_result,
+        )
+        return result
 
     async def _execute_task[TaskValue](
         self,
@@ -328,6 +350,16 @@ def telemetry_context(context: dict[str, Any]) -> dict[str, Any]:
         "failed_understanding_count": context.get("failed_understanding_count", 0),
         "pending_confirmation": context.get("pending_confirmation"),
     }
+
+
+def _parse_event_type_result(output: dict[str, Any]) -> _TaskResult[str | None]:
+    extracted = EventTypeExtraction.model_validate(output)
+    normalized = normalize_event_type(extracted.event_type)
+    if normalized is None:
+        return _TaskResult(None, validation_status="DISCARDED")
+    raw_canonical = extracted.event_type.strip().upper().replace(" ", "_").replace("-", "_")
+    status = "VALID" if raw_canonical == normalized else "NORMALIZED"
+    return _TaskResult(normalized, validation_status=status)
 
 
 def extract_message_content(payload: dict[str, Any]) -> str:
