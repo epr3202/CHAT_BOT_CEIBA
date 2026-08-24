@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -256,7 +258,10 @@ async def classify_and_orchestrate_phase_b_c(
 
         classification: IntentClassification | None
         services_resolution_failed = False
-        services_pending = persisted.context.get("pending_action") == "COLLECT_SERVICES"
+        services_pending = (
+            persisted.context.get("pending_action") == "COLLECT_SERVICES"
+            and not is_explicit_visit_request(persisted.message_text)
+        )
         if services_pending:
             service_codes = match_requested_services(persisted.message_text)
             decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = (
@@ -577,6 +582,17 @@ def services_turn_classification(
         priority="NORMAL",
         context_reference={},
         reasoning_code="DIRECTED_SERVICES_CAPTURE",
+    )
+
+
+def is_explicit_visit_request(message_text: str) -> bool:
+    decomposed = unicodedata.normalize("NFKD", message_text.casefold())
+    normalized = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    return "visita" in tokens and bool(
+        tokens & {"agendar", "programar", "reprogramar", "cancelar"}
     )
 
 
