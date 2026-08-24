@@ -147,7 +147,7 @@ pytest tests/integration -x -q   # solo integración
   lista breve de cambios y migraciones incluidas.
 - Si la suite falla, NO commitear: reportar el estado y dejar el árbol
   para revisión humana.
-- NUNCA hacer push: el push lo ejecuta el humano tras revisar el commit.
+- **Push de branches de trabajo: permitido y esperado** — es el mecanismo para que el CI de GitHub Actions ejecute la suite, que es el gate de pytest en esta máquina sin PostgreSQL local. **Prohibido únicamente el push a `main`**; todo cambio llega a `main` exclusivamente por PR revisado. Crear PRs draft también está permitido y esperado.
 - NUNCA amend, rebase ni force sobre commits existentes salvo
   instrucción explícita del humano.
 - Antes de cada commit, verificar en `git status` que no entre .env ni
