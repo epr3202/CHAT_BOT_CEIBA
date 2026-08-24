@@ -11,6 +11,7 @@ from app.conversation.catalog_event_type import (
     CATALOG_EVENT_TYPE_LABELS,
     normalize_catalog_event_type_label,
 )
+from app.conversation.services_catalog import compose_requested_services_summary
 from app.event.models import EVENT_TYPES
 
 logger = structlog.get_logger(__name__)
@@ -165,14 +166,10 @@ def _present_guest_count_range(value: Any) -> str:
 
 
 def _present_requested_services_summary(value: Any) -> str:
-    normalized = _normalized_lower_text(value)
-    for prefix in ("solo ", "solamente "):
-        if normalized.startswith(prefix):
-            normalized = normalized[len(prefix) :]
-            break
-    if not normalized:
-        raise ValueError("Empty requested services summary")
-    return normalized
+    values = [value] if isinstance(value, str) else value
+    if not isinstance(values, (list, tuple)):
+        raise TypeError("Expected requested service codes or legacy values")
+    return compose_requested_services_summary([str(item) for item in values])
 
 
 _MISSING_FIELD_LABELS = {

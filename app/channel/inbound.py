@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.client import OpenRouterIntentClient
 from app.ai.errors import AIErrorReason, AIUnavailable
-from app.ai.schemas import IntentClassification
+from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
 from app.channel.models import Message, MessageProviderStatus, Outbox, WebhookEvent
 from app.channel.states import Channel
@@ -20,6 +20,7 @@ from app.config.settings import get_settings
 from app.conversation.confirmation import resolve_contextual_confirmation
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
+from app.conversation.services_catalog import match_requested_services
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.event_type import normalize_event_type
@@ -253,11 +254,37 @@ async def classify_and_orchestrate_phase_b_c(
         if await message_already_orchestrated(sessionmaker, persisted.message_id):
             continue
 
-        classification = deterministic_confirmation_classification(
-            persisted.message_text,
-            persisted.context,
-        )
-        decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "DETERMINISTIC"
+        classification: IntentClassification | None
+        services_resolution_failed = False
+        services_pending = persisted.context.get("pending_action") == "COLLECT_SERVICES"
+        if services_pending:
+            service_codes = match_requested_services(persisted.message_text)
+            decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = (
+                "DETERMINISTIC" if service_codes is not None else "LLM"
+            )
+            if service_codes is None:
+                async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
+                    try:
+                        service_codes = await classifier.classify_services(
+                            persisted.message_text,
+                            context=persisted.context,
+                            conversation_id=persisted.conversation_id,
+                            request_id=request_id,
+                            external_message_id=persisted.external_message_id,
+                        )
+                    except AIUnavailable:
+                        service_codes = []
+            services_resolution_failed = not service_codes
+            classification = services_turn_classification(
+                persisted.message_text,
+                service_codes or [],
+            )
+        else:
+            classification = deterministic_confirmation_classification(
+                persisted.message_text,
+                persisted.context,
+            )
+            decision_source = "DETERMINISTIC"
         ai_error_reason: AIErrorReason | None = None
         directed_event_type: str | None = None
         if classification is None:
@@ -322,6 +349,7 @@ async def classify_and_orchestrate_phase_b_c(
                         request_id=request_id,
                         decision_source=decision_source,
                         directed_event_type=directed_event_type,
+                        services_resolution_failed=services_resolution_failed,
                     ),
                     classification=classification,
                     ai_error_reason=ai_error_reason,
@@ -512,6 +540,44 @@ def should_extract_event_type(
     if legacy_candidate is not None:
         candidates.append(legacy_candidate)
     return not any(normalize_event_type(candidate) is not None for candidate in candidates)
+
+
+def services_turn_classification(
+    message_text: str,
+    service_codes: list[str],
+) -> IntentClassification:
+    entities = (
+        [
+            ExtractedEntity(
+                entity="requested_services",
+                raw_value=message_text,
+                normalized_value=service_codes,
+                quality_status="PROVIDED",
+                confidence=1.0,
+                needs_confirmation=False,
+                validation_errors=[],
+            )
+        ]
+        if service_codes
+        else []
+    )
+    return IntentClassification(
+        primary_intent="EVENT_INFORMATION",
+        secondary_intents=[],
+        sub_intent=None,
+        confidence=1.0,
+        information_category=None,
+        entities={},
+        extracted_entities=entities,
+        requested_action=None,
+        missing_fields=[] if service_codes else ["requested_services"],
+        needs_confirmation=False,
+        needs_human=False,
+        handoff_reason=None,
+        priority="NORMAL",
+        context_reference={},
+        reasoning_code="DIRECTED_SERVICES_CAPTURE",
+    )
 
 
 def parse_request_id(value: str | None) -> uuid.UUID | None:

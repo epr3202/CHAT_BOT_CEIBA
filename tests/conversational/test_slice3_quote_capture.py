@@ -492,7 +492,7 @@ async def test_p2_collect_services_from_pending_action_without_generic_summary_f
         service_requests = (await session.scalars(select(EventServiceRequest))).all()
         conversation = await session.scalar(select(Conversation))
 
-    assert [service.service_name for service in service_requests] == ["el espacio"]
+    assert [service.service_name for service in service_requests] == ["VENUE"]
     assert conversation is not None
     assert conversation.state == "QUOTE_REQUEST_READY"
     assert "con interés en el espacio" in body

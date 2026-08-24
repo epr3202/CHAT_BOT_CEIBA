@@ -5,6 +5,10 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 
 @dataclass(frozen=True)
 class ServiceCatalogEntry:
@@ -310,7 +314,39 @@ def match_requested_services(message_text: str) -> list[str] | None:
 
 
 def compose_requested_services_summary(service_values: Sequence[str]) -> str:
-    raise NotImplementedError
+    presentations: list[str] = []
+    for raw_value in service_values:
+        value = str(raw_value).strip()
+        entry = _BY_CODE.get(value.upper())
+        if entry is not None:
+            if entry.presentation is not None:
+                presentations.append(entry.presentation)
+            continue
+        legacy_value = _legacy_service_presentation(value)
+        logger.warning(
+            "requested_service_presentation_fallback",
+            legacy_value=value,
+        )
+        presentations.append(legacy_value)
+
+    if not presentations:
+        raise ValueError("No renderable requested services")
+    if len(presentations) == 1:
+        return presentations[0]
+    if len(presentations) == 2:
+        return f"{presentations[0]} y {presentations[1]}"
+    return ", ".join(presentations[:-1]) + f" y {presentations[-1]}"
+
+
+def _legacy_service_presentation(value: str) -> str:
+    normalized = " ".join(value.casefold().split())
+    for prefix in ("solo ", "solamente "):
+        if normalized.startswith(prefix):
+            normalized = normalized.removeprefix(prefix).strip()
+            break
+    if not normalized:
+        raise ValueError("Empty legacy requested service")
+    return normalized
 
 
 def _normalized_tokens(value: str) -> tuple[str, ...]:
