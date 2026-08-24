@@ -70,7 +70,7 @@ jobs:
         run: ruff check .
 
       - name: Test
-        run: pytest -x -q
+        run: pytest -q
 
   deploy:
     runs-on: ubuntu-latest

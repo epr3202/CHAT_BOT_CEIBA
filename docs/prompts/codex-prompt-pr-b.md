@@ -168,3 +168,27 @@ Commit separado: `test: add skeletons for services catalog module and AI client 
 ## Sin cambios en lo demás
 
 Alcance, resoluciones R1–R5, casos TC y gates de la Enmienda 1 permanecen intactos. Tras el reporte G2 con el conteo del CI, esperar autorización para G3.
+
+---
+
+# Enmienda 3 al prompt PR-B — Evidencia completa del GATE G2
+
+El GATE G2 queda **PENDIENTE DE RE-CERTIFICACIÓN**: el rojo reportado es legítimo pero parcial, porque `pytest -x` en el workflow detiene la ejecución en el primer fallo y deja 20 de 21 TC sin ejecutar, además de la porción de la suite preexistente posterior al punto de corte.
+
+## Autorización: quitar `-x` del CI (desviación declarada)
+
+1. Commit `chore: run full test suite in CI without fail-fast` — en el workflow de GitHub Actions, eliminar `-x` de la invocación de pytest (conservar `-q`). Ningún otro cambio en el workflow.
+2. Justificación rectora: `-x` optimiza iteración local; en CI el objetivo del run es evidencia completa de gates. Este cambio beneficia a todos los gates futuros y queda como mejora permanente del proceso.
+3. Push del branch → el CI del PR #11 re-ejecuta automáticamente.
+
+## Resultado esperado del run completo
+
+- **21/21 TC nuevos en rojo**, cada uno por `NotImplementedError` o aserción (jamás por error de colección).
+- **Toda la suite preexistente en verde** (las 116 más las que `-x` dejó sin correr).
+- Cualquier TC nuevo en verde = ese caso no prueba lo que dice: DETENTE y reporta cuál y por qué, antes de cualquier otra acción.
+
+## Reporte de re-certificación
+
+Del log del CI: conteo exacto rojo/verde, lista de los 21 TC con su causa de fallo (`NotImplementedError` vs aserción), y confirmación explícita de cero verdes prematuros. Con ese reporte se resuelve el gate y se autoriza (o no) G3.
+
+El corte de G3 propuesto en el reporte anterior (5 commits: docs v1.0.1 + plantilla → catálogo/matcher/paridad → ejecutor parametrizado + `SERVICES_CLASSIFICATION` → `EVENT_TYPE_EXTRACTION` + disparador R2 → persistencia por códigos + reintentos + composición en presentación) queda **PRE-APROBADO condicionado a la re-certificación**; no lo inicies hasta la resolución explícita del gate.
