@@ -2105,6 +2105,18 @@ intención sensible, una posición no dirigida o una entidad no normalizable con
 cambios el régimen general de confianza. La decisión del backend se audita por separado;
 la fila `ai_execution` conserva el veredicto literal del modelo.
 
+### Uplift definitivo por confirmación humana
+
+Cuando el cliente acepta explícitamente una clasificación que el backend había guardado en
+`pending_confirmation`, la clasificación recuperada se normaliza y se despacha sin volver
+a evaluarla contra las bandas. La confianza y el `reasoning_code` originales no se mutan.
+
+El uplift aplica uniformemente a todas las intenciones, incluidas las sensibles, y se
+audita como `AI_CONFIDENCE_DECISION / CONFIRMATION_UPLIFT`, además de conservar
+`AI_CONFIRMATION_ACCEPTED`. No aplica a clasificaciones frescas ni a respuestas que
+`is_affirmative` no reconozca. Las filas `ai_execution` del turno original y del turno de
+confirmación permanecen literales.
+
 ## 25.4 Confianza insuficiente
 
 ```text

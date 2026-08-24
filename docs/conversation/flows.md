@@ -1928,6 +1928,25 @@ Si falla cualquiera de las guardas, continúa este flujo de baja confianza sin c
 El rescate no aplica a intenciones sensibles ni se generaliza a otras entidades o
 posiciones.
 
+## Confirmación humana de una clasificación incierta
+
+Cuando existe `pending_confirmation` y la respuesta es afirmativa según el vocabulario
+vigente:
+
+1. Recuperar la clasificación almacenada sin mezclarla con la clasificación nueva del
+   turno afirmativo.
+2. Conservar su confianza y su `reasoning_code` originales.
+3. Normalizar sus entidades mediante las validaciones ordinarias.
+4. Limpiar `pending_confirmation` y `CLASSIFY_MESSAGE` antes del despacho.
+5. Omitir completamente los gates de confianza y despachar por el flujo ordinario de la
+   intención recuperada, incluidas las intenciones sensibles.
+6. Conservar `AI_CONFIRMATION_ACCEPTED` y auditar además
+   `AI_CONFIDENCE_DECISION / CONFIRMATION_UPLIFT`.
+7. No modificar ninguna fila `ai_execution` de los dos turnos.
+
+Una respuesta no afirmativa descarta la clasificación pendiente y deja que gobierne la
+clasificación nueva, como antes. Una clasificación fresca continúa sometida a las bandas.
+
 ## Primer fallo
 
 1. Incrementar contador.

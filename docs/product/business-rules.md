@@ -2044,6 +2044,12 @@ confianza de entidad mayor o igual a `AI_CONFIDENCE_SAFE` y valor normalizable. 
 excepción no cambia los umbrales, no aplica a intenciones sensibles ni a otras entidades,
 y debe auditarse como decisión del backend sin alterar la ejecución literal de la IA.
 
+Una clasificación recuperada desde `pending_confirmation` después de una afirmación
+explícita constituye una decisión humana definitiva: se despacha sin reevaluar las bandas,
+para cualquier intención, manteniendo intactas su confianza y trazabilidad original. El
+backend registra `CONFIRMATION_UPLIFT`; las clasificaciones frescas conservan sin cambios
+los umbrales configurados.
+
 ---
 
 ## BR-AI-005 — Acciones prohibidas
