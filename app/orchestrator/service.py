@@ -48,6 +48,10 @@ from app.conversation.presentation import (
     format_month_natural,
 )
 from app.conversation.service import ALLOWED_TRANSITIONS, transition_conversation
+from app.conversation.services_catalog import (
+    match_requested_services,
+    service_catalog_codes,
+)
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.event_type import normalize_event_type
@@ -126,6 +130,8 @@ class OrchestrationInput:
     message_text: str
     request_id: uuid.UUID | None = None
     decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "LLM"
+    directed_event_type: str | None = None
+    services_resolution_failed: bool = False
 
 
 async def orchestrate_inbound_message(
@@ -235,11 +241,24 @@ async def _orchestrate_inbound_message(
         orchestration_input.message_text,
         classification,
     )
+    classification = with_directed_event_type(
+        classification,
+        orchestration_input.directed_event_type,
+    )
     classification = normalize_classification_event_type_entities(
         session,
         classification,
         orchestration_input.request_id,
     )
+    if orchestration_input.services_resolution_failed:
+        await handle_failed_services_resolution(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+        )
+        return
     catalog_handled, understanding_failure_already_counted = (
         await resolve_catalog_event_type_capture(
             session,
@@ -2231,6 +2250,67 @@ async def handle_quote_request_ready(
     set_pending_action(conversation, "WAIT_FOR_HUMAN")
 
 
+async def handle_failed_services_resolution(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    if conversation.pending_action != "COLLECT_SERVICES":
+        return
+
+    conversation.failed_understanding_count += 1
+    persist_classification_context(conversation, classification)
+    if conversation.failed_understanding_count == 1:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-SERVICES-RETRY-001",
+            {},
+        )
+        return
+
+    _lead, event = await get_or_create_capture_models(
+        session,
+        conversation,
+        orchestration_input.customer,
+        request_id=orchestration_input.request_id,
+    )
+    apply_requested_services(
+        session,
+        event,
+        ExtractedEntity(
+            entity="requested_services",
+            raw_value="OTHER",
+            normalized_value=["OTHER"],
+            quality_status="PROVIDED",
+            confidence=1.0,
+            needs_confirmation=False,
+            validation_errors=[],
+        ),
+        orchestration_input.request_id,
+    )
+    conversation.pending_fields = [
+        field for field in conversation.pending_fields if field != "requested_services"
+    ]
+    conversation.failed_understanding_count = 0
+    await create_handoff_and_pause(
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
+        reason="OTHER",
+        priority="NORMAL",
+        detail="No fue posible clasificar los servicios después de una repregunta.",
+    )
+
+
 async def get_or_create_capture_models(
     session: AsyncSession,
     conversation: Conversation,
@@ -2622,26 +2702,39 @@ def apply_requested_services(
 ) -> None:
     values = entity.normalized_value
     services = values if isinstance(values, list) else [entity.raw_value]
+    allowed_codes = frozenset(service_catalog_codes())
     for service_name in services:
-        service_text = str(service_name).strip()
-        if not service_text:
-            continue
-        session.add(
-            EventServiceRequest(
-                event_id=event.event_id,
-                service_name=service_text,
-                status="REQUESTED",
+        raw_service = str(service_name).strip()
+        normalized_code = raw_service.upper()
+        service_codes = (
+            [normalized_code]
+            if normalized_code in allowed_codes
+            else match_requested_services(raw_service) or []
+        )
+        if not service_codes:
+            logger.warning(
+                "requested_service_code_discarded",
+                event_id=str(event.event_id),
+                discarded_value=raw_service,
             )
-        )
-        audit_domain_change(
-            session,
-            "SERVICE_REQUESTED",
-            "event_service_request",
-            None,
-            {"event_id": str(event.event_id), "service_name": service_text},
-            "Customer requested event service",
-            request_id,
-        )
+            continue
+        for service_code in service_codes:
+            session.add(
+                EventServiceRequest(
+                    event_id=event.event_id,
+                    service_name=service_code,
+                    status="REQUESTED",
+                )
+            )
+            audit_domain_change(
+                session,
+                "SERVICE_REQUESTED",
+                "event_service_request",
+                None,
+                {"event_id": str(event.event_id), "service_name": service_code},
+                "Customer requested event service",
+                request_id,
+            )
 
 
 def apply_special_requests(
@@ -2838,6 +2931,32 @@ def normalize_classification_event_type_entities(
     )
 
 
+def with_directed_event_type(
+    classification: IntentClassification,
+    directed_event_type: str | None,
+) -> IntentClassification:
+    if directed_event_type is None:
+        return classification
+    if any(
+        entity.entity == "event_type"
+        and normalize_event_type(entity.normalized_value or entity.raw_value) is not None
+        for entity in normalized_entities(classification)
+    ):
+        return classification
+    entity = ExtractedEntity(
+        entity="event_type",
+        raw_value=directed_event_type,
+        normalized_value=directed_event_type,
+        quality_status="PROVIDED",
+        confidence=1.0,
+        needs_confirmation=False,
+        validation_errors=[],
+    )
+    return classification.model_copy(
+        update={"extracted_entities": [*classification.extracted_entities, entity]}
+    )
+
+
 def audit_discarded_event_type(
     session: AsyncSession,
     entity: ExtractedEntity,
@@ -2866,31 +2985,21 @@ def contextual_requested_service_entities(
         return entities
     if any(entity.entity == "requested_services" for entity in entities):
         return entities
-    service_text = normalize_requested_service_text(message_text)
-    if not service_text:
+    service_codes = match_requested_services(message_text)
+    if service_codes is None:
         return entities
     return [
         *entities,
         ExtractedEntity(
             entity="requested_services",
             raw_value=message_text,
-            normalized_value=[service_text],
+            normalized_value=service_codes,
             quality_status="PROVIDED",
             confidence=1.0,
             needs_confirmation=False,
             validation_errors=[],
         ),
     ]
-
-
-def normalize_requested_service_text(message_text: str) -> str | None:
-    service_text = " ".join(message_text.strip().casefold().split())
-    if not service_text:
-        return None
-    for prefix in ("solo ", "solamente "):
-        if service_text.startswith(prefix):
-            service_text = service_text.removeprefix(prefix).strip()
-    return service_text or None
 
 
 def resolve_contextual_confirmation_classification(
@@ -3013,7 +3122,7 @@ def guest_count_text(event: Event) -> str:
     return "por definir"
 
 
-async def requested_services_summary(session: AsyncSession, event: Event) -> str:
+async def requested_services_summary(session: AsyncSession, event: Event) -> list[str]:
     services = (
         await session.scalars(
             select(EventServiceRequest.service_name)
@@ -3026,9 +3135,7 @@ async def requested_services_summary(session: AsyncSession, event: Event) -> str
     ).all()
     if not services:
         raise ValueError("Missing requested services for quote summary")
-    if len(services) == 1:
-        return services[0]
-    return ", ".join(services[:-1]) + f" y {services[-1]}"
+    return list(services)
 
 
 def summary_snapshot(customer: Customer, lead: Lead, event: Event) -> dict[str, Any]:

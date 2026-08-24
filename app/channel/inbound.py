@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.client import OpenRouterIntentClient
 from app.ai.errors import AIErrorReason, AIUnavailable
-from app.ai.schemas import IntentClassification
+from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
 from app.channel.models import Message, MessageProviderStatus, Outbox, WebhookEvent
 from app.channel.states import Channel
@@ -20,8 +22,10 @@ from app.config.settings import get_settings
 from app.conversation.confirmation import resolve_contextual_confirmation
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
+from app.conversation.services_catalog import match_requested_services
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
+from app.event.event_type import normalize_event_type
 from app.orchestrator.service import OrchestrationInput, orchestrate_inbound_message
 
 logger = structlog.get_logger(__name__)
@@ -252,12 +256,42 @@ async def classify_and_orchestrate_phase_b_c(
         if await message_already_orchestrated(sessionmaker, persisted.message_id):
             continue
 
-        classification = deterministic_confirmation_classification(
-            persisted.message_text,
-            persisted.context,
+        classification: IntentClassification | None
+        services_resolution_failed = False
+        services_pending = (
+            persisted.context.get("pending_action") == "COLLECT_SERVICES"
+            and not is_explicit_visit_request(persisted.message_text)
         )
-        decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = "DETERMINISTIC"
+        if services_pending:
+            service_codes = match_requested_services(persisted.message_text)
+            decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = (
+                "DETERMINISTIC" if service_codes is not None else "LLM"
+            )
+            if service_codes is None:
+                async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
+                    try:
+                        service_codes = await classifier.classify_services(
+                            persisted.message_text,
+                            context=persisted.context,
+                            conversation_id=persisted.conversation_id,
+                            request_id=request_id,
+                            external_message_id=persisted.external_message_id,
+                        )
+                    except AIUnavailable:
+                        service_codes = []
+            services_resolution_failed = not service_codes
+            classification = services_turn_classification(
+                persisted.message_text,
+                service_codes or [],
+            )
+        else:
+            classification = deterministic_confirmation_classification(
+                persisted.message_text,
+                persisted.context,
+            )
+            decision_source = "DETERMINISTIC"
         ai_error_reason: AIErrorReason | None = None
+        directed_event_type: str | None = None
         if classification is None:
             decision_source = "LLM"
             async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
@@ -272,6 +306,28 @@ async def classify_and_orchestrate_phase_b_c(
                 except AIUnavailable as error:
                     ai_error_reason = error.reason
                     decision_source = "FALLBACK"
+
+        if (
+            classification is not None
+            and decision_source == "LLM"
+            and should_extract_event_type(persisted.context, classification)
+        ):
+            async with OpenRouterIntentClient(settings, sessionmaker) as extractor:
+                try:
+                    directed_event_type = await extractor.extract_event_type(
+                        persisted.message_text,
+                        context=persisted.context,
+                        conversation_id=persisted.conversation_id,
+                        request_id=request_id,
+                        external_message_id=persisted.external_message_id,
+                    )
+                except AIUnavailable as error:
+                    logger.warning(
+                        "event_type_extraction_unavailable",
+                        conversation_id=persisted.conversation_id,
+                        request_id=str(request_id) if request_id is not None else None,
+                        reason=error.reason.value,
+                    )
 
         async with sessionmaker() as session:
             async with session.begin():
@@ -297,6 +353,8 @@ async def classify_and_orchestrate_phase_b_c(
                         message_text=persisted.message_text,
                         request_id=request_id,
                         decision_source=decision_source,
+                        directed_event_type=directed_event_type,
+                        services_resolution_failed=services_resolution_failed,
                     ),
                     classification=classification,
                     ai_error_reason=ai_error_reason,
@@ -462,8 +520,79 @@ def persisted_message_from_models(
             "known_fields": {},
             "failed_understanding_count": conversation.failed_understanding_count,
             "pending_confirmation": conversation.pending_confirmation,
+            "pending_fields": conversation.pending_fields,
         },
         external_message_id=message.external_message_id,
+    )
+
+
+def should_extract_event_type(
+    context: dict[str, Any],
+    classification: IntentClassification,
+) -> bool:
+    pending_fields = context.get("pending_fields")
+    event_type_pending = context.get("pending_action") == "COLLECT_EVENT_TYPE" and (
+        not isinstance(pending_fields, list) or "event_type" in pending_fields
+    )
+    if not event_type_pending:
+        return False
+    candidates = [
+        entity.normalized_value or entity.raw_value
+        for entity in classification.extracted_entities
+        if entity.entity == "event_type" and entity.quality_status != "INVALID"
+    ]
+    legacy_candidate = classification.entities.get("event_type")
+    if legacy_candidate is not None:
+        candidates.append(legacy_candidate)
+    return not any(normalize_event_type(candidate) is not None for candidate in candidates)
+
+
+def services_turn_classification(
+    message_text: str,
+    service_codes: list[str],
+) -> IntentClassification:
+    entities = (
+        [
+            ExtractedEntity(
+                entity="requested_services",
+                raw_value=message_text,
+                normalized_value=service_codes,
+                quality_status="PROVIDED",
+                confidence=1.0,
+                needs_confirmation=False,
+                validation_errors=[],
+            )
+        ]
+        if service_codes
+        else []
+    )
+    return IntentClassification(
+        primary_intent="EVENT_INFORMATION",
+        secondary_intents=[],
+        sub_intent=None,
+        confidence=1.0,
+        information_category=None,
+        entities={},
+        extracted_entities=entities,
+        requested_action=None,
+        missing_fields=[] if service_codes else ["requested_services"],
+        needs_confirmation=False,
+        needs_human=False,
+        handoff_reason=None,
+        priority="NORMAL",
+        context_reference={},
+        reasoning_code="DIRECTED_SERVICES_CAPTURE",
+    )
+
+
+def is_explicit_visit_request(message_text: str) -> bool:
+    decomposed = unicodedata.normalize("NFKD", message_text.casefold())
+    normalized = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    return "visita" in tokens and bool(
+        tokens & {"agendar", "programar", "reprogramar", "cancelar"}
     )
 
 

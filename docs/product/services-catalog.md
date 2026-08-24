@@ -1,8 +1,8 @@
 # Catálogo canónico de servicios — CHAT_BOT_CEIBA
 
-**Estado:** APROBADO v1.0 — Emerson, 2026-08-21. Cambio editorial aplicado en aprobación: "bebidas" a secas excluido del match determinista (decisión b).
+**Estado:** APROBADO v1.0.1 — Emerson, 2026-08-21. Cambio editorial aplicado en aprobación: "bebidas" a secas excluido del match determinista (decisión b). v1.0.1 corrige el conteo del conjunto a 37 y explicita que `OTHER` no participa del match determinista.
 **Ubicación propuesta:** `docs/product/services-catalog.md` (o §13.2-bis de `entities.md`, a decidir en G1).
-**Fuente de códigos:** `entities.md` §13.2 (36 códigos, sin cambios). Este documento NO crea códigos nuevos; añade la capa de labels, presentación, aliases y descripciones.
+**Fuente de códigos:** `entities.md` §13.2 (37 códigos, incluido `OTHER`, sin cambios). Este documento NO crea códigos nuevos; añade la capa de labels, presentación, aliases y descripciones.
 
 Este documento es la fuente única de verdad para:
 
@@ -108,6 +108,7 @@ Cada código tiene cuatro campos:
 3. **Composición de `requested_services_summary`:** determinista, desde las formas de Presentación: 1 servicio → "el espacio"; 2 → "el espacio y la decoración"; 3+ → "el espacio, la decoración y el DJ". Serialización con coma y "y" final, sin coma de Oxford.
 4. **Paridad doc↔código obligatoria:** test que compara los códigos de esta tabla contra el enum/dict del módulo. Divergencia = rojo.
 5. **Aliases sin tildes y case-insensitive.** La normalización quita tildes antes del match; los aliases se escriben ya normalizados.
+6. **`OTHER` no participa del match determinista.** No tiene aliases; solo puede provenir del clasificador LLM o del fallback posterior a la segunda repregunta fallida.
 
 ## 4. Reglas del match determinista (extensión A7-bis)
 
