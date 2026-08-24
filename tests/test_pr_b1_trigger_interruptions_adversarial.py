@@ -357,12 +357,18 @@ async def service_rows(
     sessionmaker: async_sessionmaker[AsyncSession],
     event_id: UUID,
 ) -> list[EventServiceRequest]:
+    position = getattr(EventServiceRequest, "position", None)
+    ordering = (
+        (position.asc().nulls_last(), EventServiceRequest.created_at, EventServiceRequest.id)
+        if position is not None
+        else (EventServiceRequest.created_at, EventServiceRequest.id)
+    )
     async with sessionmaker() as session:
         return list(
             await session.scalars(
                 select(EventServiceRequest)
                 .where(EventServiceRequest.event_id == event_id)
-                .order_by(EventServiceRequest.created_at, EventServiceRequest.id)
+                .order_by(*ordering)
             )
         )
 
