@@ -784,6 +784,12 @@ Solo usar con validación real.
 
 ---
 
+## RESP-SERVICES-RETRY-001 — Respuesta de servicios no entendida
+
+> No logré identificar los servicios que te interesan. ¿Me lo confirmas de nuevo? Por ejemplo: "el espacio y la decoración" o "solo el espacio".
+
+---
+
 # 20. Alojamiento
 
 ## RESP-ACCOMMODATION-001 — Información general
