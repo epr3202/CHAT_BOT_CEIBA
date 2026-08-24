@@ -71,6 +71,9 @@ class Conversation(Base):
         UUID(as_uuid=True), ForeignKey("lead.lead_id"), index=True, nullable=True
     )
     failed_understanding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    services_failed_understanding_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     bot_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     assigned_agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("agent.id"), index=True, nullable=True

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -26,12 +24,22 @@ from app.conversation.services_catalog import match_requested_services
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.event_type import normalize_event_type
-from app.orchestrator.service import OrchestrationInput, orchestrate_inbound_message
+from app.orchestrator.service import (
+    SENSITIVE_HANDOFF_INTENTS,
+    VISIT_INTENTS,
+    OrchestrationInput,
+    orchestrate_inbound_message,
+)
 
 logger = structlog.get_logger(__name__)
 
 ACTIVE_CONVERSATION_EXCLUDED_STATUSES = ("RESOLVED", "CLOSED")
 SYSTEM_ACTOR = "SYSTEM"
+# RESP-DISCOVERY-* and RESP-PRICE-002 are documented but not emitted today. Review this
+# set if those templates become active. RESP-CATALOG-002 intentionally remains excluded.
+EVENT_TYPE_QUESTION_CODES = frozenset(
+    {"RESP-GREETING-001", "RESP-EVENT-DATA-013", "RESP-PRICE-001"}
+)
 
 
 @dataclass(frozen=True)
@@ -256,12 +264,10 @@ async def classify_and_orchestrate_phase_b_c(
         if await message_already_orchestrated(sessionmaker, persisted.message_id):
             continue
 
-        classification: IntentClassification | None
+        classification: IntentClassification | None = None
+        ai_error_reason: AIErrorReason | None = None
         services_resolution_failed = False
-        services_pending = (
-            persisted.context.get("pending_action") == "COLLECT_SERVICES"
-            and not is_explicit_visit_request(persisted.message_text)
-        )
+        services_pending = persisted.context.get("pending_action") == "COLLECT_SERVICES"
         if services_pending:
             service_codes = match_requested_services(persisted.message_text)
             decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = (
@@ -270,27 +276,47 @@ async def classify_and_orchestrate_phase_b_c(
             if service_codes is None:
                 async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
                     try:
-                        service_codes = await classifier.classify_services(
+                        classification = await classifier.classify_intent(
                             persisted.message_text,
                             context=persisted.context,
                             conversation_id=persisted.conversation_id,
                             request_id=request_id,
                             external_message_id=persisted.external_message_id,
                         )
-                    except AIUnavailable:
-                        service_codes = []
-            services_resolution_failed = not service_codes
-            classification = services_turn_classification(
-                persisted.message_text,
-                service_codes or [],
-            )
+                    except AIUnavailable as error:
+                        ai_error_reason = error.reason
+                        decision_source = "FALLBACK"
+                    if (
+                        classification is not None
+                        and classification.primary_intent
+                        not in SENSITIVE_HANDOFF_INTENTS | VISIT_INTENTS
+                    ):
+                        try:
+                            service_codes = await classifier.classify_services(
+                                persisted.message_text,
+                                context=persisted.context,
+                                conversation_id=persisted.conversation_id,
+                                request_id=request_id,
+                                external_message_id=persisted.external_message_id,
+                            )
+                        except AIUnavailable:
+                            service_codes = []
+                        services_resolution_failed = not service_codes
+                        classification = services_turn_classification(
+                            persisted.message_text,
+                            service_codes or [],
+                        )
+            else:
+                classification = services_turn_classification(
+                    persisted.message_text,
+                    service_codes,
+                )
         else:
             classification = deterministic_confirmation_classification(
                 persisted.message_text,
                 persisted.context,
             )
             decision_source = "DETERMINISTIC"
-        ai_error_reason: AIErrorReason | None = None
         directed_event_type: str | None = None
         if classification is None:
             decision_source = "LLM"
@@ -328,6 +354,13 @@ async def classify_and_orchestrate_phase_b_c(
                         request_id=str(request_id) if request_id is not None else None,
                         reason=error.reason.value,
                     )
+        if classification is not None:
+            classification = directed_event_type_bridge_classification(
+                persisted.message_text,
+                persisted.context,
+                classification,
+                directed_event_type,
+            )
 
         async with sessionmaker() as session:
             async with session.begin():
@@ -534,7 +567,8 @@ def should_extract_event_type(
     event_type_pending = context.get("pending_action") == "COLLECT_EVENT_TYPE" and (
         not isinstance(pending_fields, list) or "event_type" in pending_fields
     )
-    if not event_type_pending:
+    event_type_question = context.get("last_question_code") in EVENT_TYPE_QUESTION_CODES
+    if not event_type_pending and not event_type_question:
         return False
     candidates = [
         entity.normalized_value or entity.raw_value
@@ -545,6 +579,50 @@ def should_extract_event_type(
     if legacy_candidate is not None:
         candidates.append(legacy_candidate)
     return not any(normalize_event_type(candidate) is not None for candidate in candidates)
+
+
+def directed_event_type_bridge_classification(
+    message_text: str,
+    context: dict[str, Any],
+    classification: IntentClassification,
+    directed_event_type: str | None,
+) -> IntentClassification:
+    normalized_event_type = normalize_event_type(directed_event_type)
+    if (
+        classification.primary_intent != "UNKNOWN"
+        or context.get("last_question_code") not in EVENT_TYPE_QUESTION_CODES
+        or normalized_event_type is None
+    ):
+        return classification
+    entity = ExtractedEntity(
+        entity="event_type",
+        raw_value=message_text,
+        normalized_value=normalized_event_type,
+        quality_status="PROVIDED",
+        confidence=1.0,
+        needs_confirmation=False,
+        validation_errors=[],
+    )
+    return IntentClassification(
+        primary_intent="EVENT_INFORMATION",
+        secondary_intents=[],
+        sub_intent=None,
+        confidence=1.0,
+        information_category=None,
+        entities={},
+        extracted_entities=[entity],
+        requested_action=None,
+        missing_fields=[],
+        needs_confirmation=False,
+        needs_human=False,
+        handoff_reason=None,
+        priority="NORMAL",
+        context_reference={
+            "last_question_code": context.get("last_question_code"),
+            "source_intent": "UNKNOWN",
+        },
+        reasoning_code="DIRECTED_EVENT_TYPE_BRIDGE",
+    )
 
 
 def services_turn_classification(
@@ -582,17 +660,6 @@ def services_turn_classification(
         priority="NORMAL",
         context_reference={},
         reasoning_code="DIRECTED_SERVICES_CAPTURE",
-    )
-
-
-def is_explicit_visit_request(message_text: str) -> bool:
-    decomposed = unicodedata.normalize("NFKD", message_text.casefold())
-    normalized = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    )
-    tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    return "visita" in tokens and bool(
-        tokens & {"agendar", "programar", "reprogramar", "cancelar"}
     )
 
 

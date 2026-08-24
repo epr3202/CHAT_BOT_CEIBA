@@ -256,10 +256,17 @@ async def test_tc_svc_006_adjacent_negation_dispatches_services_classifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await seed_capture(sessionmaker_fixture)
+    general_calls: list[str] = []
     service_calls: list[tuple[str, dict[str, Any]]] = []
 
-    async def general_classifier(*_args: object, **_kwargs: object) -> IntentClassification:
-        raise AssertionError("General classification must not replace SERVICES_CLASSIFICATION")
+    async def general_classifier(
+        _client: OpenRouterIntentClient,
+        message_text: str,
+        *_args: object,
+        **_kwargs: object,
+    ) -> IntentClassification:
+        general_calls.append(message_text)
+        return classification_without_entities()
 
     async def services_classifier(
         _client: OpenRouterIntentClient,
@@ -280,6 +287,7 @@ async def test_tc_svc_006_adjacent_negation_dispatches_services_classifier(
         text="sin licor, lo demás sí",
     )
 
+    assert general_calls == ["sin licor, lo demás sí"]
     assert len(service_calls) == 1
     assert service_calls[0][0] == "sin licor, lo demás sí"
     assert service_calls[0][1]["pending_action"] == "COLLECT_SERVICES"
@@ -291,10 +299,17 @@ async def test_tc_svc_007_no_alias_uses_closed_set_llm_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await seed_capture(sessionmaker_fixture)
+    general_calls: list[str] = []
     service_calls: list[str] = []
 
-    async def general_classifier(*_args: object, **_kwargs: object) -> IntentClassification:
-        raise AssertionError("Pending services must use the directed services task")
+    async def general_classifier(
+        _client: OpenRouterIntentClient,
+        message_text: str,
+        *_args: object,
+        **_kwargs: object,
+    ) -> IntentClassification:
+        general_calls.append(message_text)
+        return classification_without_entities()
 
     async def services_classifier(
         _client: OpenRouterIntentClient,
@@ -314,6 +329,7 @@ async def test_tc_svc_007_no_alias_uses_closed_set_llm_result(
         text="quiero que todo se vea inolvidable",
     )
 
+    assert general_calls == ["quiero que todo se vea inolvidable"]
     assert service_calls == ["quiero que todo se vea inolvidable"]
     assert await requested_service_values(sessionmaker_fixture) == ["VENUE", "DECORATION"]
 

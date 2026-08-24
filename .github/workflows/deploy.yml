@@ -69,6 +69,9 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      - name: Migration cycle
+        run: make migrate-cycle PYTHON=python
+
       - name: Test
         run: pytest -q
 
