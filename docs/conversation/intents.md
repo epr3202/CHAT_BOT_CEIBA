@@ -2085,6 +2085,26 @@ El sistema deberá:
 * presentar opciones;
 * no ejecutar acciones críticas.
 
+### Rescate acotado de `event_type` en posición dirigida
+
+Antes de aplicar la aclaración de la banda incierta, el backend podrá promover
+determinísticamente la clasificación a `EVENT_INFORMATION` solo cuando se cumplan todas
+estas guardas:
+
+* la intención original es exactamente `EVENT_INFORMATION`;
+* `0.50 <= confidence < 0.70`, según los umbrales configurados;
+* `last_question_code` pertenece a `EVENT_TYPE_QUESTION_CODES`;
+* existe una entidad `event_type` con `quality_status` igual a `PROVIDED` o `CORRECTED`;
+* la entidad no requiere confirmación;
+* la confianza de la entidad es mayor o igual a `AI_CONFIDENCE_SAFE`;
+* el valor de la entidad normaliza a un tipo de evento válido.
+
+La clasificación promovida contiene únicamente la entidad rescatada y usa
+`reasoning_code = UNCERTAIN_ENTITY_RESCUE`. `INFERRED`, `PENDING_CONFIRMATION`, una
+intención sensible, una posición no dirigida o una entidad no normalizable conservan sin
+cambios el régimen general de confianza. La decisión del backend se audita por separado;
+la fila `ai_execution` conserva el veredicto literal del modelo.
+
 ## 25.4 Confianza insuficiente
 
 ```text

@@ -2037,6 +2037,13 @@ Cuando la confianza sea inferior al umbral configurado:
 * se solicitará aclaración;
 * podrá escalarse.
 
+Precisión: en una posición que pregunta directamente el tipo de evento, una clasificación
+`EVENT_INFORMATION` en banda incierta puede continuar por el camino confiado únicamente si
+incluye una entidad `event_type` `PROVIDED` o `CORRECTED`, sin confirmación pendiente, con
+confianza de entidad mayor o igual a `AI_CONFIDENCE_SAFE` y valor normalizable. Esta
+excepción no cambia los umbrales, no aplica a intenciones sensibles ni a otras entidades,
+y debe auditarse como decisión del backend sin alterar la ejecución literal de la IA.
+
 ---
 
 ## BR-AI-005 — Acciones prohibidas

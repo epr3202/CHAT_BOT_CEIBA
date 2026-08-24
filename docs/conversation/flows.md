@@ -1907,6 +1907,27 @@ No asumir que “el evento” corresponde automáticamente al lead más reciente
 
 Resolver mensajes que no pueden interpretarse con seguridad.
 
+## Rescate dirigido previo al fallback
+
+Antes de emitir el fallback de banda incierta, el backend evalúa una única excepción
+acotada para `event_type`:
+
+1. La intención original debe ser exactamente `EVENT_INFORMATION` y su confianza debe
+   estar en la banda incierta configurada.
+2. La última pregunta debe pertenecer a `EVENT_TYPE_QUESTION_CODES`.
+3. Debe existir una entidad `event_type` `PROVIDED` o `CORRECTED`, sin confirmación
+   pendiente, con confianza de entidad mayor o igual a `AI_CONFIDENCE_SAFE` y valor
+   normalizable.
+4. El backend crea una clasificación nueva de `EVENT_INFORMATION`, con solo la entidad
+   rescatada y `reasoning_code = UNCERTAIN_ENTITY_RESCUE`, y continúa por el despacho
+   ordinario confiado.
+5. Registra `AI_CONFIDENCE_DECISION / UNCERTAIN_ENTITY_RESCUE` con las confianzas y el
+   contexto originales. La fila `ai_execution` no se modifica.
+
+Si falla cualquiera de las guardas, continúa este flujo de baja confianza sin cambios.
+El rescate no aplica a intenciones sensibles ni se generaliza a otras entidades o
+posiciones.
+
 ## Primer fallo
 
 1. Incrementar contador.
