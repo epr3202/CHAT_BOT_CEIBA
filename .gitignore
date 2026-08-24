@@ -7,3 +7,4 @@ __pycache__/
 .ruff_cache/
 .venv/
 cloudflared-linux-amd64.deb
+review-*.txt
