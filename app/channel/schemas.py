@@ -155,7 +155,12 @@ class InboundWhatsAppMessage(BaseModel):
             selection = self.content.model_dump()
             return {"selection": selection, "text": {"body": self.content.title}}
         if isinstance(self.content, UnknownContent):
-            return {"unknown": {"raw": self.content.raw}}
+            return {
+                "unknown": {
+                    "raw_type": self.content.raw_type,
+                    "raw": self.content.raw,
+                }
+            }
         if isinstance(self.content, ContactsContent):
             return {"contacts": self.content.contacts}
         return {

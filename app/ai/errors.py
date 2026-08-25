@@ -15,3 +15,7 @@ class AIUnavailable(Exception):
         self.reason = reason
         self.detail = detail
         super().__init__(reason.value)
+
+
+class EmptyClassificationInput(ValueError):
+    """Raised before telemetry or HTTP when a classifier receives blank text."""

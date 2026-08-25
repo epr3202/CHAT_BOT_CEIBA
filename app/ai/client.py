@@ -12,7 +12,7 @@ import structlog
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.ai.errors import AIErrorReason, AIUnavailable
+from app.ai.errors import AIErrorReason, AIUnavailable, EmptyClassificationInput
 from app.ai.models import AIExecution
 from app.ai.prompts import get_intent_prompt
 from app.ai.prompts.event_type_extraction_v1 import (
@@ -157,6 +157,8 @@ class OpenRouterIntentClient:
         external_message_id: str | None,
         parse_result: Callable[[dict[str, Any]], _TaskResult[TaskValue]],
     ) -> TaskValue:
+        if not message_text.strip():
+            raise EmptyClassificationInput("Classification input must contain text")
         if self._http_client is None:
             raise RuntimeError("OpenRouterIntentClient must be used as an async context manager")
 

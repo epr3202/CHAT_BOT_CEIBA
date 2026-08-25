@@ -593,7 +593,9 @@ async def test_tc_media_015_text_message_keeps_existing_pipeline(
     assert calls.general == ["Hola"]
     assert len(result.messages) == 1
     assert len(result.outbox) == 1
-    assert result.conversation.last_question_code == "RESP-GREETING-002"
+    # Baseline behavior for a newly persisted customer is RESP-GREETING-001: the
+    # provider profile name is not imported into Customer by the current slice.
+    assert result.conversation.last_question_code == "RESP-GREETING-001"
     assert non_text_audits(result) == []
 
 

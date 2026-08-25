@@ -18,7 +18,7 @@ from app.audit.models import AuditEvent
 from app.channel.models import Message, MessageProviderStatus, Outbox, WebhookEvent
 from app.channel.schemas import InboundWhatsAppMessage
 from app.channel.states import Channel
-from app.config.settings import get_settings
+from app.config.settings import Settings, get_settings
 from app.conversation.confirmation import resolve_contextual_confirmation
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
@@ -26,10 +26,13 @@ from app.conversation.services_catalog import match_requested_services
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.event_type import normalize_event_type
+from app.handoff.models import Handoff
+from app.handoff.service import create_handoff
 from app.orchestrator.service import (
     SENSITIVE_HANDOFF_INTENTS,
     VISIT_INTENTS,
     OrchestrationInput,
+    enqueue_template,
     orchestrate_inbound_message,
 )
 
@@ -52,6 +55,8 @@ class PersistedInboundMessage:
     message_text: str
     context: dict[str, Any]
     external_message_id: str
+    message_type: str
+    content: dict[str, Any]
 
 
 def normalize_phone_number(phone_number: str) -> str:
@@ -256,6 +261,13 @@ async def classify_and_orchestrate_phase_b_c(
     for persisted in persisted_messages:
         if await message_already_orchestrated(sessionmaker, persisted.message_id):
             continue
+        if await route_non_text_message(
+            persisted,
+            sessionmaker,
+            settings=settings,
+            request_id=request_id,
+        ):
+            continue
 
         classification: IntentClassification | None = None
         ai_error_reason: AIErrorReason | None = None
@@ -415,6 +427,174 @@ async def outbox_exists_for_message(session: AsyncSession, message_id: int) -> b
     return outbox_id is not None
 
 
+async def route_non_text_message(
+    persisted: PersistedInboundMessage,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    *,
+    settings: Settings,
+    request_id: uuid.UUID | None,
+) -> bool:
+    """Route channel-specific payloads before any classifier can see them."""
+    if persisted.message_type in {"text", "interactive", "button"}:
+        return False
+
+    media_types = {"image", "document", "audio", "video"}
+    caption = media_caption(persisted.content, persisted.message_type)
+    async with sessionmaker() as session:
+        async with session.begin():
+            message = await session.get(Message, persisted.message_id)
+            conversation = await session.get(
+                Conversation,
+                persisted.conversation_id,
+                with_for_update=True,
+            )
+            customer = await session.get(Customer, persisted.customer_id)
+            if message is None or conversation is None or customer is None:
+                raise ValueError("Persisted inbound message cannot be reloaded")
+
+            payment_context = await has_open_payment_handoff(session, conversation.id)
+            session.add(
+                build_non_text_audit(
+                    message,
+                    payment_context=payment_context,
+                    request_id=request_id,
+                )
+            )
+
+            if persisted.message_type in media_types and caption:
+                return False
+
+            response_code: str | None = None
+            if persisted.message_type in {"image", "document"} and payment_context:
+                response_code = "RESP-PAYMENT-002"
+            elif persisted.message_type == "image":
+                response_code = "RESP-FILE-001"
+            elif persisted.message_type == "document":
+                response_code = "RESP-FILE-004"
+            elif persisted.message_type == "video":
+                response_code = "RESP-FILE-005"
+            elif persisted.message_type == "audio":
+                response_code = "RESP-FILE-003"
+            elif persisted.message_type in {"location", "contacts"}:
+                response_code = "RESP-FALLBACK-001"
+            elif persisted.message_type in {"unsupported", "unknown"}:
+                detail = handoff_detail_for_non_text(message)
+                await create_handoff(
+                    session,
+                    conversation,
+                    customer,
+                    reason="OTHER",
+                    priority="NORMAL",
+                    request_id=str(request_id) if request_id is not None else None,
+                    settings=settings,
+                    detail=detail,
+                )
+                response_code = "RESP-FALLBACK-001"
+
+            if response_code is not None:
+                await enqueue_template(
+                    session,
+                    sessionmaker,
+                    conversation,
+                    customer,
+                    message,
+                    response_code,
+                    {},
+                )
+    return True
+
+
+async def has_open_payment_handoff(session: AsyncSession, conversation_id: int) -> bool:
+    handoff_id = await session.scalar(
+        select(Handoff.id)
+        .where(
+            Handoff.conversation_id == conversation_id,
+            Handoff.reason == "PAYMENT_REVIEW",
+            Handoff.status.in_(("PENDING", "TAKEN")),
+        )
+        .limit(1)
+    )
+    return handoff_id is not None
+
+
+def media_caption(content: dict[str, Any], message_type: str) -> str:
+    typed_content = content.get(message_type)
+    if not isinstance(typed_content, dict):
+        return ""
+    caption = typed_content.get("caption")
+    return caption.strip() if isinstance(caption, str) else ""
+
+
+def build_non_text_audit(
+    message: Message,
+    *,
+    payment_context: bool,
+    request_id: uuid.UUID | None,
+) -> AuditEvent:
+    typed_content = message.content.get(message.message_type)
+    details = typed_content if isinstance(typed_content, dict) else {}
+    value: dict[str, Any] = {
+        "message_type": message.message_type,
+        "mime_type": details.get("mime_type"),
+        "has_caption": bool(media_caption(message.content, message.message_type)),
+        "payment_context": payment_context,
+    }
+    if message.message_type == "audio":
+        value.update(
+            voice=details.get("voice"),
+            duration_s=details.get("duration_s"),
+        )
+    elif message.message_type == "reaction":
+        value.update(
+            emoji=details.get("emoji"),
+            reacted_message_id=details.get("message_id"),
+        )
+    elif message.message_type == "unsupported":
+        value.update(
+            raw_type=details.get("raw_type", "unsupported"),
+            error_codes=error_codes(details),
+        )
+    elif message.message_type == "unknown":
+        value["raw_type"] = unknown_raw_type(message)
+
+    return AuditEvent(
+        actor=SYSTEM_ACTOR,
+        action="NON_TEXT_MESSAGE_RECEIVED",
+        entity="message",
+        old_value=None,
+        new_value=value,
+        reason="Inbound non-text message routed",
+        request_id=request_id,
+    )
+
+
+def error_codes(content: dict[str, Any]) -> list[int]:
+    errors = content.get("errors")
+    if not isinstance(errors, list):
+        return []
+    return [
+        code
+        for error in errors
+        if isinstance(error, dict) and isinstance((code := error.get("code")), int)
+    ]
+
+
+def unknown_raw_type(message: Message) -> str:
+    unknown = message.content.get("unknown")
+    if isinstance(unknown, dict) and isinstance(unknown.get("raw_type"), str):
+        return unknown["raw_type"]
+    return "unknown"
+
+
+def handoff_detail_for_non_text(message: Message) -> str:
+    if message.message_type == "unsupported":
+        content = message.content.get("unsupported")
+        details = content if isinstance(content, dict) else {}
+        codes = error_codes(details)
+        return "unsupported message" + (f"; error codes: {codes}" if codes else "")
+    return f"unknown inbound message type: {unknown_raw_type(message)}"
+
+
 def extract_inbound_messages(payload: dict[str, Any]) -> list[InboundWhatsAppMessage]:
     messages: list[InboundWhatsAppMessage] = []
     for value in iter_whatsapp_change_values(payload):
@@ -563,6 +743,8 @@ def persisted_message_from_models(
             "pending_fields": conversation.pending_fields,
         },
         external_message_id=message.external_message_id,
+        message_type=message.message_type,
+        content=message.content,
     )
 
 
@@ -789,6 +971,12 @@ def extract_text_body(content: dict[str, Any]) -> str:
         body = text.get("body")
         if isinstance(body, str):
             return body
+    for message_type in ("image", "document", "audio", "video"):
+        typed_content = content.get(message_type)
+        if isinstance(typed_content, dict):
+            caption = typed_content.get("caption")
+            if isinstance(caption, str):
+                return caption
     return ""
 
 
