@@ -22,6 +22,7 @@ from app.audit.models import AuditEvent
 from app.channel import media as media_module
 from app.channel.inbound import process_whatsapp_webhook
 from app.channel.models import Message, Outbox
+from app.channel.schemas import InboundWhatsAppMessage, MediaContent, UnsupportedContent
 from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation
 from app.customer.models import Customer
@@ -30,8 +31,10 @@ from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries
 from tests.integration.helpers import (
     DATABASE_URL,
+    app_client,
     configure_test_environment,
     reset_test_database,
+    signature,
 )
 
 PHONE = "573001112233"
@@ -112,6 +115,15 @@ async def media_context(
     monkeypatch.setattr(OpenRouterIntentClient, "classify_services", classify_services)
     yield sessionmaker, calls
     get_settings.cache_clear()
+
+
+@pytest.fixture
+async def media_http_context(
+    media_context: tuple[async_sessionmaker[AsyncSession], ClassifierCalls],
+) -> AsyncIterator[tuple[async_sessionmaker[AsyncSession], ClassifierCalls, httpx.AsyncClient]]:
+    sessionmaker, calls = media_context
+    async for client in app_client():
+        yield sessionmaker, calls, client
 
 
 def greeting_classification() -> IntentClassification:
@@ -733,7 +745,116 @@ async def test_tc_media_020_location_audit_excludes_coordinates(
     assert_safe_audit(event)
 
 
-def test_tc_media_021_typed_inbound_schema_covers_media_contract() -> None:
+@pytest.mark.asyncio
+async def test_tc_media_021_blank_text_routes_fallback_without_ai_and_returns_200(
+    media_http_context: tuple[
+        async_sessionmaker[AsyncSession],
+        ClassifierCalls,
+        httpx.AsyncClient,
+    ],
+) -> None:
+    sessionmaker, calls, client = media_http_context
+    payload = webhook_payload("wamid.media.021", "text", {"body": "   \t\n"})
+    body = json.dumps(payload).encode()
+
+    response = await client.post(
+        "/webhook",
+        content=body,
+        headers={"X-Hub-Signature-256": signature(body)},
+    )
+
+    result = await snapshot(sessionmaker)
+    assert response.status_code == 200
+    assert calls.general == []
+    assert result.ai_execution_count == 0
+    assert result.conversation.last_question_code == "RESP-FALLBACK-001"
+    assert len(non_text_audits(result)) == 1
+    assert non_text_audits(result)[0].new_value["message_type"] == "text"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("message_type", "content"),
+    [
+        (
+            "interactive",
+            {
+                "type": "button_reply",
+                "button_reply": {"id": "empty-selection", "title": "   "},
+            },
+        ),
+        ("button", {"payload": "empty-selection", "text": "\t"}),
+    ],
+)
+async def test_tc_media_022_empty_selection_routes_fallback_without_ai_and_returns_200(
+    media_http_context: tuple[
+        async_sessionmaker[AsyncSession],
+        ClassifierCalls,
+        httpx.AsyncClient,
+    ],
+    message_type: str,
+    content: dict[str, Any],
+) -> None:
+    sessionmaker, calls, client = media_http_context
+    payload = webhook_payload(f"wamid.media.022.{message_type}", message_type, content)
+    body = json.dumps(payload).encode()
+
+    response = await client.post(
+        "/webhook",
+        content=body,
+        headers={"X-Hub-Signature-256": signature(body)},
+    )
+
+    result = await snapshot(sessionmaker)
+    assert response.status_code == 200
+    assert calls.general == []
+    assert result.ai_execution_count == 0
+    assert result.conversation.last_question_code == "RESP-FALLBACK-001"
+    assert len(non_text_audits(result)) == 1
+    assert non_text_audits(result)[0].new_value["message_type"] == message_type
+
+
+def test_tc_media_023_real_payloads_select_content_model_by_message_type() -> None:
+    real_messages = [
+        {
+            "from": PHONE,
+            "id": "wamid.media.023.audio-one",
+            "timestamp": "1787366893",
+            "type": "audio",
+            "audio": AUDIO_ONE,
+        },
+        {
+            "from": PHONE,
+            "id": "wamid.media.023.audio-two",
+            "timestamp": "1787366988",
+            "type": "audio",
+            "audio": AUDIO_TWO,
+        },
+        {
+            "from": PHONE,
+            "id": "wamid.media.023.unsupported",
+            "timestamp": "1787438883",
+            "type": "unsupported",
+            "unsupported": {"type": "unknown", "raw_type": "unknown"},
+        },
+        {
+            "from": PHONE,
+            "id": "wamid.media.023.audio-three",
+            "timestamp": "1787539514",
+            "type": "audio",
+            "audio": AUDIO_THREE,
+        },
+    ]
+
+    parsed = [InboundWhatsAppMessage.model_validate(message) for message in real_messages]
+
+    assert isinstance(parsed[0].content, MediaContent)
+    assert isinstance(parsed[1].content, MediaContent)
+    assert isinstance(parsed[2].content, UnsupportedContent)
+    assert isinstance(parsed[3].content, MediaContent)
+
+
+def test_tc_media_024_typed_inbound_schema_covers_media_contract() -> None:
     try:
         schemas = importlib.import_module("app.channel.schemas")
     except ModuleNotFoundError:
@@ -764,7 +885,7 @@ def test_tc_media_021_typed_inbound_schema_covers_media_contract() -> None:
 
 
 @pytest.mark.asyncio
-async def test_tc_media_022_unknown_type_preserves_raw_object_and_routes_other(
+async def test_tc_media_025_unknown_type_preserves_raw_object_and_routes_other(
     media_context: tuple[async_sessionmaker[AsyncSession], ClassifierCalls],
 ) -> None:
     sessionmaker, calls = media_context
