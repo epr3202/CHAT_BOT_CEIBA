@@ -2080,6 +2080,7 @@ referencia en `Message.content`; la descarga y persistencia del binario se compl
 
 | Tipo | Condición | Respuesta | Handoff | Auditoría `NON_TEXT_MESSAGE_RECEIVED` |
 | --- | --- | --- | --- | --- |
+| `text` | body vacío o solo espacios | `RESP-FALLBACK-001` | no | sí |
 | `image` / `document` / `video` / `audio` | `caption` no vacío | el caption sigue el camino normal de texto | según el orquestador del caption | sí, `has_caption=true` |
 | `image` / `document` | contexto de pago | `RESP-PAYMENT-002` | reutiliza `PAYMENT_REVIEW` abierto, prioridad `NORMAL` | sí, `payment_context=true` |
 | `image` | sin caption ni contexto de pago | `RESP-FILE-001` | no | sí |
@@ -2091,6 +2092,7 @@ referencia en `Message.content`; la descarga y persistencia del binario se compl
 | `location` | — | `RESP-FALLBACK-001` | no | sí, sin coordenadas |
 | `contacts` | — | `RESP-FALLBACK-001` | no | sí, sin datos de contacto |
 | `interactive` / `button` | selección con título | convierte título e id a `selection` + texto y sigue el camino normal | según el texto | no |
+| `interactive` / `button` | título vacío o solo espacios | `RESP-FALLBACK-001` | no | sí |
 | `unsupported` | — | `RESP-FALLBACK-001` | `OTHER`, `NORMAL`, con códigos de error en el detalle interno | sí, con `errors[].code` |
 | `unknown` | tipo no modelado | `RESP-FALLBACK-001` | `OTHER`, `NORMAL` | sí, con `raw_type` |
 
@@ -2098,6 +2100,10 @@ Todo no-texto sin caption produce cero ejecuciones de IA, no consume un turno de
 no incrementa `services_failed_understanding_count` y nunca crea un handoff
 `LOW_CONFIDENCE`. La auditoría nunca contiene URL, `sha256`, coordenadas ni datos de
 contacto.
+
+Las escrituras nuevas normalizan el identificador de media como `media_id` dentro de
+`Message.content`. Existen filas históricas anteriores a W2-a que conservan la clave `id`;
+W2-b debe aceptar ambas formas al leer y escribir únicamente `media_id`.
 
 ## Contexto de pago
 

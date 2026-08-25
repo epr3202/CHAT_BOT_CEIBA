@@ -435,7 +435,10 @@ async def route_non_text_message(
     request_id: uuid.UUID | None,
 ) -> bool:
     """Route channel-specific payloads before any classifier can see them."""
-    if persisted.message_type in {"text", "interactive", "button"}:
+    if (
+        persisted.message_type in {"text", "interactive", "button"}
+        and persisted.message_text.strip()
+    ):
         return False
 
     media_types = {"image", "document", "audio", "video"}
@@ -475,7 +478,13 @@ async def route_non_text_message(
                 response_code = "RESP-FILE-005"
             elif persisted.message_type == "audio":
                 response_code = "RESP-FILE-003"
-            elif persisted.message_type in {"location", "contacts"}:
+            elif persisted.message_type in {
+                "text",
+                "interactive",
+                "button",
+                "location",
+                "contacts",
+            }:
                 response_code = "RESP-FALLBACK-001"
             elif persisted.message_type in {"unsupported", "unknown"}:
                 detail = handoff_detail_for_non_text(message)

@@ -123,10 +123,12 @@ class InboundWhatsAppMessage(BaseModel):
         message["provider_timestamp"] = _parse_timestamp(message.get("timestamp"))
         if raw_type not in SUPPORTED_MESSAGE_TYPES:
             message["type"] = "unknown"
-            message["content"] = {
-                "raw_type": raw_type,
-                "raw": message.get(raw_type),
-            }
+            message["content"] = UnknownContent.model_validate(
+                {
+                    "raw_type": raw_type,
+                    "raw": message.get(raw_type),
+                }
+            )
             return message
 
         raw_content = message.get(raw_type)
@@ -148,6 +150,10 @@ class InboundWhatsAppMessage(BaseModel):
             message["content"] = content
         else:
             message["content"] = dict(raw_content) if isinstance(raw_content, dict) else {}
+        message["content"] = validate_content_for_message_type(
+            raw_type,
+            message["content"],
+        )
         return message
 
     def storage_content(self) -> dict[str, Any]:
@@ -196,3 +202,25 @@ def _selection_content(message_type: str, raw_content: Any) -> dict[str, str]:
         "id": str(content.get("payload") or content.get("id") or ""),
         "title": str(content.get("text") or content.get("title") or ""),
     }
+
+
+def validate_content_for_message_type(
+    message_type: str,
+    content: Any,
+) -> InboundMessageContent:
+    """Select the content model explicitly; union heuristics must not decide it."""
+    if message_type == "text":
+        return TextContent.model_validate(content)
+    if message_type in {"image", "document", "audio", "video", "sticker"}:
+        return MediaContent.model_validate(content)
+    if message_type == "reaction":
+        return ReactionContent.model_validate(content)
+    if message_type in {"interactive", "button"}:
+        return SelectionContent.model_validate(content)
+    if message_type == "location":
+        return LocationContent.model_validate(content)
+    if message_type == "contacts":
+        return ContactsContent.model_validate(content)
+    if message_type == "unsupported":
+        return UnsupportedContent.model_validate(content)
+    raise ValueError(f"Unsupported normalized inbound message type: {message_type}")
