@@ -27,6 +27,7 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
         "message",
         "message_provider_status",
         "outbox",
+        "payment_evidence",
         "quote_request",
         "webhook_event",
     }
