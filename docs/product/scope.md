@@ -1792,6 +1792,12 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 
 ## Prioridad alta
 
+* W2-b: descarga y persistencia de evidencia con reintentos dentro de la ventana de 7 días
+  del `media_id` de Meta;
+* completar la detección de contexto de pago por código de la última plantilla saliente,
+  hoy no persistido como dato consultable en `outbox`/`message`;
+* textos pendientes Leandro: `sticker`, `reaction`, `location`, `contacts`, `unsupported`,
+  `unknown`;
 * motor de cotización;
 * paquetes;
 * servicios adicionales;
@@ -1811,7 +1817,8 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 ## Prioridad media
 
 * Instagram;
-* transcripción de audios;
+* W2-c: transcripción de audio; decidir su prioridad con el conteo de auditorías
+  `NON_TEXT_MESSAGE_RECEIVED` cuyo `message_type` sea `audio`;
 * análisis básico de imágenes;
 * enlaces de pago;
 * correos;
