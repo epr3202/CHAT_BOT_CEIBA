@@ -18,6 +18,7 @@ from app.channel.media import (
     InboundMediaHashMismatch,
     InboundMediaTooLarge,
     download_inbound_media,
+    normalize_sha256,
 )
 from app.config.settings import Settings
 from app.payment.models import PaymentEvidence
@@ -162,7 +163,13 @@ async def _claim_one_evidence(
 def _validate_download(claim: EvidenceClaim, media: InboundMediaFile) -> None:
     if media.mime_type.split(";", 1)[0].strip().casefold() != claim.mime_type.casefold():
         raise InboundMediaHashMismatch("Downloaded MIME type differs from inbound declaration")
-    if media.sha256 != claim.declared_sha256:
+    try:
+        declared_sha256 = normalize_sha256(claim.declared_sha256)
+    except ValueError as error:
+        raise InboundMediaHashMismatch(
+            "Inbound declaration contains an invalid sha256"
+        ) from error
+    if media.sha256 != declared_sha256:
         raise InboundMediaHashMismatch("Downloaded hash differs from inbound declaration")
 
 

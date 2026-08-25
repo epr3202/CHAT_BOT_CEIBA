@@ -1798,6 +1798,13 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 
 # 29. Backlog posterior al MVP
 
+## Entradas cerradas
+
+* Incidente de hash de evidencia #1 (cerrado el 2026-08-25): Meta puede representar el
+  mismo SHA-256 en base64 en el webhook y en hexadecimal en la metadata. La descarga
+  normaliza ambas codificaciones, compara el digest calculado de los bytes y conserva el
+  valor verificado en hexadecimal.
+
 ## Prioridad alta
 
 * purga automática de evidencias de pago al vencer

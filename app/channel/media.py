@@ -51,7 +51,23 @@ class InboundMediaFile:
     bytes: bytes
     mime_type: str
     sha256: str
+    sha256_base64: str
     size_bytes: int
+
+
+def normalize_sha256(value: str) -> str:
+    """Return a SHA-256 digest as lowercase hexadecimal."""
+    normalized = value.strip()
+    if re.fullmatch(r"[0-9a-fA-F]{64}", normalized):
+        return normalized.casefold()
+
+    try:
+        digest = base64.b64decode(normalized, validate=True)
+    except (ValueError, TypeError) as error:
+        raise ValueError("Invalid SHA-256 encoding") from error
+    if len(digest) != hashlib.sha256().digest_size:
+        raise ValueError("Invalid SHA-256 digest length")
+    return digest.hex()
 
 
 async def download_inbound_media(
@@ -78,8 +94,6 @@ async def download_inbound_media(
         if not isinstance(fresh_url, str) or not fresh_url:
             raise InboundMediaDownloadError("Inbound media metadata did not include a URL")
         declared_hash = metadata.get("sha256")
-        if not isinstance(declared_hash, str) or not declared_hash:
-            raise InboundMediaDownloadError("Inbound media metadata did not include sha256")
 
         max_bytes = settings.inbound_media_max_mb * 1024 * 1024
         declared_size = metadata.get("file_size")
@@ -103,13 +117,29 @@ async def download_inbound_media(
                 chunks.append(chunk)
 
         content = b"".join(chunks)
-        calculated_hash = base64.b64encode(hashlib.sha256(content).digest()).decode()
-        if not _hashes_match(declared_hash, calculated_hash, content):
-            raise InboundMediaHashMismatch("Inbound media sha256 verification failed")
+        calculated_digest = hashlib.sha256(content).digest()
+        calculated_hex = calculated_digest.hex()
+        calculated_base64 = base64.b64encode(calculated_digest).decode()
+        if declared_hash is not None:
+            if not isinstance(declared_hash, str) or not declared_hash.strip():
+                raise InboundMediaHashMismatch(
+                    "Inbound media metadata sha256 is invalid"
+                )
+            try:
+                metadata_hex = normalize_sha256(declared_hash)
+            except ValueError as error:
+                raise InboundMediaHashMismatch(
+                    "Inbound media metadata sha256 is invalid"
+                ) from error
+            if metadata_hex != calculated_hex:
+                raise InboundMediaHashMismatch(
+                    "Inbound media sha256 verification failed"
+                )
         return InboundMediaFile(
             bytes=content,
             mime_type=str(mime_type),
-            sha256=declared_hash,
+            sha256=calculated_hex,
+            sha256_base64=calculated_base64,
             size_bytes=size_bytes,
         )
     except (httpx.HTTPError, ValueError) as error:
@@ -133,11 +163,6 @@ def _raise_for_inbound_media_status(response: httpx.Response) -> None:
         response.raise_for_status()
     except httpx.HTTPStatusError as error:
         raise InboundMediaDownloadError("Meta rejected an inbound media request") from error
-
-
-def _hashes_match(declared_hash: str, calculated_base64: str, content: bytes) -> bool:
-    calculated_hex = hashlib.sha256(content).hexdigest()
-    return declared_hash in {calculated_base64, calculated_hex}
 
 
 class MediaService:
