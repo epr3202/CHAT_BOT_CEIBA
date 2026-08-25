@@ -43,6 +43,10 @@ NORMALIZED_PHONE = "+573001112233"
 GRAPH_BASE = "https://graph.facebook.com"
 JPEG_BYTES = b"payment evidence jpeg"
 JPEG_SHA256 = base64.b64encode(hashlib.sha256(JPEG_BYTES).digest()).decode()
+INCIDENT_MEDIA_ID = "1597091842018498"
+INCIDENT_BYTES = (b"La Ceiba payment evidence hash encoding incident\n" * 3000)[:111_714]
+INCIDENT_SHA256_HEX = hashlib.sha256(INCIDENT_BYTES).hexdigest()
+INCIDENT_SHA256_BASE64 = base64.b64encode(hashlib.sha256(INCIDENT_BYTES).digest()).decode()
 
 
 class ClassifierCalls:
@@ -142,6 +146,49 @@ def classification(
         context_reference={},
         reasoning_code="TC_PAYMENT_EVIDENCE",
     )
+
+
+async def route_payment_image(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    calls: ClassifierCalls,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    message_id: str,
+    media_id: str,
+    declared_sha256: str,
+) -> Any:
+    async def classify_payment(
+        _client: OpenRouterIntentClient,
+        message_text: str,
+        context: dict[str, object],
+        conversation_id: int | None = None,
+        **_kwargs: object,
+    ) -> IntentClassification:
+        del context, conversation_id
+        calls.messages.append(message_text)
+        return classification(
+            "PAYMENT_MESSAGE",
+            needs_human=True,
+            handoff_reason="PAYMENT_REVIEW",
+        )
+
+    monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_payment)
+    await process_whatsapp_webhook(
+        webhook_payload(
+            message_id,
+            "image",
+            {
+                "media_id": media_id,
+                "mime_type": "image/jpeg",
+                "sha256": declared_sha256,
+                "caption": "Pago",
+            },
+        ),
+        sessionmaker,
+    )
+    rows = await evidence_rows(sessionmaker)
+    assert len(rows) == 1
+    return rows[0]
 
 
 def webhook_payload(
@@ -502,11 +549,19 @@ class TrackingSessionmaker:
 @respx.mock
 async def test_tc_pay_007_worker_downloads_outside_db_and_writes_private_file(
     payment_context: tuple[async_sessionmaker[AsyncSession], ClassifierCalls],
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     module = payment_worker()
-    sessionmaker, _calls = payment_context
-    evidence = await seed_evidence(sessionmaker, media_id="media-pay-007")
+    sessionmaker, calls = payment_context
+    evidence = await route_payment_image(
+        sessionmaker,
+        calls,
+        monkeypatch,
+        message_id="wamid.pay.007",
+        media_id=INCIDENT_MEDIA_ID,
+        declared_sha256=INCIDENT_SHA256_BASE64,
+    )
     tracker = TrackingSessionmaker(sessionmaker)
     fresh_url = "https://lookaside.fbsbx.com/payment-007"
 
@@ -515,16 +570,17 @@ async def test_tc_pay_007_worker_downloads_outside_db_and_writes_private_file(
         return httpx.Response(
             200,
             json={
-                "id": "media-pay-007",
+                "id": INCIDENT_MEDIA_ID,
+                "messaging_product": "whatsapp",
                 "url": fresh_url,
                 "mime_type": "image/jpeg",
-                "sha256": JPEG_SHA256,
-                "file_size": len(JPEG_BYTES),
+                "sha256": INCIDENT_SHA256_HEX,
+                "file_size": len(INCIDENT_BYTES),
             },
         )
 
-    respx.get(f"{GRAPH_BASE}/v20.0/media-pay-007").mock(side_effect=metadata)
-    respx.get(fresh_url).mock(return_value=httpx.Response(200, content=JPEG_BYTES))
+    respx.get(f"{GRAPH_BASE}/v20.0/{INCIDENT_MEDIA_ID}").mock(side_effect=metadata)
+    respx.get(fresh_url).mock(return_value=httpx.Response(200, content=INCIDENT_BYTES))
     async with httpx.AsyncClient() as http_client:
         await module.process_payment_evidence_once(
             tracker,
@@ -536,15 +592,116 @@ async def test_tc_pay_007_worker_downloads_outside_db_and_writes_private_file(
     rows = await evidence_rows(sessionmaker)
     stored = tmp_path / f"{evidence.id}.jpg"
     assert rows[0].download_status == "DOWNLOADED"
-    assert rows[0].verified_sha256 == JPEG_SHA256
-    assert rows[0].size_bytes == len(JPEG_BYTES)
-    assert stored.read_bytes() == JPEG_BYTES
+    assert rows[0].declared_sha256 == INCIDENT_SHA256_BASE64
+    assert rows[0].verified_sha256 == INCIDENT_SHA256_HEX
+    assert rows[0].size_bytes == len(INCIDENT_BYTES)
+    assert stored.read_bytes() == INCIDENT_BYTES
     assert stat.S_IMODE(stored.stat().st_mode) == 0o640
     async with sessionmaker() as session:
         audit = await session.scalar(
             select(AuditEvent).where(AuditEvent.action == "PAYMENT_EVIDENCE_DOWNLOADED")
         )
     assert "storage_path" not in json.dumps(audit.new_value)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tc_pay_021_metadata_hash_match_does_not_accept_tampered_bytes(
+    payment_context: tuple[async_sessionmaker[AsyncSession], ClassifierCalls],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = payment_worker()
+    sessionmaker, calls = payment_context
+    media_id = "1597091842018499"
+    evidence = await route_payment_image(
+        sessionmaker,
+        calls,
+        monkeypatch,
+        message_id="wamid.pay.021",
+        media_id=media_id,
+        declared_sha256=INCIDENT_SHA256_BASE64,
+    )
+    fresh_url = "https://lookaside.fbsbx.com/payment-021"
+    tampered_bytes = INCIDENT_BYTES[:-1] + bytes([INCIDENT_BYTES[-1] ^ 0xFF])
+    respx.get(f"{GRAPH_BASE}/v20.0/{media_id}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": media_id,
+                "messaging_product": "whatsapp",
+                "url": fresh_url,
+                "mime_type": "image/jpeg",
+                "sha256": INCIDENT_SHA256_HEX,
+                "file_size": len(INCIDENT_BYTES),
+            },
+        )
+    )
+    respx.get(fresh_url).mock(
+        return_value=httpx.Response(200, content=tampered_bytes)
+    )
+
+    async with httpx.AsyncClient() as http_client:
+        await module.process_payment_evidence_once(
+            sessionmaker,
+            settings=worker_settings(tmp_path),
+            http_client=http_client,
+            now=datetime.now(UTC),
+        )
+
+    row = (await evidence_rows(sessionmaker))[0]
+    assert row.id == evidence.id
+    assert row.download_status == "FAILED_PERMANENT"
+    assert not list(tmp_path.glob(f"{evidence.id}.*"))
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tc_pay_022_webhook_hash_is_authoritative_when_metadata_omits_hash(
+    payment_context: tuple[async_sessionmaker[AsyncSession], ClassifierCalls],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = payment_worker()
+    sessionmaker, calls = payment_context
+    media_id = "1597091842018500"
+    evidence = await route_payment_image(
+        sessionmaker,
+        calls,
+        monkeypatch,
+        message_id="wamid.pay.022",
+        media_id=media_id,
+        declared_sha256=INCIDENT_SHA256_BASE64,
+    )
+    fresh_url = "https://lookaside.fbsbx.com/payment-022"
+    respx.get(f"{GRAPH_BASE}/v20.0/{media_id}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": media_id,
+                "messaging_product": "whatsapp",
+                "url": fresh_url,
+                "mime_type": "image/jpeg",
+                "file_size": len(INCIDENT_BYTES),
+            },
+        )
+    )
+    respx.get(fresh_url).mock(
+        return_value=httpx.Response(200, content=INCIDENT_BYTES)
+    )
+
+    async with httpx.AsyncClient() as http_client:
+        await module.process_payment_evidence_once(
+            sessionmaker,
+            settings=worker_settings(tmp_path),
+            http_client=http_client,
+            now=datetime.now(UTC),
+        )
+
+    row = (await evidence_rows(sessionmaker))[0]
+    assert row.download_status == "DOWNLOADED"
+    assert row.verified_sha256 == INCIDENT_SHA256_HEX
+    assert (tmp_path / f"{evidence.id}.jpg").read_bytes() == INCIDENT_BYTES
 
 
 @pytest.mark.asyncio

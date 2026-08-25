@@ -447,6 +447,7 @@ def media_settings(*, max_mb: int = 16) -> Settings:
 async def test_tc_media_010_download_uses_fresh_meta_url_and_returns_verified_file() -> None:
     content = b"verified inbound image"
     declared_hash = base64.b64encode(hashlib.sha256(content).digest()).decode()
+    calculated_hex = hashlib.sha256(content).hexdigest()
     stale_url = "https://lookaside.fbsbx.com/stale-webhook-url"
     fresh_url = "https://lookaside.fbsbx.com/fresh-media-url"
     metadata_route = respx.get(f"{GRAPH_BASE}/v20.0/media-010").mock(
@@ -477,7 +478,8 @@ async def test_tc_media_010_download_uses_fresh_meta_url_and_returns_verified_fi
 
     assert result.bytes == content
     assert result.mime_type == "image/jpeg"
-    assert result.sha256 == declared_hash
+    assert result.sha256 == calculated_hex
+    assert result.sha256_base64 == declared_hash
     assert result.size_bytes == len(content)
     assert metadata_route.called
     assert fresh_route.called
