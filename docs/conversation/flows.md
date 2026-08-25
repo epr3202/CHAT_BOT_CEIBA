@@ -2122,6 +2122,12 @@ los 5 minutos. El máximo de Cloud API es 100 MB; un archivo excedido llega como
 operativo de 6 días desde la recepción.
 Fuente: [Meta for Developers — Media](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media).
 
+Nota operativa (2026-08-25): en producción se observó que Meta entrega el `sha256` del
+webhook en base64 y el de `GET /{media-id}` en hexadecimal para el mismo digest. W2-b
+normaliza ambas representaciones al digest de 32 bytes, valida contra los bytes descargados
+y persiste `verified_sha256` en hexadecimal minúsculo. El hash de metadata es opcional; si
+Meta lo incluye, también debe coincidir después de normalizarlo.
+
 ## Seguridad
 
 * resolver siempre una URL fresca mediante `GET /{media-id}` y autenticar ambas llamadas;
