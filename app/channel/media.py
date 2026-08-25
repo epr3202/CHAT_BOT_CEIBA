@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import mimetypes
 import re
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.audit.models import AuditEvent
@@ -25,11 +27,117 @@ class PermanentCatalogMediaError(RuntimeError):
     pass
 
 
+class InboundMediaDownloadError(RuntimeError):
+    pass
+
+
+class InboundMediaHashMismatch(InboundMediaDownloadError):
+    pass
+
+
+class InboundMediaTooLarge(InboundMediaDownloadError):
+    pass
+
+
 @dataclass(frozen=True)
 class CatalogDocument:
     asset_id: UUID
     media_id: str
     filename: str
+
+
+@dataclass(frozen=True)
+class InboundMediaFile:
+    bytes: bytes
+    mime_type: str
+    sha256: str
+    size_bytes: int
+
+
+async def download_inbound_media(
+    media_id: str,
+    *,
+    settings: Settings,
+    http_client: httpx.AsyncClient | None = None,
+) -> InboundMediaFile:
+    """Download one inbound object from a freshly resolved Meta media URL."""
+    owns_client = http_client is None
+    client = http_client or httpx.AsyncClient(timeout=15.0)
+    headers = {"Authorization": f"Bearer {settings.meta_access_token}"}
+    try:
+        metadata_response = await client.get(
+            inbound_media_metadata_url(settings, media_id),
+            headers=headers,
+        )
+        _raise_for_inbound_media_status(metadata_response)
+        metadata = metadata_response.json()
+        if not isinstance(metadata, dict):
+            raise InboundMediaDownloadError("Inbound media metadata must be an object")
+
+        fresh_url = metadata.get("url")
+        if not isinstance(fresh_url, str) or not fresh_url:
+            raise InboundMediaDownloadError("Inbound media metadata did not include a URL")
+        declared_hash = metadata.get("sha256")
+        if not isinstance(declared_hash, str) or not declared_hash:
+            raise InboundMediaDownloadError("Inbound media metadata did not include sha256")
+
+        max_bytes = settings.inbound_media_max_mb * 1024 * 1024
+        declared_size = metadata.get("file_size")
+        if isinstance(declared_size, int) and declared_size > max_bytes:
+            raise InboundMediaTooLarge("Inbound media exceeds the configured size limit")
+
+        chunks: list[bytes] = []
+        size_bytes = 0
+        mime_type = str(metadata.get("mime_type") or "application/octet-stream")
+        async with client.stream("GET", fresh_url, headers=headers) as media_response:
+            _raise_for_inbound_media_status(media_response)
+            mime_type = metadata.get("mime_type") or media_response.headers.get(
+                "Content-Type", mime_type
+            )
+            async for chunk in media_response.aiter_bytes():
+                size_bytes += len(chunk)
+                if size_bytes > max_bytes:
+                    raise InboundMediaTooLarge(
+                        "Inbound media exceeds the configured size limit"
+                    )
+                chunks.append(chunk)
+
+        content = b"".join(chunks)
+        calculated_hash = base64.b64encode(hashlib.sha256(content).digest()).decode()
+        if not _hashes_match(declared_hash, calculated_hash, content):
+            raise InboundMediaHashMismatch("Inbound media sha256 verification failed")
+        return InboundMediaFile(
+            bytes=content,
+            mime_type=str(mime_type),
+            sha256=declared_hash,
+            size_bytes=size_bytes,
+        )
+    except (httpx.HTTPError, ValueError) as error:
+        if isinstance(error, InboundMediaDownloadError):
+            raise
+        raise InboundMediaDownloadError("Inbound media download failed") from error
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
+def inbound_media_metadata_url(settings: Settings, media_id: str) -> str:
+    return (
+        f"{settings.whatsapp_api_base_url.rstrip('/')}/"
+        f"{settings.meta_graph_api_version}/{media_id}"
+    )
+
+
+def _raise_for_inbound_media_status(response: httpx.Response) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as error:
+        raise InboundMediaDownloadError("Meta rejected an inbound media request") from error
+
+
+def _hashes_match(declared_hash: str, calculated_base64: str, content: bytes) -> bool:
+    calculated_hex = hashlib.sha256(content).hexdigest()
+    return declared_hash in {calculated_base64, calculated_hex}
 
 
 class MediaService:

@@ -174,3 +174,11 @@ fue escrita contra el esquema legacy y v1.1 es el contrato vigente.
    `google/gemini-2.5-flash-lite` vía settings (confirmado por
    `SELECT DISTINCT model`); el default `openai/gpt-4o-mini` en `client.py`
    nunca aplica. Backlog: alinearlo o eliminarlo.
+
+## 8. Garantía W2-a para entradas no-texto (2026-08-25)
+
+`input_character_count = 0` es inalcanzable desde W2-a: los mensajes no-texto sin caption
+se resuelven antes del cliente de IA; los que tienen caption clasifican únicamente texto no
+vacío. Como defensa adicional, `OpenRouterIntentClient` lanza
+`EmptyClassificationInput` antes de HTTP y antes de insertar `ai_execution` si recibe una
+cadena vacía o compuesta solo por espacios.

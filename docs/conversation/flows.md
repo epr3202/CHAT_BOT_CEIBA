@@ -2072,43 +2072,60 @@ Respuesta:
 
 ## Objetivo
 
-Guardar correctamente imágenes, documentos, audios y videos.
+Conservar una referencia tipada y enrutar determinísticamente cada mensaje no-texto antes
+de cualquier clasificador. W2-a cumple parcialmente el objetivo original: conserva la
+referencia en `Message.content`; la descarga y persistencia del binario se completa en W2-b.
 
-## Imagen de inspiración
+## Contrato de enrutamiento W2-a
 
-1. Guardar archivo.
-2. Clasificar `INSPIRATION_IMAGE`.
-3. Asociar a evento o solicitud.
-4. Responder:
+| Tipo | Condición | Respuesta | Handoff | Auditoría `NON_TEXT_MESSAGE_RECEIVED` |
+| --- | --- | --- | --- | --- |
+| `text` | body vacío o solo espacios | `RESP-FALLBACK-001` | no | sí |
+| `image` / `document` / `video` / `audio` | `caption` no vacío | el caption sigue el camino normal de texto | según el orquestador del caption | sí, `has_caption=true` |
+| `image` / `document` | contexto de pago | `RESP-PAYMENT-002` | reutiliza `PAYMENT_REVIEW` abierto, prioridad `NORMAL` | sí, `payment_context=true` |
+| `image` | sin caption ni contexto de pago | `RESP-FILE-001` | no | sí |
+| `document` | sin caption ni contexto de pago | `RESP-FILE-004` | no | sí |
+| `video` | sin caption | `RESP-FILE-005` | no | sí |
+| `audio` | sin caption | `RESP-FILE-003` | no | sí, con `voice` y `duration_s` si existe |
+| `sticker` | — | silencio | no | sí |
+| `reaction` | — | silencio | no | sí, con `emoji` y `reacted_message_id` |
+| `location` | — | `RESP-FALLBACK-001` | no | sí, sin coordenadas |
+| `contacts` | — | `RESP-FALLBACK-001` | no | sí, sin datos de contacto |
+| `interactive` / `button` | selección con título | convierte título e id a `selection` + texto y sigue el camino normal | según el texto | no |
+| `interactive` / `button` | título vacío o solo espacios | `RESP-FALLBACK-001` | no | sí |
+| `unsupported` | — | `RESP-FALLBACK-001` | `OTHER`, `NORMAL`, con códigos de error en el detalle interno | sí, con `errors[].code` |
+| `unknown` | tipo no modelado | `RESP-FALLBACK-001` | `OTHER`, `NORMAL` | sí, con `raw_type` |
 
-> Gracias por compartir la referencia. La dejaré asociada a tu solicitud para que nuestro equipo pueda tenerla en cuenta al preparar la propuesta.
+Todo no-texto sin caption produce cero ejecuciones de IA, no consume un turno de captura,
+no incrementa `services_failed_understanding_count` y nunca crea un handoff
+`LOW_CONFIDENCE`. La auditoría nunca contiene URL, `sha256`, coordenadas ni datos de
+contacto.
 
-## Comprobante
+Las escrituras nuevas normalizan el identificador de media como `media_id` dentro de
+`Message.content`. Existen filas históricas anteriores a W2-a que conservan la clave `id`;
+W2-b debe aceptar ambas formas al leer y escribir únicamente `media_id`.
 
-Ejecutar `FL-018`.
+## Contexto de pago
 
-## Audio sin transcripción
+W2-a reconoce determinísticamente un handoff `PAYMENT_REVIEW` abierto (`PENDING` o
+`TAKEN`) y lo reutiliza sin duplicarlo. Detectar contexto por el código de la última
+plantilla saliente queda en backlog: el modelo actual de `outbox`/`message` no persiste ese
+código como dato consultable.
 
-> Gracias por tu mensaje. En esta etapa podemos atenderte mejor mediante texto. También puedo compartir la conversación con un asesor.
+## Vigencia de media en Meta
 
-## Documento desconocido
-
-> Recibimos el archivo. ¿Podrías contarnos brevemente qué información contiene o qué necesitas que revisemos?
-
-## Video
-
-* almacenar;
-* asociar;
-* no analizar automáticamente;
-* enviar a revisión si es necesario.
+Según la documentación oficial de Meta, consultada el 2026-08-25, el `media_id` recibido
+permanece disponible durante 7 días y la URL fresca devuelta por `GET /{media-id}` expira a
+los 5 minutos. El máximo de Cloud API es 100 MB; un archivo excedido llega como error
+`131052`. W2-b deberá descargar en worker con reintentos acotados a esa ventana de 7 días.
+Fuente: [Meta for Developers — Media](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media).
 
 ## Seguridad
 
-* validar tamaño;
-* validar MIME;
-* escanear;
-* acceso restringido;
-* no publicar enlaces permanentes.
+* resolver siempre una URL fresca mediante `GET /{media-id}` y autenticar ambas llamadas;
+* verificar tamaño configurable, MIME y `sha256` antes de aceptar el archivo;
+* nunca descargar desde la URL recibida en el webhook ni publicar enlaces permanentes;
+* escaneo, almacenamiento y acceso restringido pertenecen a W2-b.
 
 ---
 
