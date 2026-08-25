@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
+import httpx
 import structlog
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -17,7 +18,7 @@ from app.channel.models import Message, Outbox
 from app.channel.outbound import WhatsAppInvalidMediaError, WhatsAppOutboundClient
 from app.config.database import create_engine, create_sessionmaker
 from app.config.logging import configure_logging
-from app.config.settings import get_settings
+from app.config.settings import Settings, get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -435,22 +436,50 @@ async def run_worker() -> None:
 
     async with WhatsAppOutboundClient(settings) as sender:
         try:
-            while True:
-                # At-least-once semantics: a crash after Meta accepts the HTTP send
-                # but before settle commits may resend. For the MVP this is preferred
-                # over losing an outbound message silently.
-                processed = await process_outbox_once(
-                    sessionmaker,
-                    sender,
-                    batch_size=settings.outbox_batch_size,
-                    sending_timeout_seconds=settings.outbox_sending_timeout_seconds,
-                    max_attempts=settings.outbox_max_attempts,
-                    max_backoff_seconds=settings.outbox_max_backoff_seconds,
-                )
-                logger.info("outbox_poll_completed", processed=processed)
-                await asyncio.sleep(settings.outbox_poll_interval_seconds)
+            await asyncio.gather(
+                _run_outbox_loop(sessionmaker, sender, settings),
+                _run_payment_evidence_loop(sessionmaker, settings),
+            )
         finally:
             await engine.dispose()
+
+
+async def _run_outbox_loop(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    sender: OutboundSender,
+    settings: Settings,
+) -> None:
+    while True:
+        # At-least-once semantics: a crash after Meta accepts the HTTP send
+        # but before settle commits may resend. For the MVP this is preferred
+        # over losing an outbound message silently.
+        processed = await process_outbox_once(
+            sessionmaker,
+            sender,
+            batch_size=settings.outbox_batch_size,
+            sending_timeout_seconds=settings.outbox_sending_timeout_seconds,
+            max_attempts=settings.outbox_max_attempts,
+            max_backoff_seconds=settings.outbox_max_backoff_seconds,
+        )
+        logger.info("outbox_poll_completed", processed=processed)
+        await asyncio.sleep(settings.outbox_poll_interval_seconds)
+
+
+async def _run_payment_evidence_loop(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    from app.payment.worker import process_payment_evidence_once
+
+    async with httpx.AsyncClient(timeout=15.0) as http_client:
+        while True:
+            processed = await process_payment_evidence_once(
+                sessionmaker,
+                settings=settings,
+                http_client=http_client,
+            )
+            logger.info("payment_evidence_poll_completed", processed=processed)
+            await asyncio.sleep(settings.outbox_poll_interval_seconds)
 
 
 def main() -> None:

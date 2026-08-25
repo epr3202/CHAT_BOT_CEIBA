@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     catalog_media_ttl_days: int = Field(default=25, alias="CATALOG_MEDIA_TTL_DAYS")
     catalog_max_file_mb: int = Field(default=16, alias="CATALOG_MAX_FILE_MB")
     inbound_media_max_mb: int = Field(default=16, alias="INBOUND_MEDIA_MAX_MB", ge=0)
+    payment_evidence_dir: str = Field(
+        default="/data/payment-evidence", alias="PAYMENT_EVIDENCE_DIR"
+    )
+    payment_evidence_retention_days: int = Field(
+        default=365, alias="PAYMENT_EVIDENCE_RETENTION_DAYS", ge=1
+    )
     google_calendar_id: str = Field(default="", alias="GOOGLE_CALENDAR_ID")
     google_freebusy_calendar_ids: str = Field(default="", alias="GOOGLE_FREEBUSY_CALENDAR_IDS")
     calendar_adapter: Literal["fake", "google"] = Field(default="fake", alias="CALENDAR_ADAPTER")
