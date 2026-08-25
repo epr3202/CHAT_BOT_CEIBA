@@ -428,17 +428,14 @@ async def review_payment_evidence(
     evidence.reviewed_at = reviewed_at
     evidence.review_note = clean_note
 
-    approved_template = await session.scalar(
+    latest_template = await session.scalar(
         select(KnowledgeEntry)
-        .where(
-            KnowledgeEntry.code == response_code,
-            KnowledgeEntry.status == "APPROVED",
-        )
+        .where(KnowledgeEntry.code == response_code)
         .order_by(KnowledgeEntry.version.desc())
         .limit(1)
     )
     customer_notification: Literal["ENQUEUED", "DEFERRED"] = "DEFERRED"
-    if approved_template is not None:
+    if latest_template is not None and latest_template.status == "APPROVED":
         conversation = await session.get(Conversation, evidence.conversation_id)
         customer = await session.get(Customer, evidence.customer_id)
         inbound_message = await session.get(Message, evidence.message_id)

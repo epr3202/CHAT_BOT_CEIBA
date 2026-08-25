@@ -264,6 +264,7 @@ async def _settle_failure(
                         "evidence_id": evidence.id,
                         "download_status": evidence.download_status,
                         "attempts": evidence.download_attempts,
+                        "size_bytes": evidence.size_bytes,
                     },
                     reason=reason[:500],
                     request_id=None,
