@@ -322,6 +322,7 @@ async def list_payment_evidence(
 @router.get("/payment-evidence/{evidence_id}/download")
 async def download_payment_evidence(
     evidence_id: int,
+    request: Request,
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> FileResponse:
@@ -338,9 +339,11 @@ async def download_payment_evidence(
             detail="Payment evidence file is not available",
         )
     file_path = Path(evidence.storage_path).resolve()
+    storage_dir = Path(request.app.state.settings.payment_evidence_dir).resolve()
     expected_suffix = payment_evidence_suffix(evidence.mime_type)
     if (
         expected_suffix is None
+        or not file_path.is_relative_to(storage_dir)
         or file_path.stem != str(evidence.id)
         or file_path.suffix.casefold() != expected_suffix
         or not file_path.is_file()

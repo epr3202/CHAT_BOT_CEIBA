@@ -450,18 +450,21 @@ async def _run_outbox_loop(
     settings: Settings,
 ) -> None:
     while True:
-        # At-least-once semantics: a crash after Meta accepts the HTTP send
-        # but before settle commits may resend. For the MVP this is preferred
-        # over losing an outbound message silently.
-        processed = await process_outbox_once(
-            sessionmaker,
-            sender,
-            batch_size=settings.outbox_batch_size,
-            sending_timeout_seconds=settings.outbox_sending_timeout_seconds,
-            max_attempts=settings.outbox_max_attempts,
-            max_backoff_seconds=settings.outbox_max_backoff_seconds,
-        )
-        logger.info("outbox_poll_completed", processed=processed)
+        try:
+            # At-least-once semantics: a crash after Meta accepts the HTTP send
+            # but before settle commits may resend. For the MVP this is preferred
+            # over losing an outbound message silently.
+            processed = await process_outbox_once(
+                sessionmaker,
+                sender,
+                batch_size=settings.outbox_batch_size,
+                sending_timeout_seconds=settings.outbox_sending_timeout_seconds,
+                max_attempts=settings.outbox_max_attempts,
+                max_backoff_seconds=settings.outbox_max_backoff_seconds,
+            )
+            logger.info("outbox_poll_completed", processed=processed)
+        except Exception:
+            logger.exception("outbox_poll_failed")
         await asyncio.sleep(settings.outbox_poll_interval_seconds)
 
 
@@ -473,12 +476,15 @@ async def _run_payment_evidence_loop(
 
     async with httpx.AsyncClient(timeout=15.0) as http_client:
         while True:
-            processed = await process_payment_evidence_once(
-                sessionmaker,
-                settings=settings,
-                http_client=http_client,
-            )
-            logger.info("payment_evidence_poll_completed", processed=processed)
+            try:
+                processed = await process_payment_evidence_once(
+                    sessionmaker,
+                    settings=settings,
+                    http_client=http_client,
+                )
+                logger.info("payment_evidence_poll_completed", processed=processed)
+            except Exception:
+                logger.exception("payment_evidence_poll_failed")
             await asyncio.sleep(settings.outbox_poll_interval_seconds)
 
 

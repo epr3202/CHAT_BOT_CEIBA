@@ -1805,6 +1805,12 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 * W2-b.1: notificar al cliente el resultado de la revisión cuando
   `RESP-PAYMENT-004` y `RESP-PAYMENT-005` estén aprobadas; mientras sigan en `DRAFT`,
   la revisión se registra como `customer_notification=DEFERRED` y no crea outbox;
+* mostrar en el panel el historial de evidencias ya revisadas; W2-b lista únicamente
+  `PENDING_REVIEW`;
+* etiquetar explícitamente la nota de rechazo como texto que podrá recibir el cliente antes
+  de habilitar `RESP-PAYMENT-005`;
+* ejecutar `app` y `worker` como usuario no-root con permisos mínimos sobre el volumen de
+  evidencias; hoy ambos contenedores corren como `root` y montan el volumen read-write;
 * completar la detección de contexto de pago por código de la última plantilla saliente,
   hoy no persistido como dato consultable en `outbox`/`message`;
 * textos pendientes Leandro: `sticker`, `reaction`, `location`, `contacts`, `unsupported`,
