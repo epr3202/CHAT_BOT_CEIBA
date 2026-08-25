@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import structlog
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -15,6 +16,7 @@ from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
 from app.channel.models import Message, MessageProviderStatus, Outbox, WebhookEvent
+from app.channel.schemas import InboundWhatsAppMessage
 from app.channel.states import Channel
 from app.config.settings import get_settings
 from app.conversation.confirmation import resolve_contextual_confirmation
@@ -40,15 +42,6 @@ SYSTEM_ACTOR = "SYSTEM"
 EVENT_TYPE_QUESTION_CODES = frozenset(
     {"RESP-GREETING-001", "RESP-EVENT-DATA-013", "RESP-PRICE-001"}
 )
-
-
-@dataclass(frozen=True)
-class InboundWhatsAppMessage:
-    external_message_id: str
-    phone_number: str
-    message_type: str
-    content: dict[str, Any]
-    provider_timestamp: datetime | None
 
 
 @dataclass(frozen=True)
@@ -439,14 +432,17 @@ def extract_inbound_messages(payload: dict[str, Any]) -> list[InboundWhatsAppMes
                 )
                 continue
 
-            messages.append(
-                InboundWhatsAppMessage(
-                    external_message_id=external_message_id,
-                    phone_number=normalize_phone_number(sender),
-                    message_type=message_type,
-                    content=extract_message_content(message, message_type),
-                    provider_timestamp=parse_provider_timestamp(message.get("timestamp")),
+            try:
+                parsed = InboundWhatsAppMessage.model_validate(message)
+            except ValidationError as error:
+                logger.info(
+                    "whatsapp_message_ignored",
+                    reason="invalid_typed_payload",
+                    validation_error_count=error.error_count(),
                 )
+                continue
+            messages.append(
+                parsed.model_copy(update={"phone_number": normalize_phone_number(sender)})
             )
     return messages
 
@@ -533,7 +529,7 @@ async def persist_inbound_message_in_session(
                 channel=Channel.WHATSAPP,
                 direction="INBOUND",
                 message_type=inbound_message.message_type,
-                content=inbound_message.content,
+                content=inbound_message.storage_content(),
                 provider_timestamp=inbound_message.provider_timestamp,
             )
             session.add(message)
