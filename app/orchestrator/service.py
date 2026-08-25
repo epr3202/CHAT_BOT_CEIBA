@@ -71,6 +71,7 @@ from app.orchestrator.slot_filling import (
     pending_fields_for,
     select_next_question,
 )
+from app.payment.service import create_payment_evidence
 from app.quote.models import QuoteRequest
 from app.scheduling.availability import AvailabilityService
 
@@ -3334,7 +3335,7 @@ async def create_handoff_and_pause(
 ) -> None:
     conversation = orchestration_input.conversation
     conversation.visit_draft = None
-    _handoff, response_code = await create_handoff(
+    handoff, response_code = await create_handoff(
         session,
         conversation,
         orchestration_input.customer,
@@ -3344,6 +3345,15 @@ async def create_handoff_and_pause(
         settings=settings,
         detail=detail,
     )
+    if reason == "PAYMENT_REVIEW":
+        await create_payment_evidence(
+            session,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            handoff,
+            request_id=orchestration_input.request_id,
+        )
     await enqueue_template(
         session,
         knowledge_sessionmaker,

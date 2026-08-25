@@ -22,6 +22,9 @@
         <button class="navItem" data-view="handoffs" title="Handoffs">
           <span class="icon">↔</span><span>Handoffs</span>
         </button>
+        <button class="navItem" data-view="paymentEvidence" title="Comprobantes">
+          <span class="icon">$</span><span>Comprobantes</span>
+        </button>
         <button class="navItem" data-view="simulator" title="Simulador">
           <span class="icon">✉</span><span>Simulador</span>
         </button>
@@ -195,6 +198,19 @@
             </div>
           </div>
           <div id="handoffList" class="handoffList"></div>
+        </section>
+      </section>
+
+      <section class="view" id="paymentEvidence">
+        <section class="panel">
+          <div class="panelHeader">
+            <div>
+              <h2>Comprobantes pendientes</h2>
+              <span>La decisión corresponde exclusivamente a un administrador.</span>
+            </div>
+            <button id="refreshPaymentEvidence" type="button">Actualizar</button>
+          </div>
+          <div id="paymentEvidenceList" class="paymentEvidenceList"></div>
         </section>
       </section>
 

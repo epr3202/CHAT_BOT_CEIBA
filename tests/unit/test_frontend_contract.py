@@ -32,6 +32,8 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/admin/agents/",
         "/api/admin/catalogs",
         "/api/admin/catalogs/",
+        "/api/admin/payment-evidence",
+        "/api/admin/payment-evidence/",
         "/api/webhook/simulate",
         "/health",
         "/admin/handoffs",
@@ -44,6 +46,8 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/admin/agents/",
         "/admin/catalogs",
         "/admin/catalogs/",
+        "/admin/payment-evidence",
+        "/admin/payment-evidence/",
         "/webhook",
     }
 

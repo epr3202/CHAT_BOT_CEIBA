@@ -37,6 +37,7 @@ const state = {
   assignedToMe: localStorage.getItem(assignedToMeStorageKey) === "true",
   adminCases: [],
   catalogCategories: [],
+  paymentEvidence: [],
   visibleConversationIds: new Set(),
   chatPollIntervalMs: 3000,
   lastWebhook: null,
@@ -103,6 +104,100 @@ async function requestJson(path, options = {}) {
     throw new Error(detail || `HTTP ${response.status}`);
   }
   return payload;
+}
+
+async function loadPaymentEvidence() {
+  const container = $("#paymentEvidenceList");
+  if (state.agent?.role !== "ADMIN") {
+    setEmpty(container, "Inicia sesion como administrador para revisar comprobantes.");
+    return;
+  }
+  setEmpty(container, "Cargando comprobantes...");
+  try {
+    state.paymentEvidence = await requestJson("/api/admin/payment-evidence", {
+      headers: sessionHeaders(),
+    });
+    renderPaymentEvidence();
+  } catch (error) {
+    setEmpty(container, `No se pudieron cargar los comprobantes: ${error.message}`);
+  }
+}
+
+function renderPaymentEvidence() {
+  const container = $("#paymentEvidenceList");
+  container.replaceChildren();
+  if (!state.paymentEvidence.length) {
+    setEmpty(container, "No hay comprobantes pendientes de revision.");
+    return;
+  }
+  for (const evidence of state.paymentEvidence) {
+    const card = document.createElement("article");
+    card.className = "paymentEvidenceCard";
+    const details = document.createElement("div");
+    details.className = "paymentEvidenceDetails";
+    const title = document.createElement("strong");
+    title.textContent = evidence.customer_name || evidence.customer_phone;
+    const meta = document.createElement("span");
+    meta.textContent = `Evidencia #${evidence.id} · Conversacion ${evidence.conversation_id} · ${evidence.mime_type}`;
+    const downloadStatus = document.createElement("span");
+    downloadStatus.className = "pill neutral";
+    downloadStatus.textContent = evidence.download_status;
+    details.append(title, meta, downloadStatus);
+
+    const note = document.createElement("textarea");
+    note.rows = 2;
+    note.maxLength = 500;
+    note.placeholder = "Nota de revision para auditoria";
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    if (evidence.download_status === "DOWNLOADED") {
+      actions.append(actionButton("Descargar", () => downloadPaymentEvidence(evidence.id)));
+    }
+    actions.append(
+      actionButton("Aceptar", () => reviewPaymentEvidence(evidence.id, "accept", note.value), "primary"),
+      actionButton("Rechazar", () => reviewPaymentEvidence(evidence.id, "reject", note.value), "danger"),
+    );
+    card.append(details, note, actions);
+    container.append(card);
+  }
+}
+
+async function downloadPaymentEvidence(evidenceId) {
+  try {
+    const response = await fetch(`/api/admin/payment-evidence/${evidenceId}/download`, {
+      headers: sessionHeaders(),
+    });
+    if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+    const blobUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = `comprobante-${evidenceId}`;
+    link.click();
+    URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    logEvent(`No se pudo descargar el comprobante: ${error.message}`);
+  }
+}
+
+async function reviewPaymentEvidence(evidenceId, decision, note) {
+  if (!note.trim()) {
+    logEvent("Escribe una nota antes de revisar el comprobante.");
+    return;
+  }
+  try {
+    const result = await requestJson(`/api/admin/payment-evidence/${evidenceId}/${decision}`, {
+      method: "POST",
+      headers: sessionHeaders(),
+      body: JSON.stringify({ note: note.trim() }),
+    });
+    const notification = result.customer_notification === "ENQUEUED"
+      ? "mensaje al cliente encolado"
+      : "notificacion al cliente diferida";
+    logEvent(`Evidencia #${evidenceId} revisada: ${notification}.`);
+    await loadPaymentEvidence();
+  } catch (error) {
+    logEvent(`No se pudo revisar el comprobante: ${error.message}`);
+  }
 }
 
 async function loadCatalogCategories() {
@@ -828,7 +923,9 @@ async function refreshAll() {
   }
   await loadAllAdminCases();
   await loadHandoffs(state.currentStatus);
-  if (state.agent?.role === "ADMIN") await loadCatalogCategories();
+  if (state.agent?.role === "ADMIN") {
+    await Promise.all([loadCatalogCategories(), loadPaymentEvidence()]);
+  }
 }
 
 function bindUi() {
@@ -839,6 +936,7 @@ function bindUi() {
       button.classList.add("active");
       $(`#${button.dataset.view}`).classList.add("active");
       if (button.dataset.view === "catalogsModule") loadCatalogCategories();
+      if (button.dataset.view === "paymentEvidence") loadPaymentEvidence();
     });
   });
 
@@ -878,6 +976,7 @@ function bindUi() {
   });
   $("#refreshAll").addEventListener("click", refreshAll);
   $("#refreshCatalogs").addEventListener("click", loadCatalogCategories);
+  $("#refreshPaymentEvidence").addEventListener("click", loadPaymentEvidence);
   $("#catalogUploadForm").addEventListener("submit", uploadCatalog);
   $("#closeSummaryModal").addEventListener("click", closeSummaryModal);
   $("#summaryModal").addEventListener("click", (event) => {

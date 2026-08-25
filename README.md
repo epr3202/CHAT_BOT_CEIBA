@@ -86,6 +86,18 @@ Secrets requeridos en GitHub:
 El `.env` de producción vive solo en el servidor y lo consume Docker Compose; no se
 sube al repositorio ni a GitHub Actions.
 
+Antes del primer despliegue de W2-b, crear el directorio persistente. La imagen actual no
+declara `USER`, por lo que `app` y `worker` se ejecutan como `root` dentro del contenedor:
+
+```bash
+sudo install -d -m 0750 -o root -g root /opt/ceiba/payment-evidence
+```
+
+El volumen se monta read-write en ambos servicios como `/data/payment-evidence`. Configurar
+`PAYMENT_EVIDENCE_DIR=/data/payment-evidence` y
+`PAYMENT_EVIDENCE_RETENTION_DAYS=365` en el `.env` productivo. La retención queda declarada,
+pero W2-b no borra archivos automáticamente.
+
 Rollback operativo:
 
 ```bash

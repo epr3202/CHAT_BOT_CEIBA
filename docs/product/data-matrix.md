@@ -1209,6 +1209,25 @@ No deberán almacenarse:
 * contraseña;
 * número completo de tarjeta.
 
+## 20.6 Entidad física `PaymentEvidence` (Nivel 1)
+
+Registra el comprobante recibido y su revisión humana sin interpretar el contenido.
+
+| Campo | Fuente | Obligatorio | Sensibilidad | Regla |
+| --- | --- | --- | --- | --- |
+| `id` | Sistema | Sí | Técnica | Identificador interno |
+| `conversation_id`, `customer_id`, `message_id` | Sistema | Sí | Personal/técnica | `message_id` único e idempotente |
+| `lead_id` | Conversación | No | Técnica | Copia el lead activo si existe |
+| `media_id`, `mime_type`, `declared_sha256` | Canal | Sí | Sensible operacional | La lectura admite `media_id` o `id` histórico |
+| `storage_path`, `verified_sha256`, `size_bytes` | Worker | No | Sensible operacional | Solo después de descarga verificada; no se exponen en auditoría |
+| `download_status`, `download_attempts`, `next_attempt_at` | Worker | Sí | Interna | `PENDING`, `DOWNLOADED`, `FAILED_RETRYABLE`, `FAILED_PERMANENT` |
+| `review_status` | Administrador | Sí | Sensible operacional | `PENDING_REVIEW`, `ACCEPTED`, `REJECTED`; transición de una sola vía |
+| `reviewed_by_agent_id`, `reviewed_at`, `review_note` | Administrador | No hasta revisar | Personal/interna | Nota obligatoria al decidir; toda decisión se audita |
+| `created_at`, `updated_at` | Sistema | Sí | Técnica | UTC |
+
+Los binarios solo se sirven a administradores autenticados desde el almacenamiento local.
+El sistema no hace OCR, no lee montos y no valida fondos automáticamente.
+
 ---
 
 # 21. Entidad Handoff

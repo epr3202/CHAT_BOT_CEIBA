@@ -90,11 +90,14 @@ async function proxy(request, response, targetPath) {
     headers,
     body,
   });
-  const text = await upstream.text();
-  response.writeHead(upstream.status, {
+  const payload = Buffer.from(await upstream.arrayBuffer());
+  const responseHeaders = {
     "Content-Type": upstream.headers.get("content-type") || "application/json; charset=utf-8",
-  });
-  response.end(text);
+  };
+  const contentDisposition = upstream.headers.get("content-disposition");
+  if (contentDisposition) responseHeaders["Content-Disposition"] = contentDisposition;
+  response.writeHead(upstream.status, responseHeaders);
+  response.end(payload);
 }
 
 async function simulateWebhook(request, response) {
@@ -204,6 +207,10 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (path.startsWith("/api/admin/catalogs/")) {
+      await proxy(request, response, path.replace("/api", ""));
+      return;
+    }
+    if (path === "/api/admin/payment-evidence" || path.startsWith("/api/admin/payment-evidence/")) {
       await proxy(request, response, path.replace("/api", ""));
       return;
     }

@@ -35,6 +35,7 @@ from app.orchestrator.service import (
     enqueue_template,
     orchestrate_inbound_message,
 )
+from app.payment.service import create_payment_evidence_for_open_handoff
 
 logger = structlog.get_logger(__name__)
 
@@ -469,6 +470,13 @@ async def route_non_text_message(
 
             response_code: str | None = None
             if persisted.message_type in {"image", "document"} and payment_context:
+                await create_payment_evidence_for_open_handoff(
+                    session,
+                    conversation,
+                    customer,
+                    message,
+                    request_id=request_id,
+                )
                 response_code = "RESP-PAYMENT-002"
             elif persisted.message_type == "image":
                 response_code = "RESP-FILE-001"
