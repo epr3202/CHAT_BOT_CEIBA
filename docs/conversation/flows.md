@@ -1501,13 +1501,14 @@ Registrar pagos informados sin confirmarlos automáticamente.
 
 1. Detectar `PAYMENT_MESSAGE`.
 2. Identificar lead, cotización o reserva.
-3. Guardar archivo o referencia.
+3. Para imagen o documento, crear una `PaymentEvidence` idempotente y dejar la descarga
+   diferida en `PENDING`; para otros formatos, conservar solo la referencia tipada.
 4. Crear o actualizar `Payment`.
 5. Cambiar a `PAYMENT_REVIEW`.
 6. Calcular `review_due_at`:
 
    * máximo un día.
-7. Crear handoff urgente.
+7. Crear o reutilizar un handoff urgente y anexar la referencia de la evidencia al resumen.
 8. Cambiar conversación a `WAITING_FOR_HUMAN`.
 9. Enviar respuesta.
 
@@ -2117,7 +2118,8 @@ código como dato consultable.
 Según la documentación oficial de Meta, consultada el 2026-08-25, el `media_id` recibido
 permanece disponible durante 7 días y la URL fresca devuelta por `GET /{media-id}` expira a
 los 5 minutos. El máximo de Cloud API es 100 MB; un archivo excedido llega como error
-`131052`. W2-b deberá descargar en worker con reintentos acotados a esa ventana de 7 días.
+`131052`. W2-b descarga en worker con reintentos acotados a 6 intentos y a un margen
+operativo de 6 días desde la recepción.
 Fuente: [Meta for Developers — Media](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media).
 
 ## Seguridad
@@ -2125,7 +2127,27 @@ Fuente: [Meta for Developers — Media](https://developers.facebook.com/document
 * resolver siempre una URL fresca mediante `GET /{media-id}` y autenticar ambas llamadas;
 * verificar tamaño configurable, MIME y `sha256` antes de aceptar el archivo;
 * nunca descargar desde la URL recibida en el webhook ni publicar enlaces permanentes;
-* escaneo, almacenamiento y acceso restringido pertenecen a W2-b.
+* el almacenamiento y acceso restringido pertenecen a W2-b; el escaneo de contenido no
+  forma parte del Nivel 1.
+
+## Ciclo de evidencia de pago W2-b
+
+1. Una imagen o documento crea como máximo una `PaymentEvidence`, anclada al `message_id`
+   único. Las lecturas aceptan `media_id` y la clave histórica `id`; las escrituras nuevas
+   usan `media_id`.
+2. El webhook confirma recepción sin descargar el binario. Eleva el handoff
+   `PAYMENT_REVIEW` a `URGENT` y conserva la transacción corta.
+3. El worker reclama `PENDING` o `FAILED_RETRYABLE` con `SKIP LOCKED`, cierra la sesión de
+   base de datos y solo entonces resuelve una URL fresca y descarga desde Meta.
+4. El worker admite `image/jpeg`, `image/png`, `image/webp` y `application/pdf`, valida
+   tamaño y `sha256`, y escribe atómicamente `{evidence_id}.{ext}` con modo `0640`.
+5. Fallos transitorios usan backoff exponencial. Hash/tamaño inválido, MIME no permitido,
+   sexto intento o antigüedad mayor a seis días terminan en `FAILED_PERMANENT`.
+6. Un administrador revisa el archivo local desde el panel y decide una sola vez
+   `ACCEPTED` o `REJECTED`, siempre con nota y auditoría. El sistema no interpreta el
+   contenido ni confirma fondos automáticamente.
+7. Mientras `RESP-PAYMENT-004/005` estén `DRAFT`, no se crea mensaje saliente y la
+   auditoría registra `customer_notification=DEFERRED`.
 
 ---
 

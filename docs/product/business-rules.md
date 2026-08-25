@@ -1620,6 +1620,23 @@ El bot no deberá solicitar:
 
 ---
 
+## BR-PAY-010 — Evidencia de pago Nivel 1
+
+El sistema puede recibir, almacenar, encauzar y auditar comprobantes en imagen o PDF. No
+aplica OCR, visión, lectura de montos ni validación automática del contenido. La IA nunca
+acepta, rechaza o confirma un pago.
+
+---
+
+## BR-PAY-011 — Revisión restringida y trazable
+
+Solo un administrador autenticado puede descargar y marcar una evidencia como `ACCEPTED`
+o `REJECTED`. La transición es de una sola vía, exige nota, identifica al agente y genera
+`PAYMENT_EVIDENCE_REVIEWED`. Una plantilla al cliente solo se encola si su versión vigente
+está `APPROVED`.
+
+---
+
 # 18. Reglas de reservas
 
 ## BR-RES-001 — Porcentaje

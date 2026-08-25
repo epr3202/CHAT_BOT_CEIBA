@@ -1428,6 +1428,7 @@ Appointment
 AppointmentChange
 Reservation
 Payment
+PaymentEvidence
 Handoff
 KnowledgeEntry
 AIExecution
@@ -1460,6 +1461,13 @@ Configuration
 ### Reservas y pagos
 
 Según obligaciones legales y contractuales.
+
+### Evidencias de pago
+
+Los archivos de evidencia se conservan inicialmente durante 365 días, configurable con
+`PAYMENT_EVIDENCE_RETENTION_DAYS`. W2-b registra la política, pero no ejecuta purga
+automática: eliminar archivos y conservar la trazabilidad correspondiente requiere un
+flujo posterior revisado.
 
 ### IA
 
@@ -1792,8 +1800,11 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 
 ## Prioridad alta
 
-* W2-b: descarga y persistencia de evidencia con reintentos dentro de la ventana de 7 días
-  del `media_id` de Meta;
+* purga automática de evidencias de pago al vencer
+  `PAYMENT_EVIDENCE_RETENTION_DAYS`, conservando auditoría y referencias necesarias;
+* W2-b.1: notificar al cliente el resultado de la revisión cuando
+  `RESP-PAYMENT-004` y `RESP-PAYMENT-005` estén aprobadas; mientras sigan en `DRAFT`,
+  la revisión se registra como `customer_notification=DEFERRED` y no crea outbox;
 * completar la detección de contexto de pago por código de la última plantilla saliente,
   hoy no persistido como dato consultable en `outbox`/`message`;
 * textos pendientes Leandro: `sticker`, `reaction`, `location`, `contacts`, `unsupported`,
@@ -1819,6 +1830,7 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 * Instagram;
 * W2-c: transcripción de audio; decidir su prioridad con el conteo de auditorías
   `NON_TEXT_MESSAGE_RECEIVED` cuyo `message_type` sea `audio`;
+* admitir audio y video como evidencia de pago; W2-b solo admite imagen y documento;
 * análisis básico de imágenes;
 * enlaces de pago;
 * correos;
