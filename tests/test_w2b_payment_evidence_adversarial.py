@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
-from sqlalchemy import func, select
+from sqlalchemy import CheckConstraint, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.client import OpenRouterIntentClient
@@ -926,7 +926,11 @@ def test_tc_pay_018_model_and_migration_status_checks_are_in_parity() -> None:
     )
     assert migration.exists(), "payment evidence migration 0024 is missing"
     migration_text = migration.read_text(encoding="utf-8")
-    model_checks = " ".join(str(item.sqltext) for item in model.__table__.constraints)
+    model_checks = " ".join(
+        str(item.sqltext)
+        for item in model.__table__.constraints
+        if isinstance(item, CheckConstraint)
+    )
     for value in ("PENDING", "DOWNLOADED", "FAILED_RETRYABLE", "FAILED_PERMANENT"):
         assert value in model_checks and value in migration_text
     for value in ("PENDING_REVIEW", "ACCEPTED", "REJECTED"):

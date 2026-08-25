@@ -16,4 +16,5 @@ from app.customer import models as customer_models  # noqa: F401
 from app.event import models as event_models  # noqa: F401
 from app.handoff import models as handoff_models  # noqa: F401
 from app.lead import models as lead_models  # noqa: F401
+from app.payment import models as payment_models  # noqa: F401
 from app.quote import models as quote_models  # noqa: F401
