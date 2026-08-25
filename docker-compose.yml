@@ -23,6 +23,7 @@ services:
 # En docker-compose del repo, en los servicios app y worker:
     volumes:
       - /opt/ceiba/catalogs:/data/catalogs
+      - /opt/ceiba/payment-evidence:/data/payment-evidence
       - /opt/ceiba/secrets:/data/secrets:ro
     environment:
       # Compose environment overrides env_file so containers use the db service host.
@@ -42,6 +43,7 @@ services:
 # En docker-compose del repo, en los servicios app y worker:
     volumes:
       - /opt/ceiba/catalogs:/data/catalogs:ro
+      - /opt/ceiba/payment-evidence:/data/payment-evidence
       - /opt/ceiba/secrets:/data/secrets:ro
     environment:
       # Compose environment overrides env_file so containers use the db service host.
