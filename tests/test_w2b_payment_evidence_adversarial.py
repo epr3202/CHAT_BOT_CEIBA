@@ -107,10 +107,14 @@ async def payment_context(
 @pytest.fixture
 async def payment_http_context(
     payment_context: tuple[async_sessionmaker[AsyncSession], ClassifierCalls],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> AsyncIterator[
     tuple[async_sessionmaker[AsyncSession], ClassifierCalls, httpx.AsyncClient]
 ]:
     sessionmaker, calls = payment_context
+    monkeypatch.setenv("PAYMENT_EVIDENCE_DIR", str(tmp_path / "evidence"))
+    get_settings.cache_clear()
     async for client in app_client():
         yield sessionmaker, calls, client
 
@@ -742,7 +746,9 @@ async def admin_seed(
         download_status="DOWNLOADED" if downloaded else "PENDING",
     )
     if downloaded:
-        path = tmp_path / f"{evidence.id}.jpg"
+        storage_dir = tmp_path / "evidence"
+        storage_dir.mkdir()
+        path = storage_dir / f"{evidence.id}.jpg"
         path.write_bytes(JPEG_BYTES)
         path.chmod(0o640)
         model = payment_model()
@@ -817,6 +823,71 @@ async def test_tc_pay_015_admin_download_serves_file_and_rejects_failed_evidence
     assert (
         await client.get(f"/admin/payment-evidence/{failed.id}/download", headers=headers)
     ).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_tc_pay_019_payment_loop_survives_one_iteration_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel_worker = importlib.import_module("app.channel.worker")
+    evidence_worker = payment_worker()
+    calls = 0
+
+    class StopLoop(BaseException):
+        pass
+
+    async def fail_once(*_args: object, **_kwargs: object) -> int:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("one bad evidence iteration")
+        raise StopLoop
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(evidence_worker, "process_payment_evidence_once", fail_once)
+    monkeypatch.setattr(channel_worker.asyncio, "sleep", no_sleep)
+    try:
+        await channel_worker._run_payment_evidence_loop(  # noqa: SLF001
+            object(),
+            worker_settings(Path(".")),
+        )
+    except (RuntimeError, StopLoop):
+        pass
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_tc_pay_020_admin_rejects_storage_path_outside_configured_directory(
+    payment_http_context: tuple[
+        async_sessionmaker[AsyncSession],
+        ClassifierCalls,
+        httpx.AsyncClient,
+    ],
+    tmp_path: Path,
+) -> None:
+    model = payment_model()
+    sessionmaker, _calls, client = payment_http_context
+    evidence = await admin_seed(sessionmaker, tmp_path, downloaded=True)
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside_path = outside_dir / f"{evidence.id}.jpg"
+    outside_path.write_bytes(JPEG_BYTES)
+    async with sessionmaker() as session:
+        async with session.begin():
+            row = await session.get(model, evidence.id)
+            row.storage_path = str(outside_path)
+
+    await bootstrap_agent("Admin Frontera", "admin-boundary", role="ADMIN")
+    headers = await login_headers(client, "admin-boundary")
+    response = await client.get(
+        f"/admin/payment-evidence/{evidence.id}/download",
+        headers=headers,
+    )
+
+    assert response.status_code == 409
 
 
 @pytest.mark.asyncio
