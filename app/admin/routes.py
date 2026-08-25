@@ -20,6 +20,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -44,12 +45,14 @@ from app.catalog.models import CATALOG_SEND_MODES, CatalogAsset, CatalogEventTyp
 from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
-from app.conversation.models import Conversation
+from app.conversation.models import Conversation, KnowledgeEntry
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.models import EVENT_TYPES
 from app.handoff.models import Handoff
+from app.orchestrator.service import enqueue_template
+from app.payment.models import PaymentEvidence
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -242,6 +245,31 @@ class AppointmentDayPayload(BaseModel):
     requires_reconciliation: bool
 
 
+class PaymentEvidenceReviewRequest(BaseModel):
+    note: str = Field(min_length=1, max_length=500)
+
+
+class PaymentEvidencePayload(BaseModel):
+    id: int
+    conversation_id: int
+    customer_id: int
+    customer_name: str | None
+    customer_phone: str
+    mime_type: str
+    download_status: str
+    review_status: str
+    size_bytes: int | None
+    created_at: datetime
+
+
+class PaymentEvidenceReviewPayload(BaseModel):
+    id: int
+    review_status: str
+    reviewed_by_agent_id: int
+    reviewed_at: datetime
+    customer_notification: Literal["ENQUEUED", "DEFERRED"]
+
+
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     sessionmaker = request.app.state.db_sessionmaker
     async with sessionmaker() as session:
@@ -260,6 +288,214 @@ async def authenticated_admin(session: AsyncSession, authorization: str | None) 
     agent = await authenticated_agent(session, authorization)
     require_admin(agent)
     return agent
+
+
+@router.get("/payment-evidence")
+async def list_payment_evidence(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[PaymentEvidencePayload]:
+    await authenticated_admin(session, authorization)
+    rows = await session.execute(
+        select(PaymentEvidence, Customer)
+        .join(Customer, Customer.id == PaymentEvidence.customer_id)
+        .where(PaymentEvidence.review_status == "PENDING_REVIEW")
+        .order_by(PaymentEvidence.created_at, PaymentEvidence.id)
+    )
+    return [
+        PaymentEvidencePayload(
+            id=evidence.id,
+            conversation_id=evidence.conversation_id,
+            customer_id=evidence.customer_id,
+            customer_name=customer.full_name,
+            customer_phone=customer.phone_number,
+            mime_type=evidence.mime_type,
+            download_status=evidence.download_status,
+            review_status=evidence.review_status,
+            size_bytes=evidence.size_bytes,
+            created_at=evidence.created_at,
+        )
+        for evidence, customer in rows.all()
+    ]
+
+
+@router.get("/payment-evidence/{evidence_id}/download")
+async def download_payment_evidence(
+    evidence_id: int,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> FileResponse:
+    await authenticated_admin(session, authorization)
+    evidence = await session.get(PaymentEvidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment evidence not found",
+        )
+    if evidence.download_status != "DOWNLOADED" or evidence.storage_path is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment evidence file is not available",
+        )
+    file_path = Path(evidence.storage_path).resolve()
+    expected_suffix = payment_evidence_suffix(evidence.mime_type)
+    if (
+        expected_suffix is None
+        or file_path.stem != str(evidence.id)
+        or file_path.suffix.casefold() != expected_suffix
+        or not file_path.is_file()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment evidence file is unavailable or invalid",
+        )
+    return FileResponse(
+        file_path,
+        media_type=evidence.mime_type,
+        filename=file_path.name,
+    )
+
+
+@router.post("/payment-evidence/{evidence_id}/accept")
+async def accept_payment_evidence(
+    evidence_id: int,
+    body: PaymentEvidenceReviewRequest,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> PaymentEvidenceReviewPayload:
+    return await review_payment_evidence(
+        evidence_id,
+        "ACCEPTED",
+        "RESP-PAYMENT-004",
+        body.note,
+        request,
+        session,
+        authorization,
+    )
+
+
+@router.post("/payment-evidence/{evidence_id}/reject")
+async def reject_payment_evidence(
+    evidence_id: int,
+    body: PaymentEvidenceReviewRequest,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> PaymentEvidenceReviewPayload:
+    return await review_payment_evidence(
+        evidence_id,
+        "REJECTED",
+        "RESP-PAYMENT-005",
+        body.note,
+        request,
+        session,
+        authorization,
+    )
+
+
+async def review_payment_evidence(
+    evidence_id: int,
+    decision: Literal["ACCEPTED", "REJECTED"],
+    response_code: Literal["RESP-PAYMENT-004", "RESP-PAYMENT-005"],
+    note: str,
+    request: Request,
+    session: AsyncSession,
+    authorization: str | None,
+) -> PaymentEvidenceReviewPayload:
+    agent = await authenticated_admin(session, authorization)
+    evidence = await session.get(PaymentEvidence, evidence_id, with_for_update=True)
+    if evidence is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment evidence not found",
+        )
+    if evidence.review_status != "PENDING_REVIEW":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment evidence has already been reviewed",
+        )
+    clean_note = note.strip()
+    if not clean_note:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Review note is required",
+        )
+
+    reviewed_at = datetime.now(UTC)
+    evidence.review_status = decision
+    evidence.reviewed_by_agent_id = agent.id
+    evidence.reviewed_at = reviewed_at
+    evidence.review_note = clean_note
+
+    approved_template = await session.scalar(
+        select(KnowledgeEntry)
+        .where(
+            KnowledgeEntry.code == response_code,
+            KnowledgeEntry.status == "APPROVED",
+        )
+        .order_by(KnowledgeEntry.version.desc())
+        .limit(1)
+    )
+    customer_notification: Literal["ENQUEUED", "DEFERRED"] = "DEFERRED"
+    if approved_template is not None:
+        conversation = await session.get(Conversation, evidence.conversation_id)
+        customer = await session.get(Customer, evidence.customer_id)
+        inbound_message = await session.get(Message, evidence.message_id)
+        if conversation is None or customer is None or inbound_message is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Payment evidence references are incomplete",
+            )
+        variables = (
+            {"rejection_reason_customer_safe": clean_note}
+            if decision == "REJECTED"
+            else {}
+        )
+        await enqueue_template(
+            session,
+            request.app.state.db_sessionmaker,
+            conversation,
+            customer,
+            inbound_message,
+            response_code,
+            variables,
+        )
+        customer_notification = "ENQUEUED"
+
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="PAYMENT_EVIDENCE_REVIEWED",
+            entity="payment_evidence",
+            old_value={"evidence_id": evidence.id, "review_status": "PENDING_REVIEW"},
+            new_value={
+                "evidence_id": evidence.id,
+                "decision": decision,
+                "agent_id": agent.id,
+                "customer_notification": customer_notification,
+            },
+            reason="Payment evidence reviewed by an administrator",
+            request_id=None,
+        )
+    )
+    await session.commit()
+    return PaymentEvidenceReviewPayload(
+        id=evidence.id,
+        review_status=decision,
+        reviewed_by_agent_id=agent.id,
+        reviewed_at=reviewed_at,
+        customer_notification=customer_notification,
+    )
+
+
+def payment_evidence_suffix(mime_type: str) -> str | None:
+    return {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "application/pdf": ".pdf",
+    }.get(mime_type.casefold())
 
 
 @router.post("/blocked-dates")

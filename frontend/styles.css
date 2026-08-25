@@ -386,6 +386,37 @@ textarea {
   gap: 12px;
 }
 
+.paymentEvidenceList {
+  display: grid;
+  gap: 12px;
+}
+
+.paymentEvidenceCard {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.paymentEvidenceDetails {
+  display: grid;
+  gap: 6px;
+}
+
+.paymentEvidenceDetails span:not(.pill) {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.paymentEvidenceCard textarea {
+  width: 100%;
+  resize: vertical;
+}
+
 .caseTable {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -720,7 +751,8 @@ textarea {
   .coverageGrid,
   .catalogUploadForm,
   .catalogCategoryList,
-  .handoffActions {
+  .handoffActions,
+  .paymentEvidenceCard {
     grid-template-columns: 1fr;
   }
 
