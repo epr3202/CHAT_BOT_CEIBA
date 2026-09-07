@@ -1,0 +1,58 @@
+[
+  {
+    "nodeid": "tests/integration/test_slice2_direct_takeover.py::test_tc_take_007_008_webhook_during_human_active_is_visible_and_idempotent",
+    "historical_classification": "ASSERTION_FAILED_ROOT_CAUSE_NOT_ISOLATED"
+  },
+  {
+    "nodeid": "tests/integration/test_whatsapp_webhook.py::test_second_message_same_customer_reuses_customer_and_conversation",
+    "historical_classification": "ASSERTION_FAILED_ROOT_CAUSE_NOT_ISOLATED"
+  },
+  {
+    "nodeid": "tests/test_pr_b2_confidence_entity_rescue_adversarial.py::test_tc_b2_005_rejects_non_normalizable_event_type",
+    "historical_classification": "ORIGINAL_TEST_UNMOCKED_EXTERNAL_EXTRACTOR"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_015_admin_rejects_pdf_over_configured_size",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_016_admin_catalog_api_requires_valid_admin_session",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_021_admin_catalog_event_types_accept_send_mode_objects",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_022_admin_catalog_event_types_validate_send_mode_at_edge",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_023_admin_upload_stores_hash_named_pdf_and_maps_category",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.txt-not a pdf-text/plain]",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.pdf-not a pdf-application/pdf]",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[../escape.pdf-%PDF-1.4\\nvalid-application/pdf]",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_025_admin_upload_rejects_configured_oversize",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_026_admin_upload_validation_leaves_no_orphan_file",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  },
+  {
+    "nodeid": "tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_027_admin_category_listing_has_all_17_and_correct_coverage",
+    "historical_classification": "ORIGINAL_FIXTURE_DATABASE_URL_CONFLICT"
+  }
+]

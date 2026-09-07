@@ -37,6 +37,7 @@ from tests.integration.helpers import (
     app_client,
     bootstrap_agent,
     cleanup_test_environment,
+    configure_test_database,
     database_sessionmaker,
     login_headers,
     reset_test_database,
@@ -94,7 +95,7 @@ class FakeWhatsAppAdapter:
 
 @pytest.fixture(autouse=True)
 async def test_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncIterator[None]:
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test")
+    configure_test_database(monkeypatch)
     monkeypatch.setenv("DB_POOL_SIZE", "5")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "5")
     monkeypatch.setenv("ENVIRONMENT", "testing")
@@ -125,8 +126,10 @@ async def test_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> A
     get_settings.cache_clear()
     sessionmaker = await reset_test_database()
     await approve_base_templates(sessionmaker)
-    yield
-    await cleanup_test_environment()
+    try:
+        yield
+    finally:
+        await cleanup_test_environment()
 
 
 @pytest.fixture

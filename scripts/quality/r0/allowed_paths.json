@@ -1,0 +1,19 @@
+[
+  "tests/integration/helpers.py",
+  "tests/test_slice2a_catalogs_adversarial.py",
+  "tests/integration/test_slice2_direct_takeover.py",
+  "tests/integration/test_whatsapp_webhook.py",
+  "tests/test_pr_b2_confidence_entity_rescue_adversarial.py",
+  "tests/conftest.py",
+  "tests/http_doubles.py",
+  "tests/quality/test_r0_preparation.py",
+  ".github/workflows/quality-r0.yml",
+  "scripts/quality/r0/run_ci.py",
+  "scripts/quality/r0/driver.py",
+  "scripts/quality/r0/isolation.py",
+  "scripts/quality/r0/baseline_manifest.json",
+  "scripts/quality/r0/source_manifest.json",
+  "scripts/quality/r0/case_manifest.json",
+  "scripts/quality/r0/allowed_paths.json",
+  "docs/quality/r0-2026-09-07/README.md"
+]

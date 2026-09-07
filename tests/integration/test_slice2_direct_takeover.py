@@ -385,6 +385,7 @@ async def test_tc_take_004_005_006_rejects_non_eligible_states(client: AsyncClie
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("unrecognized_event_type_http")
 async def test_tc_take_007_008_webhook_during_human_active_is_visible_and_idempotent(
     client: AsyncClient,
 ) -> None:
