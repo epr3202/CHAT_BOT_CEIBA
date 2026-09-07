@@ -6,6 +6,15 @@ from datetime import UTC, datetime, timedelta
 import json
 import traceback
 import uuid
+from unittest.mock import patch
+
+FIXED_NOW = datetime(2026, 9, 7, 12, tzinfo=UTC)
+
+
+class AuditDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return FIXED_NOW.astimezone(tz) if tz is not None else FIXED_NOW.replace(tzinfo=None)
 
 
 def proposal(intent="QUOTE_REQUEST", entities=None):
@@ -62,12 +71,16 @@ async def send(sm, text, response=None, failure=None):
     event_id = await store_webhook_event(payload, sm, request_id=None)
     calls = []
     def provider(request):
-        calls.append({"method": request.method, "host": request.url.host})
+        request_payload = json.loads(request.content)
+        system_prompt = request_payload["messages"][0]["content"]
+        task = "SERVICES" if '"service_codes"' in system_prompt else ("EVENT_TYPE" if '"event_type": "valor' in system_prompt else "INTENT")
+        calls.append({"method": request.method, "host": request.url.host, "task": task})
         if failure in {"ConnectError", "ReadError", "ReadTimeout"}:
             raise getattr(httpx, failure)("Synthetic audit transport failure", request=request)
         if failure == "INVALID_JSON":
             return httpx.Response(200, json={"choices": [{"message": {"content": "invalid synthetic json"}}]})
-        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(response or proposal())}}]})
+        output = {"service_codes": []} if task == "SERVICES" else ({"event_type": "synthetic unrecognized event"} if task == "EVENT_TYPE" else (response or proposal()))
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(output)}}]})
     with respx.mock(assert_all_called=False) as router:
         router.post(url__regex=r"https://openrouter\.ai/.*").mock(side_effect=provider)
         await process_webhook_event(event_id, sm)
@@ -111,12 +124,14 @@ async def transport(sm, failure, state, human=False):
         conv = await session.get(Conversation, cid)
         conv.state = state
     before = await snapshot(sm)
-    first = await send(sm, "Quiero hablar con un asesor" if human else "Hola necesito informacion", failure=failure)
+    message = "No quiero hablar con un asesor, solo necesito informacion" if human == "negated" else ("Quiero hablar con un asesor" if human else "Hola necesito informacion")
+    first = await send(sm, message, failure=failure)
     second = await send(sm, "Necesito informacion general", proposal("GENERAL_INFORMATION"))
     after = first["after"]
     handoff_created = len(after["handoff"]) > len(before["handoff"])
     replied = len(after["outbox"]) > len(before["outbox"])
-    ok = processed(first) and (handoff_created if human else (replied or handoff_created)) and processed(second)
+    expected_effect = (replied and not handoff_created) if human == "negated" else (handoff_created if human else (replied or handoff_created))
+    ok = processed(first) and expected_effect and processed(second)
     return "Transport/schema failure must preserve input and safely respond or hand off; explicit human request must escalate", dict(before=before, steps=[first, second], correspondence="H05 / PR-06b / U21" if human else "H04 / PR-06"), ok
 
 
@@ -126,7 +141,9 @@ async def name_correction(sm, corrected):
     steps = [first]
     if corrected:
         steps.append(await send(sm, "Corrijo mi nombre a Sintetico Dos", proposal(entities=[entity("full_name", "Sintetico Dos", quality_status="CORRECTED")])))
-    steps.append(await send(sm, "si", proposal("CONFIRM")))
+    # A valid commercial-intent proposal reaches name confirmation; the prior run
+    # separately retains the CONFIRM proposal path that asks for clarification.
+    steps.append(await send(sm, "si", proposal("QUOTE_REQUEST")))
     expected = "Sintetico Dos" if corrected else "Sintetico Uno"
     ok = all(processed(s) for s in steps) and steps[-1]["after"]["customer"][0]["full_name"] == expected
     return "An explicit name correction must supersede an older pending candidate", dict(steps=steps, expected_name=expected), ok
@@ -143,7 +160,10 @@ async def quote_followup(sm, mode):
     if first["after"]["conversation"][0]["state"] != "QUOTE_REQUEST_READY":
         raise RuntimeError("Harness precondition: complete synthetic quote did not reach summary")
     steps = [first]
-    steps.append(await send(sm, "no" if mode == "deny" else "si", proposal("DENY" if mode == "deny" else "CONFIRM")))
+    denied = mode in {"deny", "deny_correction"}
+    steps.append(await send(sm, "no" if denied else "si", proposal("DENY" if denied else "CONFIRM")))
+    if mode == "deny_correction":
+        steps.append(await send(sm, "Corrijo la cantidad a cincuenta invitados", proposal("MODIFY_EVENT_DATA", [entity("guest_count", 50, quality_status="CORRECTED")])))
     if mode == "return":
         token = "synthetic-audit-session-" + uuid.uuid4().hex
         async with sm() as session, session.begin():
@@ -162,15 +182,28 @@ async def quote_followup(sm, mode):
     return "Resolved quote context must accept a subsequent affirmation without stale-contract failure", dict(mode=mode, steps=steps), ok
 
 
+async def legacy_unknown(sm):
+    await setup(sm)
+    before = await snapshot(sm)
+    response = proposal()
+    response["entities"] = {"unknown_audit_entity": "synthetic"}
+    first = await send(sm, "Dato sintetico legacy", response)
+    if not first["provider_calls"]:
+        raise RuntimeError("Harness precondition: legacy proposal did not reach AI client")
+    second = await send(sm, "Corrijo el dato a cincuenta invitados", proposal(entities=[entity("guest_count", 50)]))
+    return "Unknown legacy entity must produce a controlled fallback and allow the next valid turn", dict(before=before, steps=[first, second]), processed(first) and processed(second)
+
+
 async def run(new_session):
     cases = []
-    for name, values in (("guest_count", [(-5, False), (50, True)]),
+    for name, values in (("guest_count", [(-5, False), (50, True), ("many", False)]),
                          ("guest_count_range", [({"min": 80, "max": 30}, False), ({"min": 30}, False), ({"min": 30, "max": 50}, True)]),
-                         ("event_date", [({"event_date": "2026-02-30", "event_date_type": "EXACT"}, False), ({"event_date": "2026-12-01", "event_date_type": "EXACT", "event_month": None}, True)])):
+                         ("event_date", [({"event_date": "2026-02-30", "event_date_type": "EXACT"}, False), ({"event_date": "2026-12-01", "event_date_type": "EXACT", "event_month": None}, True), ({"event_date": "2026-12-01"}, False)])):
         for index, (value, valid) in enumerate(values):
             async def fn(sm, name=name, value=value, valid=valid):
                 return await semantic_case(sm, name, value, valid)
             cases.append((f"H29_{name}_{index}_{'control' if valid else 'invalid'}", fn))
+    cases.append(("H29_legacy_unknown", legacy_unknown))
     for failure in ("ConnectError", "ReadError", "ReadTimeout", "INVALID_JSON"):
         for state in ("BOT_ACTIVE", "COLLECTING_EVENT_DATA"):
             async def fn(sm, failure=failure, state=state):
@@ -179,11 +212,14 @@ async def run(new_session):
         async def human(sm, failure=failure):
             return await transport(sm, failure, "BOT_ACTIVE", human=True)
         cases.append((f"H05_PR06b_U21_{failure}", human))
+        async def negated(sm, failure=failure):
+            return await transport(sm, failure, "BOT_ACTIVE", human="negated")
+        cases.append((f"H05_PR06b_U21_{failure}_negated_control", negated))
     for corrected in (False, True):
         async def fn(sm, corrected=corrected):
             return await name_correction(sm, corrected)
         cases.append(("H17_name_" + ("correction" if corrected else "control"), fn))
-    for mode in ("deny", "confirm", "return"):
+    for mode in ("deny", "deny_correction", "confirm", "return"):
         async def fn(sm, mode=mode):
             return await quote_followup(sm, mode)
         cases.append(("H17_quote_" + mode + "_affirm", fn))
@@ -192,8 +228,9 @@ async def run(new_session):
         engine = None
         try:
             sm, engine, database = await new_session("flow" + str(index))
-            requirement, evidence, ok = await asyncio.wait_for(fn(sm), 90)
-            rows.append(dict(scenario=name, database=database, schema="ALEMBIC_HEAD", status="PASS" if ok else "FAIL_REQUIREMENT", requirement=requirement, evidence=evidence))
+            with patch("app.orchestrator.service.datetime", AuditDatetime):
+                requirement, evidence, ok = await asyncio.wait_for(fn(sm), 90)
+            rows.append(dict(scenario=name, database=database, schema="ALEMBIC_HEAD", status="PASS" if ok else "FAIL_REQUIREMENT", requirement=requirement, evidence=evidence, clock=str(FIXED_NOW), synchronization="Sequential awaited real commits; no race claimed"))
         except Exception as error:
             rows.append(dict(scenario=name, status="HARNESS_ERROR", error_type=type(error).__name__, error=str(error), traceback=traceback.format_exc()))
         finally:

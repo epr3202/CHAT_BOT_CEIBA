@@ -67,7 +67,9 @@ def environment(name):
         META_APP_SECRET="synthetic-phase2", META_ACCESS_TOKEN="synthetic-phase2",
         OPENROUTER_API_KEY="synthetic-phase2", CALENDAR_ADAPTER="fake",
         CATALOG_STORAGE_DIR="/tmp/audit-catalogs", PAYMENT_EVIDENCE_DIR="/tmp/audit-evidence",
-        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", OPENROUTER_MAX_RETRIES="0")
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
+    if os.environ.get("AUDIT_STAGE") == "reproductions":
+        os.environ["OPENROUTER_MAX_RETRIES"] = "0"
 
 
 import asyncpg

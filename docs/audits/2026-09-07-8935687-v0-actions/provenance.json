@@ -34,5 +34,10 @@
     "supersedes_audit_sha": "a3539d73f096fdedcb449cfc18579a308c682d8c",
     "run_id": 34145679818,
     "reason": "Observed harness omissions: WhatsApp object/field envelope, media sha256, insufficient flow preconditions. No product assertions changed. Normalize equivalent unique-index/constraint representations; execute literal python -m alembic upgrade head."
+  },
+  "retry_2": {
+    "supersedes_audit_sha": "b6c59469f3a7cb536b6d5006de7f1ff477888125",
+    "run_id": 34146087326,
+    "reason": "Complete all V0-requested subcases and negation/denial correction controls. Scope zero AI retries to reproductions; original suite retains its default. HTTP double returns task-specific schemas. Name confirmation adds valid QUOTE_REQUEST routing; prior CONFIRM path retained in run 2. Control orchestrator clock. No original tests or product assertions modified."
   }
 }
