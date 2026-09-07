@@ -124,9 +124,9 @@ async def test_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> A
     monkeypatch.setenv("HUMAN_HOURS_END", "23:59")
     monkeypatch.setenv("CATALOG_STORAGE_DIR", str(tmp_path))
     get_settings.cache_clear()
-    sessionmaker = await reset_test_database()
-    await approve_base_templates(sessionmaker)
     try:
+        sessionmaker = await reset_test_database()
+        await approve_base_templates(sessionmaker)
         yield
     finally:
         await cleanup_test_environment()
