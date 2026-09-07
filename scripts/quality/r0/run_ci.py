@@ -170,7 +170,17 @@ def main() -> None:
         resources.append(("container", database))
         deadline = time.monotonic() + 60
         while run(
-            "docker", "exec", database, "pg_isready", "-U", "audit_" + nonce, check=False
+            "docker",
+            "exec",
+            database,
+            "pg_isready",
+            "-h",
+            "127.0.0.1",
+            "-U",
+            "audit_" + nonce,
+            "-d",
+            "postgres",
+            check=False,
         ).returncode:
             if time.monotonic() > deadline:
                 raise RuntimeError("Database readiness timeout")
@@ -179,8 +189,12 @@ def main() -> None:
         identity = run(
             "docker",
             "exec",
+            "-e",
+            "PGPASSWORD=synthetic_" + nonce,
             database,
             "psql",
+            "-h",
+            "127.0.0.1",
             "-U",
             "audit_" + nonce,
             "-d",
