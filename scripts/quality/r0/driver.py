@@ -168,6 +168,10 @@ def main() -> None:
         cases = json.loads(Path("scripts/quality/r0/case_manifest.json").read_text())
         nodes = [r["nodeid"] for r in cases] if summary["stage"] == "focused" else ["tests"]
         if summary["stage"] == "focused":
+            nodes.append(
+                "tests/integration/test_slice2_direct_takeover.py::"
+                "test_taken_conversation_survives_client_restart_and_new_customer_message"
+            )
             nodes.append("tests/quality")
         args = [
             *nodes,

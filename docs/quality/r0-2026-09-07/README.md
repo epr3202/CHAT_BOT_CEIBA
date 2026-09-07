@@ -7,7 +7,8 @@ antes de crear settings/engines. Sustituye el destino fijo de la fixture de cat�
 la captura al importar del helper de preparación. Monkeypatch restaura las variables y
 el lifecycle de fixtures limpia la caché al terminar.
 
-Tres tests declaran usefixtures para un doble respx que solo acepta POST al endpoint
+Los tres tests documentados y un cuarto de reinicio del cliente declaran usefixtures
+para un doble respx que solo acepta POST al endpoint
 exacto de OpenRouter y el prompt/instrucción de extracción de tipo. Retorna JSON válido
 con un tipo ajeno al catálogo. El cliente, parser, normalizador y persistencia siguen
 siendo reales. Exige una llamada y rechaza peticiones inesperadas. Ocho casos de calidad
@@ -21,7 +22,8 @@ de la instancia recién creada antes de exponer una conexión a los fixtures. Nu
 que el nombre contenga test como única autorización de reset.
 
 Solo se activa quality-r0.yml por push a quality/r0-*. Los dos jobs prueban el mismo
-GITHUB_SHA verificado contra checkout: catorce nodos más ocho casos nuevos, y suite
+GITHUB_SHA verificado contra checkout: catorce nodos, el caso adicional de reinicio
+detectado por el guard y ocho casos nuevos, y suite
 completa, respectivamente. Ruff verifica producto, tests y auxiliares nuevos con la
 configuración original. Los hooks pytest solo registran resultados por fase. El driver
 no genera copias diagnósticas ni sustituye comportamiento de tests.
