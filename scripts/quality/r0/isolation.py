@@ -27,7 +27,7 @@ class Isolation:
         self.ip = socket.gethostbyname("audit-postgres")
         self.database = "r0_" + os.environ["QUALITY_STAGE"] + "_test_" + self.nonce[:12]
         self.original_pg_connect = asyncpg.connect
-        self.blocked: list[str] = []
+        self.blocked: list[dict[str, str]] = []
 
     def url(self) -> str:
         return f"postgresql+asyncpg://{self.role}:{self.password}@{self.ip}:5432/{self.database}"
@@ -49,7 +49,10 @@ class Isolation:
         for key, value in expected.items():
             if fields.get(key, 5432 if key == "port" else None) != value:
                 raise RuntimeError("R0_UNAUTHORIZED_DATABASE_DESTINATION")
-        if fields.get("database") not in {"postgres", self.database}:
+        database = fields.get("database", "")
+        # The unchanged parity fixture creates its own empty DB on this exclusive instance.
+        parity_database = re.fullmatch(r"ceiba_test_aiexec_parity_[0-9a-f]{32}", database)
+        if database not in {"postgres", self.database} and not parity_database:
             raise RuntimeError("R0_UNAUTHORIZED_DATABASE_DESTINATION")
 
     async def connect(self, *args: Any, **kwargs: Any) -> asyncpg.Connection:
@@ -97,7 +100,13 @@ class Isolation:
                 "127.0.0.1",
                 "::1",
             }:
-                self.blocked.append("socket")
+                self.blocked.append(
+                    {
+                        "kind": "socket",
+                        "test": os.environ.get("PYTEST_CURRENT_TEST", "outside"),
+                        "destination": str(address),
+                    }
+                )
                 raise RuntimeError("R0_EXTERNAL_NETWORK_BLOCKED")
 
         def connect(sock: socket.socket, address: Any) -> Any:
@@ -110,7 +119,13 @@ class Isolation:
 
         def dns(host: Any, *args: Any, **kwargs: Any) -> Any:
             if host not in {None, self.ip, "127.0.0.1", "::1", "localhost"}:
-                self.blocked.append("dns")
+                self.blocked.append(
+                    {
+                        "kind": "dns",
+                        "test": os.environ.get("PYTEST_CURRENT_TEST", "outside"),
+                        "destination": str(host),
+                    }
+                )
                 raise RuntimeError("R0_EXTERNAL_DNS_BLOCKED")
             return original_dns(host, *args, **kwargs)
 

@@ -31,7 +31,8 @@ Referencias de identidad y disparadores:
 y [eventos](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
 Los workflows históricos/deploy se preservan y no se activan en esta rama.
 
-Limitaciones: fixtures metadata; sin migrate-cycle, sin nueva migración ni lock;
+Limitaciones: fixtures metadata, excepto el test original de paridad de AIExecution
+que crea su propia DB vacía y aplica Alembic; sin migrate-cycle, nueva migración ni lock;
 dependencias resueltas registradas; proveedores simulados. Un PASS R0 es una regresión
 de calidad nueva y no reescribe el histórico 613/14 ni cierra H01-H29. H02 sigue abierto
 y bloquea la aprobación del producto. No se repiten aquí sus reproducciones.
