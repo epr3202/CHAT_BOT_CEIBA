@@ -1,0 +1,17 @@
+{
+  "base_sha": "89356876a04bc836ea9b2c223ff8aba2b424ffde",
+  "historical_audit_sha": "df71d5de2de7834fffaf32fec3702a4e00dbe3be",
+  "historical_run": 34146552339,
+  "copied_harness_sha256": {
+    "run_ci.py": "b9146d1665be98adf1d376425fb8ce9075997534dc2d0e7973270c80bd993fb9",
+    "ci_driver.py": "857545bac00f2aeab04ce31bfcaa93015965c47a9526f289fed7f7315d59a3bd",
+    "audit_db_probes.py": "e13fb9d745b01a9b29f33df14229ba6f3d90c61413007e109c6a09b4e2dad547",
+    "product_manifest.json": "4d9e9d28389043e8ad3c681ed7e0a9ae7a68393667979bc323f278ab645151c6"
+  },
+  "diagnostic_changes": [
+    "Generate copy of catalog test module with DATABASE_URL explicitly equal to TEST_DATABASE_URL; verify identical AST of every test function",
+    "For the three extractor-related cases only, respx returns a structurally valid unsupported event_type; original assertions unchanged",
+    "Observe phase A/B/C, AI task calls, webhook errors and persisted rows without replacing persistence",
+    "H02 measures stale result settlement after a newer claim; started provider invocation is not exactly-once failure criterion"
+  ]
+}

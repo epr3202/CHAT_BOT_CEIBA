@@ -1,4 +1,4 @@
-name: Audit V0 integrated validation
+name: Audit V0 failure diagnosis
 on:
   push:
     branches: ['audit/v0-ci-*']
@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stage: [suite, schema, reproductions]
+        stage: [original-suite, original-isolated, diagnostic]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -27,12 +27,12 @@ jobs:
       - name: Execute isolated audit stage
         id: validation
         continue-on-error: true
-        run: python docs/audits/2026-09-07-8935687-v0-actions/run_ci.py '${{ matrix.stage }}'
+        run: python docs/audits/2026-09-07-8935687-v0-diagnostico/run_ci.py '${{ matrix.stage }}'
       - name: Upload synthetic evidence even on failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: audit-v0-${{ matrix.stage }}-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          name: audit-v0-diagnosis-${{ matrix.stage }}-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: audit-output/${{ matrix.stage }}/
           if-no-files-found: error
           retention-days: 3
