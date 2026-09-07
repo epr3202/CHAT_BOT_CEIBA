@@ -1,0 +1,33 @@
+{
+  "base_sha": "89356876a04bc836ea9b2c223ff8aba2b424ffde",
+  "branch": "audit/v0-ci-2026-09-07-c41d8a",
+  "historical_harness_sha256": {
+    "docs/audits/2026-09-07-8935687-fase-2/reproductions/run_isolated.py": "ca2b7776883efd1da9cca59dd408b9fbb446c789c8c86680b853317c4993d973",
+    "docs/audits/2026-09-07-8935687-fase-2/reproductions/isolated_driver.py": "292c8dded9f88102d524017901fc8b83cb1c09ed9c6b740d4939ae3813bb3f30",
+    "docs/audits/2026-09-07-8935687-fase-2/reproductions/audit_db_probes.py": "62b48da5a0e2b88e911eb215c887087dd6a32da6498993c35faeab578ed51f53"
+  },
+  "adaptations": [
+    "Git blob manifest replaces local working-tree hash preflight; BASE_SHA and AUDIT_SHA differ intentionally",
+    "Three independent stages; all pytest report phases and JUnit retained",
+    "All required failures propagate to final CI gate",
+    "H28 owner capability observation does not establish deployed-role permissions",
+    "Added migrated multi-message H29/H04/H05/H17 flows; H05 = PR-06b/U21",
+    "Explicit remote runner image pulls; internal network; no GitHub token in test process"
+  ],
+  "verified_actions": {
+    "checkout": "11d5960a326750d5838078e36cf38b85af677262",
+    "setup-python": "a26af69be951a213d495a4c3e4e4022e16d87065",
+    "upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+  },
+  "remote_workflows_at_base": {
+    "deploy.yml": {
+      "git_blob": "d4ff1e0fbb48af27e2532d2401950a3d1387a15f",
+      "triggers": [
+        "push main",
+        "pull_request"
+      ],
+      "workflow_run": false
+    }
+  },
+  "publication": "Eight allowlisted files only; public repository; synthetic data only"
+}
