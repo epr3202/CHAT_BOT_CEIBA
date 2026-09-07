@@ -47,7 +47,7 @@ def copied_catalog():
         raise RuntimeError('Catalog fixture patch precondition changed')
     diagnostic = original.replace(old, new)
     def test_functions(text):
-        return {n.name: ast.dump(n, include_attributes=False) for n in ast.parse(text).body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name.startswith('test_')}
+        return {n.name: ast.dump(n, include_attributes=False) for n in ast.parse(text).body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name.startswith('test_') and n.name != 'test_environment'}
     if test_functions(original) != test_functions(diagnostic):
         raise RuntimeError('Diagnostic copy changed functional test AST')
     target = Path('/audit/diagnostic_copies/test_catalogs_diagnostic.py')

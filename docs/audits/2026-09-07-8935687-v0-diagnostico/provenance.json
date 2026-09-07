@@ -13,5 +13,12 @@
     "For the three extractor-related cases only, respx returns a structurally valid unsupported event_type; original assertions unchanged",
     "Observe phase A/B/C, AI task calls, webhook errors and persisted rows without replacing persistence",
     "H02 measures stale result settlement after a newer claim; started provider invocation is not exactly-once failure criterion"
-  ]
+  ],
+  "retry": {
+    "run_id": 34156063658,
+    "audit_sha": "813f9621008df774d2af53da222c43f2c65a058b",
+    "harness_error": "AST detector wrongly treated fixture test_environment as a functional test; fixture is the explicitly allowed diagnostic edit",
+    "fix": "Exclude exactly test_environment from functional test AST comparison; retain equality for all actual test functions",
+    "scope": "Rerun diagnostic job only; original full/isolated evidence remains from first run"
+  }
 }
