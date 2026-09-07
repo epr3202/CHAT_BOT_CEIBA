@@ -102,7 +102,11 @@ async def create_database(name):
 
 
 def migrate(name):
-    result = subprocess.run([sys.executable, __file__, "--migrate", name], capture_output=True, text=True)
+    command = [sys.executable, "-m", "alembic", "upgrade", "head"]
+    migration_env = dict(os.environ, DATABASE_URL=url(name), TEST_DATABASE_URL=url(name))
+    result = subprocess.run(command, env=migration_env, capture_output=True, text=True, timeout=120)
+    with (OUT / "migration_commands.jsonl").open("a") as handle:
+        handle.write(json.dumps(dict(command=command, database=name, exit_code=result.returncode)) + "\n")
     (OUT / (name + "_migration.log")).write_text(result.stdout + result.stderr, encoding="utf8")
     if result.returncode:
         raise RuntimeError("Existing migrations failed: " + name)
@@ -120,7 +124,7 @@ async def schema(name, metadata=False):
         for table in sorted(inspector.get_table_names()):
             if table == "alembic_version":
                 continue
-            result[table] = {"columns": [{k: str(v) if k == "type" else v for k, v in c.items()}
+            result[table] = {"columns": [{**{k: str(v) if k == "type" else v for k, v in c.items()}, "timezone": getattr(c["type"], "timezone", None)}
                                           for c in inspector.get_columns(table)],
                 "checks": inspector.get_check_constraints(table), "indexes": inspector.get_indexes(table),
                 "unique": inspector.get_unique_constraints(table), "foreign_keys": inspector.get_foreign_keys(table),
@@ -200,14 +204,14 @@ def semantic_schema(raw):
     result = {}
     for table, data in raw.items():
         result[table] = dict(
-            columns={c["name"]: dict(type=c["type"], nullable=c["nullable"], default=default(c.get("default"))) for c in data["columns"]},
+            columns={c["name"]: dict(type=c["type"], timezone=c.get("timezone"), nullable=c["nullable"], default=default(c.get("default"))) for c in data["columns"]},
             checks=sorted(c["sqltext"] for c in data["checks"]),
-            unique=sorted(sorted(c["column_names"]) for c in data["unique"]),
+            unique=sorted({tuple(sorted(c["column_names"])) for c in data["unique"]} | {tuple(sorted(i["column_names"])) for i in data["indexes"] if i["unique"] and not i.get("dialect_options", {}).get("postgresql_where")}),
             primary_key=data["primary_key"]["constrained_columns"],
             foreign_keys=sorted((dict(columns=f["constrained_columns"], table=f["referred_table"],
                                      referred=f["referred_columns"], options=f.get("options", {})) for f in data["foreign_keys"]), key=str),
             indexes=sorted((dict(columns=i["column_names"], unique=i["unique"], options=i.get("dialect_options", {}))
-                            for i in data["indexes"] if not i.get("duplicates_constraint")), key=str))
+                            for i in data["indexes"] if not i.get("duplicates_constraint") and (not i["unique"] or i.get("dialect_options", {}).get("postgresql_where")) and not any(sorted(i["column_names"]) == sorted(u["column_names"]) for u in data["unique"])), key=str))
     return result
 
 

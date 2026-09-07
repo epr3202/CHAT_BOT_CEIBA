@@ -57,7 +57,7 @@ async def send(sm, text, response=None, failure=None):
     import httpx
     import respx
     from app.channel.inbound import store_webhook_event, process_webhook_event
-    payload = {"entry": [{"changes": [{"value": {"messages": [{"from": "15550100001",
+    payload = {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {"messages": [{"from": "15550100001",
         "id": "wamid.audit." + uuid.uuid4().hex, "timestamp": "1788782400", "type": "text", "text": {"body": text}}]}}]}]}
     event_id = await store_webhook_event(payload, sm, request_id=None)
     calls = []
@@ -71,7 +71,11 @@ async def send(sm, text, response=None, failure=None):
     with respx.mock(assert_all_called=False) as router:
         router.post(url__regex=r"https://openrouter\.ai/.*").mock(side_effect=provider)
         await process_webhook_event(event_id, sm)
-    return dict(event_id=event_id, provider_calls=calls, after=await snapshot(sm))
+    after = await snapshot(sm)
+    external_id = payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"]
+    if sum(m["external_message_id"] == external_id for m in after["message"]) != 1:
+        raise RuntimeError("Harness precondition: incoming synthetic message was not persisted exactly once")
+    return dict(event_id=event_id, provider_calls=calls, after=after)
 
 
 def processed(step):
@@ -82,13 +86,18 @@ async def semantic_case(sm, name, value, valid):
     await setup(sm)
     before = await snapshot(sm)
     first = await send(sm, "Dato sintetico para mi evento", proposal(entities=[entity(name, value)]))
+    if not first["provider_calls"]:
+        raise RuntimeError("Harness precondition: semantic proposal did not reach the real AI HTTP client")
     # Follow-up with a safe corrected value proves whether processing can continue.
     control_value = 50 if name == "guest_count" else ({"min": 30, "max": 50} if name == "guest_count_range" else {"event_date": "2026-12-01", "event_date_type": "EXACT", "event_month": None})
     second = await send(sm, "Corrijo el dato de mi evento", proposal(entities=[entity(name, control_value, raw_value="1 diciembre 2026" if name == "event_date" else str(control_value))]))
     event = first["after"]["event"][0]
     field_ok = (event["guest_count"] > 0 if name == "guest_count" else
                 event["guest_count_min"] is not None and event["guest_count_max"] is not None and 0 < event["guest_count_min"] <= event["guest_count_max"] if name == "guest_count_range" else True)
-    ok = processed(first) and processed(second) and (field_ok if valid else (event == before["event"][0] or name == "event_date"))
+    ok = processed(first) and processed(second) and (field_ok if valid else event == before["event"][0])
+    if valid:
+        expected_fields = {"guest_count": value} if name == "guest_count" else ({"guest_count_min": value["min"], "guest_count_max": value["max"]} if name == "guest_count_range" else {"event_date": value["event_date"]})
+        ok = ok and all(str(event[k]) == str(v) for k, v in expected_fields.items())
     # Compare domain fields only; timestamps and audit events are recorded separately.
     if not valid and name == "guest_count":
         ok = processed(first) and processed(second) and event["guest_count"] == before["event"][0]["guest_count"]

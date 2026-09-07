@@ -22,11 +22,12 @@ async def seed(sessionmaker, *, state="BOT_ACTIVE", media="text", caption=False,
         customer = Customer(phone_number="+15550100001", full_name="Audit Synthetic")
         session.add(customer)
         await session.flush()
-        conversation = Conversation(customer_id=customer.id, channel="WHATSAPP", state=state)
+        conversation = Conversation(customer_id=customer.id, channel="WHATSAPP", state=state,
+                                    bot_enabled=state not in {"WAITING_FOR_HUMAN", "HUMAN_ACTIVE"})
         session.add(conversation)
         await session.flush()
         content = {"text": {"body": "mensaje sintetico"}} if media == "text" else {
-            media: {"id": "synthetic-media", "mime_type": "image/jpeg" if media == "image" else "application/pdf"}}
+            media: {"id": "synthetic-media", "sha256": "a" * 64, "mime_type": "image/jpeg" if media == "image" else "application/pdf"}}
         if caption and media != "text":
             content[media]["caption"] = "comprobante sintetico"
         message = Message(external_message_id="wamid.audit." + uuid.uuid4().hex,
@@ -53,7 +54,10 @@ async def counts(sessionmaker):
 async def inbox_after_message_commit(sessionmaker):
     from app.channel.inbound import persist_payload_phase_a, process_webhook_event, store_webhook_event
     from app.channel.models import WebhookEvent
-    payload = {"entry": [{"changes": [{"value": {"messages": [{"from": "15550100001",
+    from data.knowledge_seed import iter_seed_entries
+    from scripts.load_knowledge import load_knowledge_entries
+    await load_knowledge_entries(sessionmaker, list(iter_seed_entries()))
+    payload = {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {"messages": [{"from": "15550100001",
         "id": "wamid.audit.crash", "timestamp": "1788782400", "type": "text", "text": {"body": "Hola"}}]}}]}]}
     event_id = await store_webhook_event(payload, sessionmaker, request_id=None)
     persisted = await persist_payload_phase_a(payload, sessionmaker, request_id=None)
