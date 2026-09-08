@@ -581,9 +581,11 @@ async def test_tc_b1_005_human_request_interrupts_without_losing_capture_context
     conversation = await conversation_snapshot(sessionmaker_fixture, conversation_id)
     async with sessionmaker_fixture() as session:
         handoff = await session.scalar(select(Handoff))
-    assert general_calls == ["quiero hablar con un asesor"]
+    assert general_calls == []  # R4: explicit personal requests precede all AI tasks.
     assert service_calls == []
     assert handoff is not None and handoff.reason == "CUSTOMER_REQUEST"
+    assert handoff.status == "PENDING"
+    assert conversation.state == ConversationState.WAITING_FOR_HUMAN
     assert conversation.pending_action == "WAIT_FOR_HUMAN"
     assert conversation.active_lead_id == lead_id
     assert conversation.pending_fields == ["requested_services"]

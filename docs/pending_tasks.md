@@ -34,3 +34,10 @@ H01: implementacion R2 candidata y validacion en curso; consultar el informe fin
 H04 en validacion R3; el informe final delimita el veredicto por frontera. H01 local/H02.Outbox conservan cierre candidato. H05, H03, H17, H29, H02.payment y demas hallazgos siguen abiertos. Activacion/reconciliacion operativa R1/R2 no ejecutadas.
 
 [Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).
+
+
+## 2026-09-08 — R4 solicitud explícita de asesor
+
+H05.solicitud_explicita en validación R4; H05.agotamiento_fallback sigue abierto. H03/H17/H29/H02.payment, orden de salida y autorizaciones no cambian. Activación/reconciliación R1/R2 pendiente.
+
+[Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).

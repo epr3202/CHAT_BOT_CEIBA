@@ -157,9 +157,11 @@ mensaje entrante de ese número crea una conversación activa nueva.
 2. El script solicita el PIN dos veces con `getpass`; no se pasa por argumento.
 3. Abrir el panel e ingresar con cédula + PIN. La sesión dura 12 horas o hasta logout.
 
-El panel muestra una bandeja vacía cuando no hay handoffs reales. Si
-`OPENROUTER_API_KEY` no es válida, el mensaje `quiero hablar con un asesor` cae al
-menú determinístico y no crea handoff; ese comportamiento es por diseño.
+El panel muestra una bandeja vacía cuando no hay casos abiertos. R4 añade una ruta
+determinista estrecha para peticiones textuales inequívocas de asesor, antes de IA,
+sobre turnos elegibles según R2. La transferencia usa la pausa y las plantillas
+vigentes; no salta trabajos bloqueados ni cubre agotamiento de fallback.
+[Contrato, SHA candidato y validación R4](docs/remediation/r4-h05-explicit-human-2026-09-08/README.md).
 
 ### Operación local con WhatsApp real
 

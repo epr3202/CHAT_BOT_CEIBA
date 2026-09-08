@@ -30,3 +30,10 @@ Candidato R2: migracion 0026 sobre 0025, recuperacion automatica de inbox, CLI c
 R3 candidato: normalizacion de NetworkError, RemoteProtocolError y ProxyError; detalles tecnicos sanitizados y telemetria best-effort. RED real sobre R2, 65 controles nuevos y workflow aislado. Sin cambios de esquema/dependencias ni pruebas historicas.
 
 [Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).
+
+
+## 2026-09-08 — R4 solicitud explícita de asesor
+
+Candidato R4: ruta previa para solicitud inequívoca de asesor, pruebas por frases/estado/propiedad/commit y bandeja real. Dos adaptaciones históricas acotadas de llamadas IA se documentan. Sin migraciones.
+
+[Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).

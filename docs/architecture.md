@@ -26,3 +26,10 @@ R2 agrega InboxJob separado de Message, consumo continuo en el worker y finaliza
 R3 candidato acota H04 en el cliente IA: transporte esperado normalizado, retries limitados y degradacion existente por tarea/estado. Inbox/Outbox, sus tokens y transacciones permanecen R2/R1. Sin nueva migracion.
 
 [Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).
+
+
+## 2026-09-08 — R4 solicitud explícita de asesor
+
+Reconocimiento textual puro al inicio de classify_message; decisión DETERMINISTIC aplicada por HUMAN_REQUEST dentro del settlement R2, después de guards. Sin llamadas IA en el turno reconocido ni escritura paralela.
+
+[Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).

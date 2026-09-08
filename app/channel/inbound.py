@@ -21,6 +21,7 @@ from app.channel.schemas import InboundWhatsAppMessage
 from app.channel.states import Channel
 from app.config.settings import Settings, get_settings
 from app.conversation.confirmation import resolve_contextual_confirmation
+from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON, is_explicit_human_request
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
 from app.conversation.services_catalog import match_requested_services
@@ -246,6 +247,22 @@ async def classify_message(
     sessionmaker: async_sessionmaker[AsyncSession],
     request_id: uuid.UUID | None,
 ) -> ClassifiedTurn:
+    if persisted.message_type == "text" and is_explicit_human_request(persisted.message_text):
+        # This is a rule decision, not a model probability or a synthetic AI execution.
+        return ClassifiedTurn(
+            IntentClassification(
+                primary_intent="HUMAN_REQUEST",
+                sub_intent=None,
+                confidence=0,
+                requested_action="CREATE_HANDOFF",
+                needs_confirmation=False,
+                needs_human=True,
+                handoff_reason="CUSTOMER_REQUEST",
+                priority="NORMAL",
+                reasoning_code=EXPLICIT_HUMAN_REASON,
+            ),
+            None, "DETERMINISTIC", None, False, False,
+        )
     settings = get_settings()
     classification: IntentClassification | None = None
     ai_error_reason: AIErrorReason | None = None

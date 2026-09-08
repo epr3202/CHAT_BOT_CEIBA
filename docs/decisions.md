@@ -33,3 +33,10 @@ Decision R2 limitada: control durable por Message, orden local por conversacion,
 R3 conserva AIUnavailable y HTTP_ERROR para llamada fallida con subtipo sanitizado, TIMEOUT separado. No captura indiscriminadamente TransportError/Exception; configuracion, cancelacion y programacion conservan propagacion. No se cambian prompts ni rutas comerciales.
 
 [Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).
+
+
+## 2026-09-08 — R4 solicitud explícita de asesor
+
+R4 separa H05.solicitud_explicita de H05.agotamiento_fallback. Coincidencia completa de catálogo estrecho; ambiguos/mezclas mantienen ruta anterior. Procedencia determinista explícita, sin probabilidad calibrada ni cambios de umbrales IA.
+
+[Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).

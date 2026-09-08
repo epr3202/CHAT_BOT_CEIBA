@@ -126,3 +126,16 @@ Activación futura, no ejecutada: coordinación API/BackgroundTasks/workers/CLI
 heredada de R1/R2; no consumidores antiguos concurrentes ni replay de historia
 ambigua. Rollback preserva ledger e incertidumbre; no downgrade ni borrado para
 limpiar errores. Sin PR, merge, tag, despliegue, SSH/VPS ni afirmación productiva.
+
+## Candidato después del RED funcional
+
+RED `75cb27901f6907099101d0515982e565ffbb7c63`, run 34267180516: el focal
+demuestra dos fallos funcionales en call y 140 PASS, con 142 setup/call/teardown.
+Los 136 históricos y cuatro controles nuevos pasan. El caso activo invocó una
+clasificación; servicios invocó principal y auxiliar. La consulta administrativa
+respondió 200: no fue un error de preparación, importación ni conexión no simulada.
+
+Se añaden 67 nodos R4 en total: los seis criterios RED intactos, 34 frases y
+27 escenarios de flujo. Colección esperada: 838 en suite y 203 en focal incluido.
+Solo se modifican dos nodos históricos según lo documentado; sus IDs y las demás
+aserciones permanecen. El resto de R1/R2/R3 y las 26 migraciones están protegidos.

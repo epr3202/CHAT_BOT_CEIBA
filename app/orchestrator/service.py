@@ -38,6 +38,7 @@ from app.channel.states import Channel
 from app.config.settings import Settings
 from app.conversation.catalog_event_type import resolve_catalog_event_type_label
 from app.conversation.confirmation import resolve_contextual_confirmation
+from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.knowledge import KnowledgeRenderError, render_response
 from app.conversation.models import Conversation
@@ -244,6 +245,18 @@ async def _orchestrate_inbound_message(
 
     if classification is None:
         raise ValueError("classification or ai_error_reason is required")
+
+    if (
+        orchestration_input.decision_source == "DETERMINISTIC"
+        and classification.primary_intent == "HUMAN_REQUEST"
+        and classification.reasoning_code == EXPLICIT_HUMAN_REASON
+    ):
+        # Human guards above and R2 ownership still apply. Do not accept an old
+        # confirmation or apply model-confidence thresholds to this explicit rule.
+        await route_classification(
+            session, settings, knowledge_sessionmaker, orchestration_input, classification
+        )
+        return
 
     classification = resolve_contextual_confirmation_classification(
         conversation,
