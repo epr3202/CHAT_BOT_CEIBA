@@ -94,3 +94,9 @@ cliente y 20 controles de flujo/propiedad. Se exige 706 + 65 en suite y 71 + 65 
 focal, sin sumar el focal de nuevo. La cifra deriva de las familias comprobadas y
 se valida por lista exacta de nodos. El control de varias salidas legitimas tambien
 permanece en las regresiones R2 retenidas, sin imponer unicidad por entrada.
+
+El primer candidato tuvo un fallo de expectativa en la prueba nueva del estado
+critico: exigia bot_enabled=False, pero el handoff vigente pausa por el estado
+WAITING_FOR_HUMAN y conserva ese flag. Se corrige esa expectativa explicitamente:
+se exige conservar el flag y se comprueba silencio efectivo en un turno posterior
+real, sin repetir Outbox/handoff. No se cambia producto ni se remedia H03.

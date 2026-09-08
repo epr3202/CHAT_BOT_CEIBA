@@ -85,11 +85,27 @@ async def test_state_appropriate_degradation_and_next_turn(
     elif case == "critical":
         assert len(completed["handoff"]) == len(completed["outbox"]) == 1
         assert completed["conversation"][0]["state"] == "WAITING_FOR_HUMAN"
-        assert completed["conversation"][0]["bot_enabled"] is False
+        assert (
+            completed["conversation"][0]["bot_enabled"] == before["conversation"][0]["bot_enabled"]
+        )
     else:
         assert completed["conversation"][0]["last_question_code"] == "RESP-DISCOVERY-002"
         assert len(completed["outbox"]) == 1 and completed["handoff"] == []
     next_final = None
+    if case == "critical":
+        # Existing handoff pauses through WAITING_FOR_HUMAN, without changing bot_enabled.
+        # Verify effective silence on the next real turn instead of inventing a flag policy.
+        next_event = await inbound.store_webhook_event(payload("r3.critical.next"), db, None)
+        with respx.mock as router:
+            next_provider = Provider(
+                router, {MAIN: [httpx.ReadError("R3 synthetic") for _ in range(2)]}
+            )
+            assert (await inbound.process_webhook_event(next_event, db))["COMPLETED"] == 1
+            next_provider.exhausted()
+        next_final = await snapshot(db)
+        assert next_final["outbox"] == completed["outbox"]
+        assert next_final["handoff"] == completed["handoff"]
+        assert next_final["inbox_job"][-1]["completion_reason"] == "SILENT_WAITING_FOR_HUMAN"
     if case in {"active", "capture"}:
         data = payload("r3.next")
         next_event = await inbound.store_webhook_event(data, db, None)
@@ -112,6 +128,7 @@ async def test_state_appropriate_degradation_and_next_turn(
         next_final=next_final,
         calls=provider.calls,
         acquisition_tokens=tokens,
+        next_calls=dict(next_provider.calls) if next_final is not None else {},
         counts=counts,
     )
 
