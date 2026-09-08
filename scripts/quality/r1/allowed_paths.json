@@ -1,0 +1,20 @@
+[
+  "app/channel/worker.py",
+  "app/channel/models.py",
+  "alembic/versions/20260908_0025_outbox_claim_token.py",
+  "tests/remediation/test_r1_outbox.py",
+  "tests/remediation/test_r1_outbox_ownership.py",
+  "tests/remediation/test_r1_outbox_migration.py",
+  ".github/workflows/remediation-r1-outbox.yml",
+  "docs/architecture.md",
+  "docs/decisions.md",
+  "docs/pending_tasks.md",
+  "docs/changelog.md",
+  "docs/remediation/r1-h02-outbox-2026-09-08/README.md",
+  "scripts/quality/r1/run_ci.py",
+  "scripts/quality/r1/driver.py",
+  "scripts/quality/r1/baseline_manifest.json",
+  "scripts/quality/r1/source_manifest.json",
+  "scripts/quality/r1/r0_nodes.json",
+  "scripts/quality/r1/allowed_paths.json"
+]
