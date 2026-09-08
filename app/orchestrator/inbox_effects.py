@@ -6,6 +6,8 @@ uses only results obtained by this acquisition; abandoned mutating calls require
 
 from __future__ import annotations
 
+import hashlib
+import json
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,6 +20,7 @@ class DeferredAgendaCall(Exception):
         self.args = args
         self.kwargs = kwargs
         self.name = method.__name__
+        self.signature = operation_signature(args, kwargs)
         self.mutating = self.name in {
             "confirm_appointment",
             "reschedule_appointment",
@@ -27,11 +30,17 @@ class DeferredAgendaCall(Exception):
 
 @dataclass
 class AgendaResults:
-    results: list[tuple[str, Any]] = field(default_factory=list)
+    results: list[tuple[str, str, Any]] = field(default_factory=list)
     position: int = 0
 
 
 agenda_results: ContextVar[AgendaResults | None] = ContextVar("inbox_agenda_results", default=None)
+
+
+def operation_signature(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    # The supplied clock advances between transactions; all business inputs must match.
+    values = (args, {key: value for key, value in kwargs.items() if key != "now"})
+    return hashlib.sha256(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()
 
 
 class DeferredAgendaService:
@@ -46,9 +55,9 @@ class DeferredAgendaService:
             index = self.results.position
             self.results.position += 1
             if index < len(self.results.results):
-                expected, result = self.results.results[index]
-                if expected != name:
-                    raise RuntimeError("Agenda replay changed operation order")
+                expected, signature, result = self.results.results[index]
+                if expected != name or signature != operation_signature(args, kwargs):
+                    raise RuntimeError("Agenda replay changed operation or business inputs")
                 return result
             raise DeferredAgendaCall(method, args, kwargs)
 

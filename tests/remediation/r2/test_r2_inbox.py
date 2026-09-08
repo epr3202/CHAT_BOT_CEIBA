@@ -91,7 +91,8 @@ async def test_silent_turn_has_explicit_completion(
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, 1)
         conversation.state, conversation.bot_enabled = state, enabled
-    with respx.mock(assert_all_called=False):
+    with respx.mock(assert_all_called=False) as router:
+        greeting_http(router)
         await inbound.process_webhook_event(event_id, db)
         before = await snapshot(db)
         await inbound.process_webhook_event(event_id, db)
@@ -226,6 +227,69 @@ async def test_competing_claims_and_context_order(db: Any, request: pytest.Fixtu
     assert len(final["outbox"]) == 2
 
 
+async def test_same_clock_reacquisition_and_duplicate_callback(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await prepare(db)
+    monkeypatch.setenv("INBOX_MAX_BACKOFF_SECONDS", "0")
+    get_settings.cache_clear()
+    now = datetime.now(UTC)
+    old = await claim(db, now)
+    await inbox.settle_inbox_failure(db, old, RuntimeError("synthetic"), now)
+    current = await claim(db, now)
+    assert current.claim_token != old.claim_token
+    with respx.mock as router:
+        greeting_http(router)
+        turn = await inbound.classify_message(current.persisted, db, None)
+    before = await snapshot(db)
+    results = await asyncio.wait_for(
+        asyncio.gather(
+            inbox.apply_turn(db, current, turn, inbox.AgendaResults()),
+            inbox.apply_turn(db, current, turn, inbox.AgendaResults()),
+        ),
+        20,
+    )
+    assert sorted(results) == ["COMPLETED", "DISCARDED"]
+    final = await snapshot(db)
+    assert await inbox.apply_turn(db, old, turn, inbox.AgendaResults()) == "DISCARDED"
+    assert await snapshot(db) == final
+    evidence(request, before=before, final=final, results=results)
+    assert len(final["outbox"]) == 1
+
+
+async def test_expansion_failure_has_bounded_durable_retry(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("INBOX_MAX_ATTEMPTS", "2")
+    get_settings.cache_clear()
+    event_id = await inbound.store_webhook_event(payload("r2.reject"), db, None)
+    async with db() as session, session.begin():
+        await session.execute(
+            text(
+                "ALTER TABLE message ADD CONSTRAINT r2_reject_input "
+                "CHECK (external_message_id <> 'r2.reject')"
+            )
+        )
+    try:
+        now = datetime.now(UTC)
+        await inbox.expand_event(db, event_id, now)
+        before = await snapshot(db)
+        assert before["webhook_event"][0]["ingest_attempts"] == 1
+        await inbox.expand_event(db, event_id, now + timedelta(seconds=1))
+        assert await snapshot(db) == before
+        await inbox.expand_event(db, event_id, now + timedelta(seconds=2))
+        final = await snapshot(db)
+        assert final["webhook_event"][0]["status"] == "EXHAUSTED"
+        assert final["webhook_event"][0]["ingest_attempts"] == 2
+        await inbox.process_inbox_once(db, now=now + timedelta(days=1))
+        assert await snapshot(db) == final
+        evidence(request, before=before, final=final)
+        assert final["message"] == final["inbox_job"] == final["outbox"] == []
+    finally:
+        async with db() as session, session.begin():
+            await session.execute(text("ALTER TABLE message DROP CONSTRAINT r2_reject_input"))
+
+
 async def test_context_change_reclassifies_and_human_change_is_reloaded(
     db: Any, request: pytest.FixtureRequest
 ) -> None:
@@ -304,6 +368,7 @@ async def test_real_commit_rollback_and_partial_event_recovery(
     final = await snapshot(db)
     evidence(request, before=before, failed=failed, final=final)
     assert len(final["outbox"]) == 2
+    assert all(e["status"] == "PROCESSED" for e in final["webhook_event"])
     assert final["inbox_job"][0] == before["inbox_job"][0]
 
 
@@ -338,6 +403,7 @@ async def test_exhaustion_backoff_manual_retry_and_other_conversation(
     final = await snapshot(db)
     evidence(request, exhausted=exhausted, final=final, counters=counts)
     assert len(final["outbox"]) == 2
+    assert all(e["status"] == "PROCESSED" for e in final["webhook_event"])
 
 
 async def test_unrelated_integrity_error_is_not_duplicate(
@@ -492,5 +558,5 @@ async def test_agenda_runs_outside_locks_and_uncertainty_is_not_retried(
             await retry_job(db, 1, "cannot blindly retry")
     else:
         assert after["inbox_job"][0]["status"] == "COMPLETED"
-        assert appointments[0]["status"] == "CONFIRMED"
+        assert appointments[0]["appointment_status"] == "CONFIRMED"
         assert len(after["outbox"]) >= 2  # Confirmation plus the next legitimate capture question.

@@ -1,4 +1,4 @@
-"""R1 launcher derived from frozen R0; explicit R0-based path allowlist."""
+"""R2 launcher reusing frozen isolation, with an incremental R1-based allowlist."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def main() -> None:
         manifest["authorized_changed_paths"] = changed
         baseline = json.loads((audit / "baseline_manifest.json").read_text())
         if baseline["r1_base_sha"] != R1_BASE:
-            raise RuntimeError("Wrong R0 baseline")
+            raise RuntimeError("Wrong R1 baseline")
         protected = {}
         for rel, item in baseline["files"].items():
             if rel not in allowed:

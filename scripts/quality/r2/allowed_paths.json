@@ -9,6 +9,7 @@
   "scripts/reprocess_webhook_events.py",
   "alembic/versions/20260908_0026_durable_inbox.py",
   "tests/remediation/test_r1_outbox_migration.py",
+  "tests/unit/test_models_registry.py",
   ".github/workflows/remediation-r2-inbox.yml",
   "tests/remediation/r2/test_r2_recovery.py",
   "tests/remediation/r2/test_r2_inbox.py",

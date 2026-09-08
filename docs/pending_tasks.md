@@ -17,6 +17,13 @@ Estado: **propuestas pendientes**, sin fixes, commits, push ni despliegue en la 
 
 ## 2026-09-08 ? R1 H02.Outbox
 
-H02.Outbox tiene candidato R1 en validacion, separado de H02.payment, orden y comandos humanos, que siguen pendientes. No cerrar H02 agregado ni cambiar el estado de H01 u otros hallazgos. Actualizar el cierre de esta unidad solo con evidencia verde.
+H02.Outbox: RESUELTO_EN_CANDIDATO en 66a398124c007bdc54895fe891601e470910ce8e, run 34235830150. Suite 672 PASS (635 R0 + 37 nuevas); focalizados 37 PASS sobre Alembic, subconjunto de la suite. H02.payment, orden y comandos humanos siguen pendientes. H02 agregado, H01 y otros hallazgos no se cierran. Sin autorizacion de produccion.
 
 [Diseno, pruebas y procedimiento](remediation/r1-h02-outbox-2026-09-08/README.md).
+
+
+## 2026-09-08 - R2 H01 inbox
+
+H01: implementacion R2 candidata y validacion en curso; consultar el informe final antes de atribuir cierre. Pendientes operativos: revision de legacy ambiguo, reconciliacion externa y activacion coordinada no ejecutada. Continuan abiertos H02.payment, orden de salidas, comandos humanos, H03/H04/H05/H06/H07/H17/H29 y los demas hallazgos fuera de R2.
+
+[Diseno, limites y validacion](remediation/r2-h01-inbox-2026-09-08/README.md).

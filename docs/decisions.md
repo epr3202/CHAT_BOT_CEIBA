@@ -19,3 +19,10 @@ Las decisiones aceptadas anteriores continúan en sus documentos canónicos, esp
 Decision R1 limitada: UUID nullable por adquisicion, sin backfill de propietarios antiguos; liquidacion exige token obligatorio. Expiracion efectiva por reaper. No es segura la convivencia con workers antiguos que liquidan por ID. El procedimiento de activacion propuesto exige detenerlos; no se despliega.
 
 [Diseno, pruebas y procedimiento](remediation/r1-h02-outbox-2026-09-08/README.md).
+
+
+## 2026-09-08 - R2 H01 inbox
+
+Decision R2 limitada: control durable por Message, orden local por conversacion, reintentos acotados, finalizacion silenciosa explicita y separacion de operaciones de agenda. No hay backfill de exito ni convivencia segura con API/worker/CLI antiguos. No completa H06/H07 ni modifica las reglas de negocio.
+
+[Diseno, limites y validacion](remediation/r2-h01-inbox-2026-09-08/README.md).

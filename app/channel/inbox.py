@@ -92,6 +92,8 @@ async def owned(
         logger.info(
             "inbox_result_discarded",
             job_id=claim.id,
+            conversation_id=claim.conversation_id,
+            request_id=str(claim.request_id) if claim.request_id else None,
             outcome="DISCARDED",
             reason="not_current_owner",
         )
@@ -130,7 +132,12 @@ async def settle_inbox_failure(
         job, _, _ = result
         fail_locked(job, type(error).__name__, now or datetime.now(UTC), get_settings())
         logger.info(
-            "inbox_attempt_failed", job_id=job.id, outcome=job.status, reason=job.last_error
+            "inbox_attempt_failed",
+            job_id=job.id,
+            outcome=job.status,
+            reason=job.last_error,
+            conversation_id=claim.conversation_id,
+            request_id=str(claim.request_id) if claim.request_id else None,
         )
     return "FAILED"
 
@@ -285,6 +292,14 @@ async def apply_turn(
         retire(job, "COMPLETED")
         job.completed_at = datetime.now(UTC)
         job.completion_reason = "ROUTED_NON_TEXT" if handled else silent or "ORCHESTRATED"
+    logger.info(
+        "inbox_completed",
+        job_id=claim.id,
+        conversation_id=claim.conversation_id,
+        request_id=str(claim.request_id) if claim.request_id else None,
+        outcome="COMPLETED",
+        reason=job.completion_reason,
+    )
     return "COMPLETED"
 
 
@@ -320,9 +335,7 @@ async def process_claimed_inbox(sm: SessionMaker, claim: InboxClaim) -> str:
     try:
         text = claim.persisted.message_text.strip()
         turn = (
-            await inbound.classify_message(claim.persisted, sm, claim.request_id)
-            if text and not claim.silent
-            else None
+            await inbound.classify_message(claim.persisted, sm, claim.request_id) if text else None
         )
         results = AgendaResults()
         for _ in range(12):  # Bound the number of deferred agenda reads/calls in one turn.
@@ -335,7 +348,7 @@ async def process_claimed_inbox(sm: SessionMaker, claim: InboxClaim) -> str:
                 value = await call.method(*call.args, **call.kwargs)
                 if call.mutating and not await record_external_result(sm, claim, value):
                     return "DISCARDED"
-                results.results.append((call.name, value))
+                results.results.append((call.name, call.signature, value))
         raise RuntimeError("Agenda operation budget exhausted")
     except asyncio.CancelledError:
         # Graceful cancellation before an external effect can immediately release its own

@@ -14,3 +14,12 @@ Se crean índices de contexto/arquitectura/seguimiento/decisiones y una nota REA
 Se agrega candidato R1: propiedad y settlement de Outbox texto/documento, migracion aditiva 0025 y regresiones reales en PostgreSQL. Reproduccion roja: 4 controles pasan y 15 carreras fallan por persistencia. Validacion verde y evidencia final en el paquete R1; sin modificar producto de otros dominios ni evidencia historica.
 
 [Diseno, pruebas y procedimiento](remediation/r1-h02-outbox-2026-09-08/README.md).
+
+Cierre local R1: candidato 66a398124c007bdc54895fe891601e470910ce8e, run 34235830150 aprobado. 672 PASS; 37 focalizados incluidos, migracion/paridad/rollback y Ruff aprobados; cero intentos de red inesperados. [Informe final](remediation/r1-h02-outbox-2026-09-08/report.md). Este cierre documental local es posterior al SHA probado; el producto coincide byte a byte tras normalizar finales de linea.
+
+
+## 2026-09-08 - R2 H01 inbox
+
+Candidato R2: migracion 0026 sobre 0025, recuperacion automatica de inbox, CLI coordinado y 34 pruebas nuevas. Se conserva RED real y el primer intento fallido; el cierre con SHAs y hashes se documenta en el informe de validacion. Compatibilidad puntual: prueba de migracion R1 fija upgrade a 0025; inventario estricto de modelos agrega inbox_job.
+
+[Diseno, limites y validacion](remediation/r2-h01-inbox-2026-09-08/README.md).
