@@ -243,7 +243,7 @@ def main() -> None:
         missing_r1 = len(new_nodes) != 37 or not (set(new_nodes) <= required)
         r2_nodes = [n for n in result["nodes"] if n.startswith("tests/remediation/r2/")]
         summary["r2_nodes"] = r2_nodes
-        missing_r2 = len(r2_nodes) != 4
+        missing_r2 = len(r2_nodes) != 32
         summary["expected_r1_count"] = 37
         exit_code = int(
             bool(

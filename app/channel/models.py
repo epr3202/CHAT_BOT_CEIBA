@@ -136,7 +136,10 @@ class MessageProviderStatus(Base):
 
 class WebhookEvent(Base):
     __tablename__ = "webhook_event"
-    __table_args__ = (Index("ix_webhook_event_status_created_at", "status", "created_at"),)
+    __table_args__ = (
+        Index("ix_webhook_event_status_created_at", "status", "created_at"),
+        Index("ix_webhook_event_intake_due", "intake_version", "status", "next_attempt_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(
@@ -149,4 +152,48 @@ class WebhookEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    intake_version: Mapped[int | None] = mapped_column(Integer, nullable=True, default=2)
+    ingest_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class InboxJob(Base):
+    """Mutable delivery control, separate from append-only Message."""
+
+    __tablename__ = "inbox_job"
+    __table_args__ = (
+        UniqueConstraint("message_id", name="uq_inbox_job_message"),
+        CheckConstraint(
+            "status IN ('PENDING','PROCESSING','EXTERNAL','COMPLETED','FAILED','REVIEW')",
+            name="ck_inbox_job_status",
+        ),
+        CheckConstraint("attempts >= 0", name="ck_inbox_job_attempts"),
+        CheckConstraint(
+            "(status IN ('PROCESSING','EXTERNAL') AND claim_token IS NOT NULL) OR "
+            "(status NOT IN ('PROCESSING','EXTERNAL') AND claim_token IS NULL)",
+            name="ck_inbox_job_owner",
+        ),
+        Index("ix_inbox_job_due", "status", "next_attempt_at", "id"),
+        Index("ix_inbox_job_conversation_order", "conversation_id", "id", "status"),
+        Index("ix_inbox_job_stale", "status", "claimed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("message.id"), nullable=False)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversation.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
+    origin: Mapped[str] = mapped_column(String(32), nullable=False, default="NEW")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    completion_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_operation: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

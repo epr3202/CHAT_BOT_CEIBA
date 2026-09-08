@@ -72,8 +72,8 @@ async def test_legacy_rows_upgrade_parity_recovery_and_downgrade(
         before = await snapshot(db)
         assert [r["status"] for r in before["outbox"]] == ["PENDING", "SENDING", "SENT", "FAILED"]
         assert all("claim_token" not in r for r in before["outbox"])
-        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "head")
-        commands.append("alembic upgrade head")
+        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "20260908_0025")
+        commands.append("alembic upgrade 20260908_0025")
         upgraded = await snapshot(db)
         expected = {**before, "outbox": [{**r, "claim_token": None} for r in before["outbox"]]}
         assert upgraded == expected
@@ -108,8 +108,8 @@ async def test_legacy_rows_upgrade_parity_recovery_and_downgrade(
         # Controlled rollback rehearsal with consumers stopped and all identities retired.
         await asyncio.to_thread(command.downgrade, Config("alembic.ini"), "20260825_0024")
         commands.append("alembic downgrade 20260825_0024 (no active consumers)")
-        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "head")
-        commands.append("alembic upgrade head")
+        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "20260908_0025")
+        commands.append("alembic upgrade 20260908_0025")
         assert await snapshot(db) == final
         evidence(
             request,

@@ -38,6 +38,14 @@ class Settings(BaseSettings):
 
     webhook_max_body_bytes: int = Field(default=1_048_576, alias="WEBHOOK_MAX_BODY_BYTES")
 
+    inbox_poll_interval_seconds: float = Field(
+        default=1.0, alias="INBOX_POLL_INTERVAL_SECONDS", gt=0
+    )
+    inbox_batch_size: int = Field(default=10, alias="INBOX_BATCH_SIZE", ge=1, le=100)
+    inbox_claim_timeout_seconds: int = Field(default=120, alias="INBOX_CLAIM_TIMEOUT_SECONDS", ge=1)
+    inbox_max_attempts: int = Field(default=5, alias="INBOX_MAX_ATTEMPTS", ge=1, le=100)
+    inbox_max_backoff_seconds: int = Field(default=300, alias="INBOX_MAX_BACKOFF_SECONDS", ge=0)
+
     outbox_poll_interval_seconds: float = Field(default=1.0, alias="OUTBOX_POLL_INTERVAL_SECONDS")
     outbox_batch_size: int = Field(default=10, alias="OUTBOX_BATCH_SIZE")
     outbox_sending_timeout_seconds: int = Field(default=120, alias="OUTBOX_SENDING_TIMEOUT_SECONDS")

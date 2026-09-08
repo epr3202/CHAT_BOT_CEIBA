@@ -508,10 +508,26 @@ async def run_worker() -> None:
         try:
             await asyncio.gather(
                 _run_outbox_loop(sessionmaker, sender, settings),
+                _run_inbox_loop(sessionmaker, settings),
                 _run_payment_evidence_loop(sessionmaker, settings),
             )
         finally:
             await engine.dispose()
+
+
+async def _run_inbox_loop(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    from app.channel.inbox import process_inbox_once
+
+    while True:
+        try:
+            counts = await process_inbox_once(sessionmaker, settings=settings)
+            logger.info("inbox_poll_completed", **counts)
+        except Exception as error:
+            logger.error("inbox_poll_failed", error_type=type(error).__name__)
+        await asyncio.sleep(settings.inbox_poll_interval_seconds)
 
 
 async def _run_outbox_loop(

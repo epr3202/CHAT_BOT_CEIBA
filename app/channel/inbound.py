@@ -8,6 +8,7 @@ from typing import Any, Literal
 import structlog
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -15,7 +16,7 @@ from app.ai.client import OpenRouterIntentClient
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
-from app.channel.models import Message, MessageProviderStatus, Outbox, WebhookEvent
+from app.channel.models import InboxJob, Message, MessageProviderStatus, Outbox, WebhookEvent
 from app.channel.schemas import InboundWhatsAppMessage
 from app.channel.states import Channel
 from app.config.settings import Settings, get_settings
@@ -31,10 +32,10 @@ from app.handoff.service import create_handoff
 from app.orchestrator.service import (
     SENSITIVE_HANDOFF_INTENTS,
     VISIT_INTENTS,
-    OrchestrationInput,
     enqueue_template,
-    orchestrate_inbound_message,
 )
+from app.orchestrator.service import OrchestrationInput as OrchestrationInput
+from app.orchestrator.service import orchestrate_inbound_message as orchestrate_inbound_message
 from app.payment.service import create_payment_evidence_for_open_handoff
 
 logger = structlog.get_logger(__name__)
@@ -105,39 +106,10 @@ async def store_webhook_event(
 async def process_webhook_event(
     webhook_event_id: int,
     sessionmaker: async_sessionmaker[AsyncSession],
-) -> None:
-    payload: dict[str, Any] | None = None
-    request_id: uuid.UUID | None = None
-    try:
-        async with sessionmaker() as session:
-            async with session.begin():
-                webhook_event = await session.get(WebhookEvent, webhook_event_id)
-                if webhook_event is None:
-                    logger.error("webhook_event_missing", webhook_event_id=webhook_event_id)
-                    return
-                if webhook_event.status == "PROCESSED":
-                    return
-                payload = webhook_event.payload
-                request_id = parse_request_id(webhook_event.request_id)
+) -> dict[str, int]:
+    from app.channel.inbox import process_event
 
-        persisted_messages = await persist_payload_phase_a(
-            payload,
-            sessionmaker,
-            request_id=request_id,
-        )
-        await classify_and_orchestrate_phase_b_c(
-            persisted_messages,
-            sessionmaker,
-            request_id=request_id,
-            webhook_event_id=webhook_event_id,
-        )
-    except Exception as error:
-        await mark_webhook_event_failed(webhook_event_id, sessionmaker, error)
-        logger.error(
-            "webhook_event_processing_failed",
-            webhook_event_id=webhook_event_id,
-            error=str(error),
-        )
+    return await process_event(webhook_event_id, sessionmaker)
 
 
 async def mark_webhook_event_processed(
@@ -193,7 +165,7 @@ async def process_whatsapp_payload_in_session(
     for status in provider_statuses:
         await record_provider_status_in_session(status, session, request_id=request_id)
 
-    for inbound_message in inbound_messages:
+    for inbound_message in sorted(inbound_messages, key=lambda item: item.phone_number):
         persisted = await persist_inbound_message_in_session(
             inbound_message,
             session,
@@ -234,7 +206,7 @@ async def persist_payload_phase_a_in_session(
         await record_provider_status_in_session(status, session, request_id=request_id)
 
     persisted_messages: list[PersistedInboundMessage] = []
-    for inbound_message in inbound_messages:
+    for inbound_message in sorted(inbound_messages, key=lambda item: item.phone_number):
         persisted = await persist_inbound_message_in_session(
             inbound_message,
             session,
@@ -246,87 +218,45 @@ async def persist_payload_phase_a_in_session(
     return persisted_messages
 
 
+@dataclass(frozen=True)
+class ClassifiedTurn:
+    classification: IntentClassification | None
+    ai_error_reason: AIErrorReason | None
+    decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"]
+    directed_event_type: str | None
+    services_resolution_failed: bool
+    confidence_entity_rescued: bool
+
+
 async def classify_and_orchestrate_phase_b_c(
     persisted_messages: list[PersistedInboundMessage],
     sessionmaker: async_sessionmaker[AsyncSession],
     request_id: uuid.UUID | None,
     webhook_event_id: int | None,
 ) -> None:
-    if not persisted_messages:
-        async with sessionmaker() as session:
-            async with session.begin():
-                await mark_webhook_event_processed(webhook_event_id, session)
-        return
+    from app.channel.inbox import process_message_ids, refresh_event
 
+    await process_message_ids(sessionmaker, [item.message_id for item in persisted_messages])
+    if webhook_event_id is not None:
+        await refresh_event(sessionmaker, webhook_event_id)
+
+
+async def classify_message(
+    persisted: PersistedInboundMessage,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    request_id: uuid.UUID | None,
+) -> ClassifiedTurn:
     settings = get_settings()
-    for persisted in persisted_messages:
-        if await message_already_orchestrated(sessionmaker, persisted.message_id):
-            continue
-        if await route_non_text_message(
-            persisted,
-            sessionmaker,
-            settings=settings,
-            request_id=request_id,
-        ):
-            continue
-
-        classification: IntentClassification | None = None
-        ai_error_reason: AIErrorReason | None = None
-        services_resolution_failed = False
-        services_pending = persisted.context.get("pending_action") == "COLLECT_SERVICES"
-        if services_pending:
-            service_codes = match_requested_services(persisted.message_text)
-            decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = (
-                "DETERMINISTIC" if service_codes is not None else "LLM"
-            )
-            if service_codes is None:
-                async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
-                    try:
-                        classification = await classifier.classify_intent(
-                            persisted.message_text,
-                            context=persisted.context,
-                            conversation_id=persisted.conversation_id,
-                            request_id=request_id,
-                            external_message_id=persisted.external_message_id,
-                        )
-                    except AIUnavailable as error:
-                        ai_error_reason = error.reason
-                        decision_source = "FALLBACK"
-                    if (
-                        classification is not None
-                        and classification.primary_intent
-                        not in SENSITIVE_HANDOFF_INTENTS | VISIT_INTENTS
-                    ):
-                        try:
-                            service_codes = await classifier.classify_services(
-                                persisted.message_text,
-                                context=persisted.context,
-                                conversation_id=persisted.conversation_id,
-                                request_id=request_id,
-                                external_message_id=persisted.external_message_id,
-                            )
-                        except AIUnavailable:
-                            service_codes = []
-                        services_resolution_failed = not service_codes
-                        classification = services_turn_classification(
-                            persisted.message_text,
-                            service_codes or [],
-                        )
-            else:
-                classification = services_turn_classification(
-                    persisted.message_text,
-                    service_codes,
-                )
-        else:
-            classification = deterministic_confirmation_classification(
-                persisted.message_text,
-                persisted.context,
-            )
-            decision_source = "DETERMINISTIC"
-        directed_event_type: str | None = None
-        confidence_entity_rescued = False
-        if classification is None:
-            decision_source = "LLM"
+    classification: IntentClassification | None = None
+    ai_error_reason: AIErrorReason | None = None
+    services_resolution_failed = False
+    services_pending = persisted.context.get("pending_action") == "COLLECT_SERVICES"
+    if services_pending:
+        service_codes = match_requested_services(persisted.message_text)
+        decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = (
+            "DETERMINISTIC" if service_codes is not None else "LLM"
+        )
+        if service_codes is None:
             async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
                 try:
                     classification = await classifier.classify_intent(
@@ -339,80 +269,100 @@ async def classify_and_orchestrate_phase_b_c(
                 except AIUnavailable as error:
                     ai_error_reason = error.reason
                     decision_source = "FALLBACK"
-
-        if (
-            classification is not None
-            and decision_source == "LLM"
-            and should_extract_event_type(persisted.context, classification)
-        ):
-            async with OpenRouterIntentClient(settings, sessionmaker) as extractor:
-                try:
-                    directed_event_type = await extractor.extract_event_type(
+                if (
+                    classification is not None
+                    and classification.primary_intent
+                    not in SENSITIVE_HANDOFF_INTENTS | VISIT_INTENTS
+                ):
+                    try:
+                        service_codes = await classifier.classify_services(
+                            persisted.message_text,
+                            context=persisted.context,
+                            conversation_id=persisted.conversation_id,
+                            request_id=request_id,
+                            external_message_id=persisted.external_message_id,
+                        )
+                    except AIUnavailable:
+                        service_codes = []
+                    services_resolution_failed = not service_codes
+                    classification = services_turn_classification(
                         persisted.message_text,
-                        context=persisted.context,
-                        conversation_id=persisted.conversation_id,
-                        request_id=request_id,
-                        external_message_id=persisted.external_message_id,
+                        service_codes or [],
                     )
-                except AIUnavailable as error:
-                    logger.warning(
-                        "event_type_extraction_unavailable",
-                        conversation_id=persisted.conversation_id,
-                        request_id=str(request_id) if request_id is not None else None,
-                        reason=error.reason.value,
-                    )
-        if classification is not None:
-            classification = directed_event_type_bridge_classification(
+        else:
+            classification = services_turn_classification(
                 persisted.message_text,
-                persisted.context,
-                classification,
-                directed_event_type,
+                service_codes,
             )
-            rescued_classification = uncertain_event_type_entity_rescue_classification(
-                persisted.context,
-                classification,
-                uncertain_threshold=settings.ai_confidence_uncertain,
-                probable_threshold=settings.ai_confidence_probable,
-                safe_threshold=settings.ai_confidence_safe,
-            )
-            confidence_entity_rescued = rescued_classification is not classification
-            classification = rescued_classification
-
-        async with sessionmaker() as session:
-            async with session.begin():
-                if await outbox_exists_for_message(session, persisted.message_id):
-                    continue
-                message = await session.get(Message, persisted.message_id)
-                conversation = await session.get(
-                    Conversation,
-                    persisted.conversation_id,
-                    with_for_update=True,
+    else:
+        classification = deterministic_confirmation_classification(
+            persisted.message_text,
+            persisted.context,
+        )
+        decision_source = "DETERMINISTIC"
+    directed_event_type: str | None = None
+    confidence_entity_rescued = False
+    if classification is None:
+        decision_source = "LLM"
+        async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
+            try:
+                classification = await classifier.classify_intent(
+                    persisted.message_text,
+                    context=persisted.context,
+                    conversation_id=persisted.conversation_id,
+                    request_id=request_id,
+                    external_message_id=persisted.external_message_id,
                 )
-                customer = await session.get(Customer, persisted.customer_id)
-                if message is None or conversation is None or customer is None:
-                    raise ValueError("Persisted inbound message cannot be reloaded")
-                await orchestrate_inbound_message(
-                    session,
-                    settings,
-                    sessionmaker,
-                    OrchestrationInput(
-                        conversation=conversation,
-                        customer=customer,
-                        inbound_message=message,
-                        message_text=persisted.message_text,
-                        request_id=request_id,
-                        decision_source=decision_source,
-                        directed_event_type=directed_event_type,
-                        services_resolution_failed=services_resolution_failed,
-                        confidence_entity_rescued=confidence_entity_rescued,
-                    ),
-                    classification=classification,
-                    ai_error_reason=ai_error_reason,
-                )
+            except AIUnavailable as error:
+                ai_error_reason = error.reason
+                decision_source = "FALLBACK"
 
-    async with sessionmaker() as session:
-        async with session.begin():
-            await mark_webhook_event_processed(webhook_event_id, session)
+    if (
+        classification is not None
+        and decision_source == "LLM"
+        and should_extract_event_type(persisted.context, classification)
+    ):
+        async with OpenRouterIntentClient(settings, sessionmaker) as extractor:
+            try:
+                directed_event_type = await extractor.extract_event_type(
+                    persisted.message_text,
+                    context=persisted.context,
+                    conversation_id=persisted.conversation_id,
+                    request_id=request_id,
+                    external_message_id=persisted.external_message_id,
+                )
+            except AIUnavailable as error:
+                logger.warning(
+                    "event_type_extraction_unavailable",
+                    conversation_id=persisted.conversation_id,
+                    request_id=str(request_id) if request_id is not None else None,
+                    reason=error.reason.value,
+                )
+    if classification is not None:
+        classification = directed_event_type_bridge_classification(
+            persisted.message_text,
+            persisted.context,
+            classification,
+            directed_event_type,
+        )
+        rescued_classification = uncertain_event_type_entity_rescue_classification(
+            persisted.context,
+            classification,
+            uncertain_threshold=settings.ai_confidence_uncertain,
+            probable_threshold=settings.ai_confidence_probable,
+            safe_threshold=settings.ai_confidence_safe,
+        )
+        confidence_entity_rescued = rescued_classification is not classification
+        classification = rescued_classification
+
+    return ClassifiedTurn(
+        classification,
+        ai_error_reason,
+        decision_source,
+        directed_event_type,
+        services_resolution_failed,
+        confidence_entity_rescued,
+    )
 
 
 async def message_already_orchestrated(
@@ -420,7 +370,10 @@ async def message_already_orchestrated(
     message_id: int,
 ) -> bool:
     async with sessionmaker() as session:
-        return await outbox_exists_for_message(session, message_id)
+        status = await session.scalar(
+            select(InboxJob.status).where(InboxJob.message_id == message_id)
+        )
+        return status == "COMPLETED"
 
 
 async def outbox_exists_for_message(session: AsyncSession, message_id: int) -> bool:
@@ -428,96 +381,86 @@ async def outbox_exists_for_message(session: AsyncSession, message_id: int) -> b
     return outbox_id is not None
 
 
-async def route_non_text_message(
+async def route_non_text_in_session(
+    session: AsyncSession,
     persisted: PersistedInboundMessage,
+    message: Message,
+    conversation: Conversation,
+    customer: Customer,
     sessionmaker: async_sessionmaker[AsyncSession],
     *,
     settings: Settings,
     request_id: uuid.UUID | None,
 ) -> bool:
-    """Route channel-specific payloads before any classifier can see them."""
     if (
         persisted.message_type in {"text", "interactive", "button"}
         and persisted.message_text.strip()
     ):
         return False
-
     media_types = {"image", "document", "audio", "video"}
     caption = media_caption(persisted.content, persisted.message_type)
-    async with sessionmaker() as session:
-        async with session.begin():
-            message = await session.get(Message, persisted.message_id)
-            conversation = await session.get(
-                Conversation,
-                persisted.conversation_id,
-                with_for_update=True,
-            )
-            customer = await session.get(Customer, persisted.customer_id)
-            if message is None or conversation is None or customer is None:
-                raise ValueError("Persisted inbound message cannot be reloaded")
+    payment_context = await has_open_payment_handoff(session, conversation.id)
+    session.add(
+        build_non_text_audit(
+            message,
+            payment_context=payment_context,
+            request_id=request_id,
+        )
+    )
 
-            payment_context = await has_open_payment_handoff(session, conversation.id)
-            session.add(
-                build_non_text_audit(
-                    message,
-                    payment_context=payment_context,
-                    request_id=request_id,
-                )
-            )
+    if persisted.message_type in media_types and caption:
+        return False
 
-            if persisted.message_type in media_types and caption:
-                return False
+    response_code: str | None = None
+    if persisted.message_type in {"image", "document"} and payment_context:
+        await create_payment_evidence_for_open_handoff(
+            session,
+            conversation,
+            customer,
+            message,
+            request_id=request_id,
+        )
+        response_code = "RESP-PAYMENT-002"
+    elif persisted.message_type == "image":
+        response_code = "RESP-FILE-001"
+    elif persisted.message_type == "document":
+        response_code = "RESP-FILE-004"
+    elif persisted.message_type == "video":
+        response_code = "RESP-FILE-005"
+    elif persisted.message_type == "audio":
+        response_code = "RESP-FILE-003"
+    elif persisted.message_type in {
+        "text",
+        "interactive",
+        "button",
+        "location",
+        "contacts",
+    }:
+        response_code = "RESP-FALLBACK-001"
+    elif persisted.message_type in {"unsupported", "unknown"}:
+        detail = handoff_detail_for_non_text(message)
+        await create_handoff(
+            session,
+            conversation,
+            customer,
+            reason="OTHER",
+            priority="NORMAL",
+            request_id=str(request_id) if request_id is not None else None,
+            settings=settings,
+            detail=detail,
+        )
+        response_code = "RESP-FALLBACK-001"
 
-            response_code: str | None = None
-            if persisted.message_type in {"image", "document"} and payment_context:
-                await create_payment_evidence_for_open_handoff(
-                    session,
-                    conversation,
-                    customer,
-                    message,
-                    request_id=request_id,
-                )
-                response_code = "RESP-PAYMENT-002"
-            elif persisted.message_type == "image":
-                response_code = "RESP-FILE-001"
-            elif persisted.message_type == "document":
-                response_code = "RESP-FILE-004"
-            elif persisted.message_type == "video":
-                response_code = "RESP-FILE-005"
-            elif persisted.message_type == "audio":
-                response_code = "RESP-FILE-003"
-            elif persisted.message_type in {
-                "text",
-                "interactive",
-                "button",
-                "location",
-                "contacts",
-            }:
-                response_code = "RESP-FALLBACK-001"
-            elif persisted.message_type in {"unsupported", "unknown"}:
-                detail = handoff_detail_for_non_text(message)
-                await create_handoff(
-                    session,
-                    conversation,
-                    customer,
-                    reason="OTHER",
-                    priority="NORMAL",
-                    request_id=str(request_id) if request_id is not None else None,
-                    settings=settings,
-                    detail=detail,
-                )
-                response_code = "RESP-FALLBACK-001"
-
-            if response_code is not None:
-                await enqueue_template(
-                    session,
-                    sessionmaker,
-                    conversation,
-                    customer,
-                    message,
-                    response_code,
-                    {},
-                )
+    if response_code is not None:
+        await enqueue_template(
+            session,
+            sessionmaker,
+            conversation,
+            customer,
+            message,
+            response_code,
+            {},
+        )
     return True
 
 
@@ -715,30 +658,55 @@ async def persist_inbound_message_in_session(
     sessionmaker: async_sessionmaker[AsyncSession] | None = None,
     request_id: uuid.UUID | None = None,
 ) -> PersistedInboundMessage | None:
-    try:
-        async with session.begin_nested():
-            customer = await get_or_create_customer(session, inbound_message.phone_number)
-            conversation = await get_or_create_active_conversation(session, customer)
-            message = Message(
-                external_message_id=inbound_message.external_message_id,
-                conversation_id=conversation.id,
-                customer_id=customer.id,
-                channel=Channel.WHATSAPP,
-                direction="INBOUND",
-                message_type=inbound_message.message_type,
-                content=inbound_message.storage_content(),
-                provider_timestamp=inbound_message.provider_timestamp,
+    # Serialize first-contact creation on the unique phone row, before conversation/job locks.
+    customer = await get_or_create_customer(session, inbound_message.phone_number)
+    existing = await session.scalar(
+        select(Message).where(Message.external_message_id == inbound_message.external_message_id)
+    )
+    if existing is not None:
+        if existing.direction != "INBOUND" or existing.customer_id != customer.id:
+            raise ValueError("Inbound external identity conflicts with another message")
+        conversation = await session.get(Conversation, existing.conversation_id)
+        job = await session.scalar(select(InboxJob).where(InboxJob.message_id == existing.id))
+        if job is None:
+            # Selected legacy duplicate is ambiguous; never infer success or replay from Outbox.
+            session.add(
+                InboxJob(
+                    message_id=existing.id,
+                    conversation_id=existing.conversation_id,
+                    status="REVIEW",
+                    origin="LEGACY",
+                    last_error="LEGACY_UNPROVEN",
+                    request_id=str(request_id) if request_id else None,
+                )
             )
-            session.add(message)
-            await session.flush()
-            return persisted_message_from_models(message, conversation)
-    except IntegrityError:
-        logger.info(
-            "whatsapp_message_duplicate",
-            external_message_id=inbound_message.external_message_id,
-            request_id=request_id,
+            return None
+        if job.status == "COMPLETED":
+            return None
+        return persisted_message_from_models(existing, conversation)
+    conversation = await get_or_create_active_conversation(session, customer)
+    message = Message(
+        external_message_id=inbound_message.external_message_id,
+        conversation_id=conversation.id,
+        customer_id=customer.id,
+        channel=Channel.WHATSAPP,
+        direction="INBOUND",
+        message_type=inbound_message.message_type,
+        content=inbound_message.storage_content(),
+        provider_timestamp=inbound_message.provider_timestamp,
+    )
+    session.add(message)
+    # Other IntegrityError (including a cross-customer external ID race) remains a real failure.
+    await session.flush()
+    session.add(
+        InboxJob(
+            message_id=message.id,
+            conversation_id=conversation.id,
+            request_id=str(request_id) if request_id else None,
         )
-        return None
+    )
+    await session.flush()
+    return persisted_message_from_models(message, conversation)
 
 
 def persisted_message_from_models(
@@ -850,9 +818,7 @@ def uncertain_event_type_entity_rescue_classification(
     for entity in classification.extracted_entities:
         if entity.entity != "event_type":
             continue
-        normalized_event_type = normalize_event_type(
-            entity.normalized_value or entity.raw_value
-        )
+        normalized_event_type = normalize_event_type(entity.normalized_value or entity.raw_value)
         if (
             entity.quality_status in {"PROVIDED", "CORRECTED"}
             and not entity.needs_confirmation
@@ -998,14 +964,14 @@ def extract_text_body(content: dict[str, Any]) -> str:
 
 
 async def get_or_create_customer(session: AsyncSession, phone_number: str) -> Customer:
-    customer = await session.scalar(select(Customer).where(Customer.phone_number == phone_number))
-    if customer is not None:
-        return customer
-
-    customer = Customer(phone_number=phone_number)
-    session.add(customer)
-    await session.flush()
-    return customer
+    await session.execute(
+        insert(Customer)
+        .values(phone_number=phone_number)
+        .on_conflict_do_nothing(index_elements=[Customer.phone_number])
+    )
+    return await session.scalar(
+        select(Customer).where(Customer.phone_number == phone_number).with_for_update()
+    )
 
 
 async def get_or_create_active_conversation(
@@ -1081,7 +1047,10 @@ async def record_provider_status_in_session(
                     payload=status_payload,
                 )
             )
-    except IntegrityError:
+    except IntegrityError as error:
+        constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
+        if constraint != "uq_provider_status":
+            raise
         logger.info(
             "whatsapp_status_duplicate",
             provider_message_id=provider_message_id,

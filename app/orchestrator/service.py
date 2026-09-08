@@ -64,6 +64,7 @@ from app.event.validation import (
 from app.handoff.service import create_handoff
 from app.lead.budget import calculate_budget_range, parse_cop_amount
 from app.lead.models import Lead
+from app.orchestrator.inbox_effects import defer_agenda_service
 from app.orchestrator.slot_filling import (
     QUESTION_CODE_BY_ACTION,
     CaptureProgress,
@@ -1705,19 +1706,19 @@ async def move_to_appointment_date(
 
 
 def visit_scheduling_service(settings: Settings, sessionmaker: Any) -> VisitSchedulingService:
-    return VisitSchedulingService(
+    return defer_agenda_service(VisitSchedulingService(
         sessionmaker=sessionmaker,
         calendar_adapter=get_calendar_adapter(settings),
         freebusy_calendar_ids=freebusy_calendar_ids(settings),
-    )
+    ))
 
 
 def availability_service(settings: Settings, sessionmaker: Any) -> AvailabilityService:
-    return AvailabilityService(
+    return defer_agenda_service(AvailabilityService(
         sessionmaker=sessionmaker,
         calendar_adapter=get_calendar_adapter(settings),
         freebusy_calendar_ids=freebusy_calendar_ids(settings),
-    )
+    ))
 
 
 def freebusy_calendar_ids(settings: Settings) -> list[str]:
