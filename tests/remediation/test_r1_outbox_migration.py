@@ -10,6 +10,7 @@ import pytest
 from alembic.config import Config
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from alembic import command
 from app.audit.models import AuditEvent
@@ -29,7 +30,8 @@ async def test_legacy_rows_upgrade_parity_recovery_and_downgrade(
     legacy_claimed_at: Any,
 ) -> None:
     # The reused fixture creates and attests a fresh UUID database, then upgrades to head.
-    engine = create_async_engine(migrated_database_url)
+    # Alembic changes schema through another engine; do not reuse prepared SELECT * plans.
+    engine = create_async_engine(migrated_database_url, poolclass=NullPool)
     db = async_sessionmaker(engine, expire_on_commit=False)
     commands = ["fixture: alembic upgrade head"]
     try:
@@ -54,13 +56,15 @@ async def test_legacy_rows_upgrade_parity_recovery_and_downgrade(
                         recipient_phone_number, payload, message_kind, status, attempts,
                         claimed_at, sent_at, last_error, created_at)
                     SELECT conversation_id, message_id, channel, recipient_phone_number,
-                        payload, message_kind, :state, 2, :claimed,
-                        CASE WHEN :state='SENT' THEN :now ELSE NULL END,
-                        CASE WHEN :state='FAILED' THEN 'synthetic terminal' ELSE NULL END, :now
+                        payload, message_kind, CAST(:state AS varchar(32)), 2,
+                        CAST(:claimed AS timestamptz), CAST(:sent AS timestamptz),
+                        CAST(:error AS varchar(1000)), CAST(:now AS timestamptz)
                     FROM outbox WHERE id=1
                 """),
                     {
                         "state": state,
+                        "sent": T0 if state == "SENT" else None,
+                        "error": "synthetic terminal" if state == "FAILED" else None,
                         "claimed": legacy_claimed_at if state == "SENDING" else None,
                         "now": T0,
                     },
