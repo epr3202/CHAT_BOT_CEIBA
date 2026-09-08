@@ -72,6 +72,11 @@ class Results:
 
 
 def main() -> None:
+    if sys.version_info[:2] != (3, 12) or Path("/source/.env").exists():
+        raise SystemExit("Wrong runtime or unsafe source")
+    os.chdir("/source")
+    sys.path.insert(0, "/source")
+    OUT.mkdir(exist_ok=True)
     import httpx
 
     names = (
@@ -98,11 +103,6 @@ def main() -> None:
             "cancelled_error": [c.__name__ for c in asyncio.CancelledError.__mro__],
         },
     )
-    if sys.version_info[:2] != (3, 12) or Path("/source/.env").exists():
-        raise SystemExit("Wrong runtime or unsafe source")
-    os.chdir("/source")
-    sys.path.insert(0, "/source")
-    OUT.mkdir(exist_ok=True)
     summary: dict[str, Any] = dict(
         base_sha=os.environ["BASE_SHA"],
         candidate_sha=os.environ["CANDIDATE_SHA"],
