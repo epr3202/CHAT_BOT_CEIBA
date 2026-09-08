@@ -1,0 +1,10 @@
+[
+  "tests/remediation/r3/test_r3_red.py::test_main_transport_contract[ConnectError]",
+  "tests/remediation/r3/test_r3_red.py::test_main_transport_contract[ReadError]",
+  "tests/remediation/r3/test_r3_red.py::test_main_transport_contract[VALID]",
+  "tests/remediation/r3/test_r3_red.py::test_new_inbox_turn_degrades_locally[ConnectError]",
+  "tests/remediation/r3/test_r3_red.py::test_new_inbox_turn_degrades_locally[ReadError]",
+  "tests/remediation/r3/test_r3_red.py::test_new_inbox_turn_degrades_locally[VALID]",
+  "tests/remediation/r3/test_r3_red.py::test_reached_auxiliary_transport_degrades_by_its_contract[EVENT_TYPE_EXTRACTION]",
+  "tests/remediation/r3/test_r3_red.py::test_reached_auxiliary_transport_degrades_by_its_contract[SERVICES_CLASSIFICATION]"
+]

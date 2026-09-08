@@ -1,0 +1,20 @@
+[
+  "app/ai/client.py",
+  ".github/workflows/remediation-r3-ai.yml",
+  "tests/remediation/r3/helpers.py",
+  "tests/remediation/r3/test_r3_red.py",
+  "tests/remediation/r3/test_r3_client.py",
+  "tests/remediation/r3/test_r3_flow.py",
+  "docs/architecture.md",
+  "docs/decisions.md",
+  "docs/changelog.md",
+  "docs/pending_tasks.md",
+  "docs/remediation/r3-h04-ai-2026-09-08/README.md",
+  "scripts/quality/r3/run_ci.py",
+  "scripts/quality/r3/driver.py",
+  "scripts/quality/r3/source_manifest.json",
+  "scripts/quality/r3/baseline_manifest.json",
+  "scripts/quality/r3/r2_nodes.json",
+  "scripts/quality/r3/new_nodes.json",
+  "scripts/quality/r3/allowed_paths.json"
+]
