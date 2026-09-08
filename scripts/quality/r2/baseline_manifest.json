@@ -1,0 +1,1085 @@
+{
+  "r1_base_sha": "66a398124c007bdc54895fe891601e470910ce8e",
+  "files": {
+    ".env.example": {
+      "git_blob": "47a9a7a89bbd86012e80804bcf36fb72c44b9b72",
+      "mode": "100644"
+    },
+    ".github/workflows/audit-v0.yml": {
+      "git_blob": "7a42167c9ed90718385a43ec25ec9aab4c2d45f0",
+      "mode": "100644"
+    },
+    ".github/workflows/deploy.yml": {
+      "git_blob": "d4ff1e0fbb48af27e2532d2401950a3d1387a15f",
+      "mode": "100644"
+    },
+    ".github/workflows/quality-r0.yml": {
+      "git_blob": "ff7c4ef6ae37923c1312a7c43080cfb95dfcd78b",
+      "mode": "100644"
+    },
+    ".github/workflows/remediation-r1-outbox.yml": {
+      "git_blob": "48385f0bcd8e3cb5d198d2fe48e97f6a2c034ee8",
+      "mode": "100644"
+    },
+    ".gitignore": {
+      "git_blob": "ae12d4f170981f25f090a227674f4413ae31bc63",
+      "mode": "100644"
+    },
+    "AGENTS.md": {
+      "git_blob": "d7a28a79bdf1f106f2b379492ef1969590786f23",
+      "mode": "100644"
+    },
+    "Dockerfile": {
+      "git_blob": "9caa1d6046b0dd3370b13becf56f882f67d760d0",
+      "mode": "100644"
+    },
+    "Makefile": {
+      "git_blob": "f77dd1791c084a1443e4522e7b7a25ff40b0a00a",
+      "mode": "100644"
+    },
+    "README.md": {
+      "git_blob": "aca5cbe289818d539a023ed6bc552bdc30213d4e",
+      "mode": "100644"
+    },
+    "alembic.ini": {
+      "git_blob": "9571c5ad04680c6c3b5d13759b81f56a9af1947a",
+      "mode": "100644"
+    },
+    "alembic/env.py": {
+      "git_blob": "cbb2fe3c43231bb9f7740e4ac3125d7ef4c633ef",
+      "mode": "100644"
+    },
+    "alembic/script.py.mako": {
+      "git_blob": "c310f66f290325a7c677cdddd950bde54b6357e0",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0001_initial_webhook_tables.py": {
+      "git_blob": "dcf3e3407830fdd6dcaa1ebd7a75f84047a58926",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0002_outbox_worker_fields.py": {
+      "git_blob": "9486f9e867df65bfa4df7b59406e718c7e416e0a",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0003_outbox_claim_send_settle.py": {
+      "git_blob": "47d6ceb8d89a2cf921281fe2ec605837780e6d1f",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0004_webhook_event_inbox.py": {
+      "git_blob": "aa3af58a9ff3f961c777986336dd87ca3069f66b",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0005_conversation_state_channel.py": {
+      "git_blob": "6a2fb13a01b548b00c68f548bc84f2ca68562ee0",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0006_ai_execution.py": {
+      "git_blob": "4e932f0c5666f07a6f3a36e29550b70a35e94831",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0007_knowledge_entry.py": {
+      "git_blob": "f9284a48dc720a0fa97ae840d95a125976750e4e",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0008_orchestrator_context_handoff.py": {
+      "git_blob": "2becbcba22d2698a7277d21c204c5a7313e67113",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0009_handoff_admin_contract.py": {
+      "git_blob": "e1ee62ae828a6eef378c859199dd8f8bbeb185fe",
+      "mode": "100644"
+    },
+    "alembic/versions/20260810_0010_pending_confirmation_actions.py": {
+      "git_blob": "e464f11dba20f66308660cc43b152221e19586a0",
+      "mode": "100644"
+    },
+    "alembic/versions/20260812_0011_agent_identity.py": {
+      "git_blob": "bbab351fda00d42c4cc06a1a3ed5a08abc11e4e2",
+      "mode": "100644"
+    },
+    "alembic/versions/20260812_0012_agent_sessions.py": {
+      "git_blob": "bf6b2e786d7114e8dad2f72fa0ac10635436f2b4",
+      "mode": "100644"
+    },
+    "alembic/versions/20260813_0013_quote_capture_models.py": {
+      "git_blob": "3a3ba95b98f03263b52f8cfc9fcee0be8de855fc",
+      "mode": "100644"
+    },
+    "alembic/versions/20260813_0014_catalog_assets.py": {
+      "git_blob": "cd3c6674be8e51e9aa6ab4711e4611cf6a24d50b",
+      "mode": "100644"
+    },
+    "alembic/versions/20260813_0015_catalog_recovery_baseline.py": {
+      "git_blob": "39b28b720842382bcb3419ee0677d3f90715baaa",
+      "mode": "100644"
+    },
+    "alembic/versions/20260813_0016_catalog_event_type_send_mode.py": {
+      "git_blob": "31150d5031c1912eae9807816c1380ee6d8cc1fe",
+      "mode": "100644"
+    },
+    "alembic/versions/20260813_0017_appointment_holiday_blocked_date.py": {
+      "git_blob": "118e41af34b63c375376e51c5bf347d339014bf9",
+      "mode": "100644"
+    },
+    "alembic/versions/20260819_0018_visit_conversation_draft.py": {
+      "git_blob": "9c24833ce51b50b53f1f839ef7d3fd5736019e3c",
+      "mode": "100644"
+    },
+    "alembic/versions/20260819_0019_catalog_capture_pending_action_constraint.py": {
+      "git_blob": "fde4af2ae93fe763bb515387fc210c9bb467e05f",
+      "mode": "100644"
+    },
+    "alembic/versions/20260819_0020_gender_reveal_event_type.py": {
+      "git_blob": "e17b98416fd9d0a71504d16ffe258b05b537ec9e",
+      "mode": "100644"
+    },
+    "alembic/versions/20260819_0021_catalog_handoff_reasons.py": {
+      "git_blob": "d3d97371354c1687833282bf72f7bd4ddad8cc1f",
+      "mode": "100644"
+    },
+    "alembic/versions/20260821_0022_ai_execution_observability.py": {
+      "git_blob": "5a8c8962232df8aac7deed4b4a4db5872b265459",
+      "mode": "100644"
+    },
+    "alembic/versions/20260824_0023_pr_b1_capture_context.py": {
+      "git_blob": "9fe9a2d6dca55156709ae896ec4be6c5ca5bbc7f",
+      "mode": "100644"
+    },
+    "alembic/versions/20260825_0024_payment_evidence.py": {
+      "git_blob": "dec26420df94024dd9156a2cad3d2ddcad6b7aa7",
+      "mode": "100644"
+    },
+    "alembic/versions/20260908_0025_outbox_claim_token.py": {
+      "git_blob": "1bd42345e56d64cb8e2cd082b53155cc705e4245",
+      "mode": "100644"
+    },
+    "app/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/admin/__init__.py": {
+      "git_blob": "4aa305f6036cfff9dae016c782ee5dc6815718b7",
+      "mode": "100644"
+    },
+    "app/admin/routes.py": {
+      "git_blob": "39fc96b2acaba6daf5de200cdd3e34385939e2da",
+      "mode": "100644"
+    },
+    "app/agent/__init__.py": {
+      "git_blob": "69fec6397b138d196507b72860643fa2ab14a69c",
+      "mode": "100644"
+    },
+    "app/agent/auth.py": {
+      "git_blob": "1848575ad2247742ff1847a1de4f88f12df01f3c",
+      "mode": "100644"
+    },
+    "app/agent/models.py": {
+      "git_blob": "0522de39b6e6a2ea23a76ab90cac6e09f324bf15",
+      "mode": "100644"
+    },
+    "app/ai/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/ai/client.py": {
+      "git_blob": "b1cc3c6fbe2e7c46fcc6c81cbb2464aaa97e95a8",
+      "mode": "100644"
+    },
+    "app/ai/errors.py": {
+      "git_blob": "5cd375d3050651a7c584b3fe42ab5f081b9080d8",
+      "mode": "100644"
+    },
+    "app/ai/models.py": {
+      "git_blob": "10211a5879764b0f530595de414f4172a46e677f",
+      "mode": "100644"
+    },
+    "app/ai/prompts/__init__.py": {
+      "git_blob": "362b6ad742384c69d71473388618a3161fc4759b",
+      "mode": "100644"
+    },
+    "app/ai/prompts/event_type_extraction_v1.py": {
+      "git_blob": "26d06462c6e12b95bbd4ee1cef47b42203b6e610",
+      "mode": "100644"
+    },
+    "app/ai/prompts/intent_v1.py": {
+      "git_blob": "6318f391ee713afe1a2034e418aba62aba125a7d",
+      "mode": "100644"
+    },
+    "app/ai/prompts/intent_v2.py": {
+      "git_blob": "87716e037272629f5a4e15bfc26ff6ce59d25201",
+      "mode": "100644"
+    },
+    "app/ai/prompts/intent_v3.py": {
+      "git_blob": "68f7dd791c00471fe68d8b479f7da56bc3ea56cd",
+      "mode": "100644"
+    },
+    "app/ai/prompts/intent_v4.py": {
+      "git_blob": "2e5651dc03896d5313ba0a19a9f4fcb80dcb424e",
+      "mode": "100644"
+    },
+    "app/ai/prompts/services_v1.py": {
+      "git_blob": "5cea4a5311de1adadfbbaec5001cc02af583eec8",
+      "mode": "100644"
+    },
+    "app/ai/schemas.py": {
+      "git_blob": "ea6eb677c52fdffc6955953877f973365b293098",
+      "mode": "100644"
+    },
+    "app/appointment/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/appointment/models.py": {
+      "git_blob": "c9861f39327b7b85621b12a26107016e384c8de2",
+      "mode": "100644"
+    },
+    "app/appointment/service.py": {
+      "git_blob": "296f056e7ead2c6eaf7faa40c44da91fe7403453",
+      "mode": "100644"
+    },
+    "app/audit/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/audit/models.py": {
+      "git_blob": "f78ab1d36a861efde9d3b750e68fe9a15c63f25c",
+      "mode": "100644"
+    },
+    "app/calendar/__init__.py": {
+      "git_blob": "12daffae13d9cfd99209442df15e2b5b551a48c8",
+      "mode": "100644"
+    },
+    "app/calendar/adapter.py": {
+      "git_blob": "cb29bb69f61053cea3b1646b3686f6a513c240d6",
+      "mode": "100644"
+    },
+    "app/calendar/google_adapter.py": {
+      "git_blob": "f52efac86ee2be333c53dbe00547db6784dfd80f",
+      "mode": "100644"
+    },
+    "app/catalog/__init__.py": {
+      "git_blob": "22be09acb35df85fe9ea88807c106b2bae79b39a",
+      "mode": "100644"
+    },
+    "app/catalog/models.py": {
+      "git_blob": "cc1129fa7d44c5ff7753254116587b5489fb1fdc",
+      "mode": "100644"
+    },
+    "app/catalog/service.py": {
+      "git_blob": "b8ff1b47de160c40545934cd760888882492819b",
+      "mode": "100644"
+    },
+    "app/channel/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/channel/inbound.py": {
+      "git_blob": "b3db7f15577b3b44773e70a57794e58601029b98",
+      "mode": "100644"
+    },
+    "app/channel/media.py": {
+      "git_blob": "7d8a61f0e93b6b75d745bb3173e692923ebf4d18",
+      "mode": "100644"
+    },
+    "app/channel/models.py": {
+      "git_blob": "12cf7327339f59a10827caa3890d3e7949d27da3",
+      "mode": "100644"
+    },
+    "app/channel/outbound.py": {
+      "git_blob": "133ef827dbdde238a4359e69f760f82ae18dd3ff",
+      "mode": "100644"
+    },
+    "app/channel/schemas.py": {
+      "git_blob": "1778df11543cfac8c84c03835dca1aeee1f2cc20",
+      "mode": "100644"
+    },
+    "app/channel/states.py": {
+      "git_blob": "9ac4f508a93321333a75891b0bed052b66ca2690",
+      "mode": "100644"
+    },
+    "app/channel/webhook.py": {
+      "git_blob": "f9c987f1352758b12d993f7ca87fe3feaec56a49",
+      "mode": "100644"
+    },
+    "app/channel/worker.py": {
+      "git_blob": "9d9fcfc7ef13b93a254d81bec656d5daa30ff035",
+      "mode": "100644"
+    },
+    "app/config/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/config/database.py": {
+      "git_blob": "71a52e2fa16101263e4b03c4f5a066f21a8bed55",
+      "mode": "100644"
+    },
+    "app/config/logging.py": {
+      "git_blob": "37d3c75804f96672daee775f6a57cb03feae71d3",
+      "mode": "100644"
+    },
+    "app/config/settings.py": {
+      "git_blob": "927e397f9416f9fbab1553d4e5d667eda49fa836",
+      "mode": "100644"
+    },
+    "app/conversation/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/conversation/catalog_event_type.py": {
+      "git_blob": "e645f764da43ba2c4821177459f7a3368d9b0e9a",
+      "mode": "100644"
+    },
+    "app/conversation/confirmation.py": {
+      "git_blob": "8dd1f8b12aecbca49e1879c2fea3bfcdb383e844",
+      "mode": "100644"
+    },
+    "app/conversation/faq_catalog.py": {
+      "git_blob": "57226bf30443ce8d8b931ac21667245c6411bccf",
+      "mode": "100644"
+    },
+    "app/conversation/knowledge.py": {
+      "git_blob": "1671ba9bd66b2f04f41070895516ce3deb63ea8c",
+      "mode": "100644"
+    },
+    "app/conversation/models.py": {
+      "git_blob": "03a96045ae97d83fe65ad948d9d5678648e694f5",
+      "mode": "100644"
+    },
+    "app/conversation/pending_actions.py": {
+      "git_blob": "106a5c8aa78ff4116aef7d9e4e3ec06def645bd7",
+      "mode": "100644"
+    },
+    "app/conversation/presentation.py": {
+      "git_blob": "b9c9f8ee475a2170f24200951198419ac66ed5cd",
+      "mode": "100644"
+    },
+    "app/conversation/service.py": {
+      "git_blob": "e90a6995575ff022fe749b994a1409e4d0e8faf5",
+      "mode": "100644"
+    },
+    "app/conversation/services_catalog.py": {
+      "git_blob": "00ede76e7d3725a1c730e9cec80ff782985117c8",
+      "mode": "100644"
+    },
+    "app/conversation/states.py": {
+      "git_blob": "23aa10713ffa7018166f5b80d2f5fa41ccfc936d",
+      "mode": "100644"
+    },
+    "app/customer/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/customer/models.py": {
+      "git_blob": "bf9d30dfe2d81363dea4d80063932785f1a78fb2",
+      "mode": "100644"
+    },
+    "app/event/event_type.py": {
+      "git_blob": "e8f015e884a05cbe1cd5373cffdd08f793fd193f",
+      "mode": "100644"
+    },
+    "app/event/models.py": {
+      "git_blob": "a6e33e524933efb1780ebfde1f4edac483acfc1b",
+      "mode": "100644"
+    },
+    "app/event/validation.py": {
+      "git_blob": "f673f8643f4765877f35d70f449e8c4912456744",
+      "mode": "100644"
+    },
+    "app/handoff/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/handoff/models.py": {
+      "git_blob": "f0271b481129e3b7a7b324e6fbfc28f4cba9e28f",
+      "mode": "100644"
+    },
+    "app/handoff/service.py": {
+      "git_blob": "80fc498a15c0657b9d00ebf029dedf95c1ed531d",
+      "mode": "100644"
+    },
+    "app/lead/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/lead/budget.py": {
+      "git_blob": "8b93c98f4c6ba38700837f366746ea94b0af7063",
+      "mode": "100644"
+    },
+    "app/lead/models.py": {
+      "git_blob": "c5327adf3034b3f1442e44d709c1d824f1cbb14e",
+      "mode": "100644"
+    },
+    "app/main.py": {
+      "git_blob": "79f7f5b1305fa9143683ad7d972abb4740e3c846",
+      "mode": "100644"
+    },
+    "app/models_registry.py": {
+      "git_blob": "9b3bee0744633972d4264b2f211634ba2e422395",
+      "mode": "100644"
+    },
+    "app/orchestrator/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "app/orchestrator/service.py": {
+      "git_blob": "cde6f13e51d535882dbe758a21bef0fac99cd4b0",
+      "mode": "100644"
+    },
+    "app/orchestrator/slot_filling.py": {
+      "git_blob": "3a96c9ffd22c31f9b6467d04c4f89fc50a997d44",
+      "mode": "100644"
+    },
+    "app/payment/__init__.py": {
+      "git_blob": "1def988d3d4dc4af4095987199cccc8cbe7eb5d0",
+      "mode": "100644"
+    },
+    "app/payment/models.py": {
+      "git_blob": "1673041fdef8f6ecba38998c2405488e3f3feb23",
+      "mode": "100644"
+    },
+    "app/payment/service.py": {
+      "git_blob": "64009cb0e09e7f5ce0f1ed93a79fe8208330658c",
+      "mode": "100644"
+    },
+    "app/payment/worker.py": {
+      "git_blob": "8ccbb24f1513fb3c14150d54a172c84ec39dbc4f",
+      "mode": "100644"
+    },
+    "app/quote/models.py": {
+      "git_blob": "14350573545938c0d9ad083486a96754b8d46b7d",
+      "mode": "100644"
+    },
+    "app/scheduling/__init__.py": {
+      "git_blob": "ad9d66def9f041ed26d188aba6008e2ad7a1dedc",
+      "mode": "100644"
+    },
+    "app/scheduling/availability.py": {
+      "git_blob": "24da280eea4cad67d6f70d5f14c607e201c73329",
+      "mode": "100644"
+    },
+    "chat_bot_ceiba.egg-info/PKG-INFO": {
+      "git_blob": "d3b741f3603859c983979753ecc8a10c0ffd42c3",
+      "mode": "100644"
+    },
+    "chat_bot_ceiba.egg-info/SOURCES.txt": {
+      "git_blob": "5c99b55f3efd5b9b6de2de8a07056939e3f1d270",
+      "mode": "100644"
+    },
+    "chat_bot_ceiba.egg-info/dependency_links.txt": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "chat_bot_ceiba.egg-info/requires.txt": {
+      "git_blob": "df22d03f7269979b9bb9a7512592e6d3b5fdd20e",
+      "mode": "100644"
+    },
+    "chat_bot_ceiba.egg-info/top_level.txt": {
+      "git_blob": "b80f0bd60822d4fa4893de455958ef32f6c521bf",
+      "mode": "100644"
+    },
+    "data/__init__.py": {
+      "git_blob": "0c7a663ec2a114725406c93ba286068e4c40917b",
+      "mode": "100644"
+    },
+    "data/knowledge_seed.py": {
+      "git_blob": "691282ccb1cc71110a7a93117fe1efb4d5a237db",
+      "mode": "100644"
+    },
+    "deploy.sh": {
+      "git_blob": "a058e86a880b1257db225b5662a4785572e48984",
+      "mode": "100755"
+    },
+    "docker-compose.yml": {
+      "git_blob": "65b4aaa247dca5b730566d0dd551ea368890349b",
+      "mode": "100644"
+    },
+    "docs/architecture.md": {
+      "git_blob": "06736a49bf392eecda3c943d78f21b0a9cb5d323",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-actions/README.md": {
+      "git_blob": "d67187dd2487f486d8638ea5f8549cc6ac2b83c9",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-actions/audit_db_probes.py": {
+      "git_blob": "cd74660eda427c9d08ebb2665029a48e53bcfd4c",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-actions/ci_driver.py": {
+      "git_blob": "7efc525a7d623ba3c27eda8aac1800b33598d595",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-actions/integrated_flows.py": {
+      "git_blob": "c8897d86a7b1392bcbfddb70a27dafd87035e6b3",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-actions/product_manifest.json": {
+      "git_blob": "4c42e82092d3b947a5f903468f8c3129cd3ff09a",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-actions/provenance.json": {
+      "git_blob": "ad62cb330b83e33e9a870de80717be9925c6a427",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-actions/run_ci.py": {
+      "git_blob": "526a704d4d057ecdd8cb021d740edfb4164b6698",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/README.md": {
+      "git_blob": "d339b7c42eededa6d86c4fce2fd1b884b11febd1",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/audit_db_probes.py": {
+      "git_blob": "cd74660eda427c9d08ebb2665029a48e53bcfd4c",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/case_manifest.json": {
+      "git_blob": "b8a3d40f96b81198b6dabcebdbb6dd216ceb2399",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/ci_driver.py": {
+      "git_blob": "7efc525a7d623ba3c27eda8aac1800b33598d595",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/claim_probe.py": {
+      "git_blob": "381d1b1c71fb8feb1991493117b007359c3adcdc",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/diagnostic_driver.py": {
+      "git_blob": "e74bc338740db32341f8cfb1696b027248b0fff6",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/diagnostic_plugin.py": {
+      "git_blob": "a4702294e8523fd9c990755f6c5013ac995a0e68",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/product_manifest.json": {
+      "git_blob": "4c42e82092d3b947a5f903468f8c3129cd3ff09a",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/provenance.json": {
+      "git_blob": "ea43de5ea2464f2a820283775ad676047eff2ff4",
+      "mode": "100644"
+    },
+    "docs/audits/2026-09-07-8935687-v0-diagnostico/run_ci.py": {
+      "git_blob": "43ba371f4b6a17263b8b11802e088a66399f222f",
+      "mode": "100644"
+    },
+    "docs/changelog.md": {
+      "git_blob": "d67ad8ff79c8638721e6d2c5a582a0de5eca9fc8",
+      "mode": "100644"
+    },
+    "docs/conversation/approved-responses.md": {
+      "git_blob": "fd834372272735307c03f0e5c6ea8d9b8598dbf6",
+      "mode": "100644"
+    },
+    "docs/conversation/entities.md": {
+      "git_blob": "4a3f3e54a2d60df9fd48bb17cd0f8f0b34b4e485",
+      "mode": "100644"
+    },
+    "docs/conversation/flows.md": {
+      "git_blob": "d6e99322f3677b7f1e8b0c2e881d771e57534567",
+      "mode": "100644"
+    },
+    "docs/conversation/intents.md": {
+      "git_blob": "b67b12739d7a59b97ed5fe5381ff226c8ebd1412",
+      "mode": "100644"
+    },
+    "docs/conversation/states.md": {
+      "git_blob": "d07b0707703acd3f48ea2a1715c261a4b587afaf",
+      "mode": "100644"
+    },
+    "docs/decisions.md": {
+      "git_blob": "7be821c1353a1d1f66a3108000a135a436e2df71",
+      "mode": "100644"
+    },
+    "docs/handoff/handoff-2026-08-21-pr-a.md": {
+      "git_blob": "aaa1550c64a8b701b6e2bd5f25d18de4a6de5c19",
+      "mode": "100644"
+    },
+    "docs/pending_tasks.md": {
+      "git_blob": "1c9fd31812ebdc46beabe9afda9a1533f97dbd8a",
+      "mode": "100644"
+    },
+    "docs/product/ai-execution-observability.md": {
+      "git_blob": "0dd8360c6a7b7c6973798cceaf038a100bed3a00",
+      "mode": "100644"
+    },
+    "docs/product/business-rules.md": {
+      "git_blob": "00df3886de0ffabb4a83f8294a8dd5fa24c0d6b7",
+      "mode": "100644"
+    },
+    "docs/product/data-matrix.md": {
+      "git_blob": "003dea49a9ee4dab132c092ade8db615da37182d",
+      "mode": "100644"
+    },
+    "docs/product/scope.md": {
+      "git_blob": "eaba6d8d87e70b5ee49b6274de894e3d0dba0899",
+      "mode": "100644"
+    },
+    "docs/product/services-catalog.md": {
+      "git_blob": "0d251f56100c32cd26d46760bc5c8961fb100ffc",
+      "mode": "100644"
+    },
+    "docs/product/use-cases.md": {
+      "git_blob": "9847328cb6278a6bc437e32644036f829cfa8609",
+      "mode": "100644"
+    },
+    "docs/product/vision.md": {
+      "git_blob": "6b064d5fdda1caa8fc9b4abcd418f88d8709edfe",
+      "mode": "100644"
+    },
+    "docs/prompts/codex-prompt-m1.md": {
+      "git_blob": "4836895a96e1780ad2df6fdd107f25095705bfb4",
+      "mode": "100644"
+    },
+    "docs/prompts/codex-prompt-pr-b.md": {
+      "git_blob": "082c24054803952cba3b410c84eaac1c097316b9",
+      "mode": "100644"
+    },
+    "docs/prompts/codex-prompt-pr-b1.md": {
+      "git_blob": "00b0970c0bb60ac67fa38bf17e7c30231a5d3b55",
+      "mode": "100644"
+    },
+    "docs/prompts/codex-prompt-pr-b2.md": {
+      "git_blob": "0cfa34e1a1c25de0281c2dff88ff64ce185217e4",
+      "mode": "100644"
+    },
+    "docs/prompts/codex-prompt-pr-b3.md": {
+      "git_blob": "68a1604b3b32017218e4803ef78f10c6e8c44435",
+      "mode": "100644"
+    },
+    "docs/prompts/fix-event-type-label-fallback-prompt.md": {
+      "git_blob": "2afab0145c79d8f6e48325ee3ecac0e52e18a34c",
+      "mode": "100644"
+    },
+    "docs/prompts/fix-slot-presentation-boundary-prompt.md": {
+      "git_blob": "749ed53bea5c3fd6a0ee9b992c5a98d9f6bfcd5d",
+      "mode": "100644"
+    },
+    "docs/prompts/slice-2a-catalogos-prompt.md": {
+      "git_blob": "16f707ace46dc0561838b21500a90e2efc1a0b43",
+      "mode": "100644"
+    },
+    "docs/prompts/slice-2b1-agenda-prompt.md": {
+      "git_blob": "3a90932ef370241a8b164c7db66ac70341c2e382",
+      "mode": "100644"
+    },
+    "docs/prompts/slice-2b2-gcal-prompt.md": {
+      "git_blob": "6604da38437b0413061f599877858781959926c0",
+      "mode": "100644"
+    },
+    "docs/prompts/slice-2b3-wiring-prompt.md": {
+      "git_blob": "693b42d796954e442b91e4a2fb1354302ee83aee",
+      "mode": "100644"
+    },
+    "docs/quality/r0-2026-09-07/README.md": {
+      "git_blob": "99da3883b747a4fbdf44a15daecad96e8f7b6493",
+      "mode": "100644"
+    },
+    "docs/remediation/r1-h02-outbox-2026-09-08/README.md": {
+      "git_blob": "47ffe7a61fb64c80457a9f34b76ae640fd1cd5eb",
+      "mode": "100644"
+    },
+    "docs/review/knowledge-review.md": {
+      "git_blob": "f323bdf2f54d62858fe2468af5b4369ed5b4b764",
+      "mode": "100644"
+    },
+    "docs/testing/conversation-test-cases.md": {
+      "git_blob": "4032b896ecab562643a51280ce79aa728a0afd05",
+      "mode": "100644"
+    },
+    "frontend/README.md": {
+      "git_blob": "1291bc7458bf184b3e21e2868bc8d2a5056773ac",
+      "mode": "100644"
+    },
+    "frontend/app.js": {
+      "git_blob": "9b5cc791f243d0d84f2fd4baa615f5347aee87f7",
+      "mode": "100644"
+    },
+    "frontend/index.html": {
+      "git_blob": "6b6fe0bd584a924b7be8ee25fd48b6ad2cb42dae",
+      "mode": "100644"
+    },
+    "frontend/server.mjs": {
+      "git_blob": "7db3f92c1d534872bbdb63e6dade814b8a07b202",
+      "mode": "100644"
+    },
+    "frontend/styles.css": {
+      "git_blob": "df33735d939a674349d3b00800905b7f45d7bccc",
+      "mode": "100644"
+    },
+    "pyproject.toml": {
+      "git_blob": "6533ec5048b1cfc594b55bf901e5a8d5ff9ba62f",
+      "mode": "100644"
+    },
+    "scripts/chat_simulator.py": {
+      "git_blob": "30b1dd2ab75595ed3eb07b3b8775ebd7a9172d45",
+      "mode": "100644"
+    },
+    "scripts/check_gcal_access.py": {
+      "git_blob": "9c10d74e7312a9c5ae16acbd715b2db0a044a018",
+      "mode": "100644"
+    },
+    "scripts/create_admin.py": {
+      "git_blob": "75a4367dc223031cb9aae87a396bca794269f9e0",
+      "mode": "100644"
+    },
+    "scripts/export_knowledge_review.py": {
+      "git_blob": "1addada90ea2b11526a78bad214a96ecb5c517f3",
+      "mode": "100644"
+    },
+    "scripts/fake_meta_server.py": {
+      "git_blob": "54d5a88b10afaa3230c252496f4a8a634ca23085",
+      "mode": "100644"
+    },
+    "scripts/list_openrouter_models.py": {
+      "git_blob": "73845de8041dd69ebf0cb54d34df20d4a6175a84",
+      "mode": "100644"
+    },
+    "scripts/load_knowledge.py": {
+      "git_blob": "1857d5ca5a49bf98806d199f396b3eccb64ca4e5",
+      "mode": "100644"
+    },
+    "scripts/quality/r0/allowed_paths.json": {
+      "git_blob": "263dd2424ab29d1042afef08f6847503b96afe4b",
+      "mode": "100644"
+    },
+    "scripts/quality/r0/baseline_manifest.json": {
+      "git_blob": "cb1b3790c509ea8d828031b5dbdf5b8f818e4d20",
+      "mode": "100644"
+    },
+    "scripts/quality/r0/case_manifest.json": {
+      "git_blob": "b8a3d40f96b81198b6dabcebdbb6dd216ceb2399",
+      "mode": "100644"
+    },
+    "scripts/quality/r0/driver.py": {
+      "git_blob": "a083c4c01ed1331def044c3f2e42d85c3ec1acb5",
+      "mode": "100644"
+    },
+    "scripts/quality/r0/isolation.py": {
+      "git_blob": "689f07093ec576d0d569d45eaabdcf8b06ddc40b",
+      "mode": "100644"
+    },
+    "scripts/quality/r0/run_ci.py": {
+      "git_blob": "3c1c6ab6cc9ae14822b2f263d6365cf521d38d9e",
+      "mode": "100644"
+    },
+    "scripts/quality/r0/source_manifest.json": {
+      "git_blob": "4c42e82092d3b947a5f903468f8c3129cd3ff09a",
+      "mode": "100644"
+    },
+    "scripts/quality/r1/allowed_paths.json": {
+      "git_blob": "b851b1aaa5b3ef0cbec79efcca3c324adfbf2b11",
+      "mode": "100644"
+    },
+    "scripts/quality/r1/baseline_manifest.json": {
+      "git_blob": "392a88e13df3436f3b5a5bdec481a95bea47c8fc",
+      "mode": "100644"
+    },
+    "scripts/quality/r1/driver.py": {
+      "git_blob": "244acef898f9120df49563e3c037fafdef7885dd",
+      "mode": "100644"
+    },
+    "scripts/quality/r1/r0_nodes.json": {
+      "git_blob": "b8f4c09394933fdea76f5ec10c0f01b3263cf2dd",
+      "mode": "100644"
+    },
+    "scripts/quality/r1/run_ci.py": {
+      "git_blob": "a684b2ff9454e270867f6086da0a20a8001e7298",
+      "mode": "100644"
+    },
+    "scripts/quality/r1/source_manifest.json": {
+      "git_blob": "e7f7eb63589bbca7e074ce1ca90a84c133f1dd9c",
+      "mode": "100644"
+    },
+    "scripts/reprocess_webhook_events.py": {
+      "git_blob": "44e6b724c01122750157bdfb99c38ae5250d63cd",
+      "mode": "100644"
+    },
+    "scripts/reset_local_conversation.py": {
+      "git_blob": "b4d6dad899d48067a51ef011376113ee0da27a49",
+      "mode": "100644"
+    },
+    "scripts/seed_holidays.py": {
+      "git_blob": "b466cc0edaa186bee0cad02540b5b0d3d8e782d8",
+      "mode": "100644"
+    },
+    "scripts/simulate_webhook.py": {
+      "git_blob": "3e09edf27c30e90b81a7b7c8d1b06154c77aad90",
+      "mode": "100644"
+    },
+    "scripts/smoke_openrouter.py": {
+      "git_blob": "e82418b54da3d60ff4f32a693917f59d01158670",
+      "mode": "100644"
+    },
+    "scripts/sync_knowledge_versions.py": {
+      "git_blob": "82d29f5db7fb9ecf5cc07f1229a23708f8fc5974",
+      "mode": "100644"
+    },
+    "tests/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "tests/conftest.py": {
+      "git_blob": "3e1ba0d22f610767f0aafa23cfa3b3f15a0b104b",
+      "mode": "100644"
+    },
+    "tests/conversational/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "tests/conversational/test_slice1_adversarial.py": {
+      "git_blob": "cd4834702a594cf5545435a30ea7e02275ca9c49",
+      "mode": "100644"
+    },
+    "tests/conversational/test_slice3_quote_capture.py": {
+      "git_blob": "c6cdc556a5a9ac963c2e05998cd566136d5a690e",
+      "mode": "100644"
+    },
+    "tests/http_doubles.py": {
+      "git_blob": "fe3532619b3f40eb5de0e1940e1194a6e24a4331",
+      "mode": "100644"
+    },
+    "tests/integration/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "tests/integration/helpers.py": {
+      "git_blob": "d363c85b6aa04b04014cd3d73bfc34c83f8d7b87",
+      "mode": "100644"
+    },
+    "tests/integration/test_admin_appointments.py": {
+      "git_blob": "6dae0e631c6d87b407f0386ab487fb146c324640",
+      "mode": "100644"
+    },
+    "tests/integration/test_admin_handoff.py": {
+      "git_blob": "308afc8d4ceaf71ebae5a530e967be16801b3e6c",
+      "mode": "100644"
+    },
+    "tests/integration/test_ai_execution_migration_parity.py": {
+      "git_blob": "d40a9b65bb5fb073d242f695199b2f836a3ad4d4",
+      "mode": "100644"
+    },
+    "tests/integration/test_ai_execution_observability.py": {
+      "git_blob": "59337941da119a015cbb917adcba5be4311a82df",
+      "mode": "100644"
+    },
+    "tests/integration/test_auth_sessions.py": {
+      "git_blob": "da59b8db90b3e35b3a92d088e6b0e82771f73516",
+      "mode": "100644"
+    },
+    "tests/integration/test_outbox_worker.py": {
+      "git_blob": "a4a79d4f32b8bc808fa34738e2f4d7ac8d8992f0",
+      "mode": "100644"
+    },
+    "tests/integration/test_slice0_e2e.py": {
+      "git_blob": "c8d592a0cdc1e5a9e4a0f16b3f3248db0e5a9aed",
+      "mode": "100644"
+    },
+    "tests/integration/test_slice2_direct_takeover.py": {
+      "git_blob": "7e2483f419a60b57106d5a44ec3f31d3ee72c19d",
+      "mode": "100644"
+    },
+    "tests/integration/test_whatsapp_webhook.py": {
+      "git_blob": "b32964c66ffbe96f909c477ecae2159f89c4e6bf",
+      "mode": "100644"
+    },
+    "tests/quality/test_r0_preparation.py": {
+      "git_blob": "62e5b05b11eb1758d4668ff1f9f4ca0293811c29",
+      "mode": "100644"
+    },
+    "tests/remediation/test_r1_outbox.py": {
+      "git_blob": "a41600dade69d9e6117f6f47ab9de1fdc74f18de",
+      "mode": "100644"
+    },
+    "tests/remediation/test_r1_outbox_migration.py": {
+      "git_blob": "6930d8404caa6ca9b6840d42d99e77eae8f6acb8",
+      "mode": "100644"
+    },
+    "tests/remediation/test_r1_outbox_ownership.py": {
+      "git_blob": "b69210129b1ec63de56d7d023a16e66dd4ed6dda",
+      "mode": "100644"
+    },
+    "tests/smoke_deploy_reexec.sh": {
+      "git_blob": "2a50eed97126141984e19869e8c5a1fab9e59d1d",
+      "mode": "100644"
+    },
+    "tests/test_fix2a_catalog_capture_adversarial.py": {
+      "git_blob": "e74ce84844ab7441104d30705b64978d23e42b9e",
+      "mode": "100644"
+    },
+    "tests/test_pr_b1_trigger_interruptions_adversarial.py": {
+      "git_blob": "9f70228a66dd1b8187e45cb30199db51828d5c0a",
+      "mode": "100644"
+    },
+    "tests/test_pr_b2_confidence_entity_rescue_adversarial.py": {
+      "git_blob": "dc1f8033a37cef7705373f4a6e0967eb368abcc2",
+      "mode": "100644"
+    },
+    "tests/test_pr_b3_confirmation_uplift_adversarial.py": {
+      "git_blob": "31bb64aba5f7bbe68077e025ac90406cfa1b7c57",
+      "mode": "100644"
+    },
+    "tests/test_pr_b_event_type_extraction_adversarial.py": {
+      "git_blob": "4f13fe106f1d4109815790409ed2aa38e3afed18",
+      "mode": "100644"
+    },
+    "tests/test_pr_b_services_classification_adversarial.py": {
+      "git_blob": "bc0644fe633fe2166483329c6d1f0b3df29686f9",
+      "mode": "100644"
+    },
+    "tests/test_slice2a2_calendar_description_adversarial.py": {
+      "git_blob": "1ac209394a6cfd13593a7cf35c9283855b253f66",
+      "mode": "100644"
+    },
+    "tests/test_slice2a_catalogs_adversarial.py": {
+      "git_blob": "a1ef17ef540900d1bbea25f231d884e83599aed3",
+      "mode": "100644"
+    },
+    "tests/test_slice2b11_reschedule_calendar_adversarial.py": {
+      "git_blob": "20a01733c3e4875cb98c06fbf0708f8c45cd5791",
+      "mode": "100644"
+    },
+    "tests/test_slice2b1_agenda_adversarial.py": {
+      "git_blob": "5d3767eb53024ba030d395311ab0af35b113e902",
+      "mode": "100644"
+    },
+    "tests/test_slice2b2_gcal_adapter_adversarial.py": {
+      "git_blob": "da8f17d047cfcad9e716fd4e2d1dcd7059d50192",
+      "mode": "100644"
+    },
+    "tests/test_slice2b3_wiring_adversarial.py": {
+      "git_blob": "8f2638d885971a7fa0829558e94883630a702e88",
+      "mode": "100644"
+    },
+    "tests/test_slice2b3a_service_completion_adversarial.py": {
+      "git_blob": "3483ec953c8b8ffce9f4020014fd406167397586",
+      "mode": "100644"
+    },
+    "tests/test_w2a_inbound_media_adversarial.py": {
+      "git_blob": "4271c926aac062ea0a769fcade5e65497c6895a7",
+      "mode": "100644"
+    },
+    "tests/test_w2b_payment_evidence_adversarial.py": {
+      "git_blob": "857ed9787b463173816e9599d7f48e20be280858",
+      "mode": "100644"
+    },
+    "tests/unit/__init__.py": {
+      "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "mode": "100644"
+    },
+    "tests/unit/test_admin_auth.py": {
+      "git_blob": "ab609ff4af81d6fadd16053828df2e14b2fa7316",
+      "mode": "100644"
+    },
+    "tests/unit/test_ai_client.py": {
+      "git_blob": "7077cd6d3359026ab4b93c6b560dd14596c1e87f",
+      "mode": "100644"
+    },
+    "tests/unit/test_ai_schemas.py": {
+      "git_blob": "08f6366a4f63b4a4f4044a634959528e18219d1c",
+      "mode": "100644"
+    },
+    "tests/unit/test_availability.py": {
+      "git_blob": "b0e96573f5ebc41a76ad53b4507d1f62faa5b20b",
+      "mode": "100644"
+    },
+    "tests/unit/test_calendar_adapter.py": {
+      "git_blob": "26fc3c753eaccd6d2a83fca5a70093e70dd4b119",
+      "mode": "100644"
+    },
+    "tests/unit/test_catalog_capture_constraint_migration.py": {
+      "git_blob": "c907174d5483a1831a95aef26a5b35bda2ab3ac0",
+      "mode": "100644"
+    },
+    "tests/unit/test_conversation_states.py": {
+      "git_blob": "07e9659e9ce4f5e8ee769bde73667ef712550175",
+      "mode": "100644"
+    },
+    "tests/unit/test_event_type_normalization.py": {
+      "git_blob": "355c2335e2e8b1b1a7381ed4ce406b034805b03a",
+      "mode": "100644"
+    },
+    "tests/unit/test_export_knowledge_review.py": {
+      "git_blob": "0ceb3545dc0ed4056fe413a1afb6463dfe3d59ad",
+      "mode": "100644"
+    },
+    "tests/unit/test_frontend_contract.py": {
+      "git_blob": "af59fc7a15c48eba702915f74c1613270b0e4d67",
+      "mode": "100644"
+    },
+    "tests/unit/test_handoff_hours.py": {
+      "git_blob": "9515ada688e3708a896bbd55330cc307c9e649c0",
+      "mode": "100644"
+    },
+    "tests/unit/test_intent_prompts.py": {
+      "git_blob": "28752dedb20c6ceadae1e656d4e4a9f3865e0ce0",
+      "mode": "100644"
+    },
+    "tests/unit/test_knowledge.py": {
+      "git_blob": "807045a3243364325f12c5fde5178a6ca1c40d84",
+      "mode": "100644"
+    },
+    "tests/unit/test_local_sim_tools.py": {
+      "git_blob": "523bad1c770cc45df8c84e7bda98c15ba2a92114",
+      "mode": "100644"
+    },
+    "tests/unit/test_m1_services_retry_cycle.py": {
+      "git_blob": "266a2b4b38fceb8732f1b746b2c55226b00a0fc2",
+      "mode": "100644"
+    },
+    "tests/unit/test_media_hash.py": {
+      "git_blob": "c27aa9335101594c742d42685b8cb662869f54f0",
+      "mode": "100644"
+    },
+    "tests/unit/test_models_registry.py": {
+      "git_blob": "7bfb7079539d405ab15da1f017f88c066278691f",
+      "mode": "100644"
+    },
+    "tests/unit/test_orchestrator.py": {
+      "git_blob": "452a86ffa1941bb72971caab1a0a878fa62a58ea",
+      "mode": "100644"
+    },
+    "tests/unit/test_outbound.py": {
+      "git_blob": "1074c097ee7e321859a242ff3138ce58d172c384",
+      "mode": "100644"
+    },
+    "tests/unit/test_pending_actions.py": {
+      "git_blob": "feb9e7519530c6abce8b69ab2050c92307fa7b8c",
+      "mode": "100644"
+    },
+    "tests/unit/test_phone_normalization.py": {
+      "git_blob": "0e7f9b1b4e803ffe0fe6b1395aee1f6517da9d8e",
+      "mode": "100644"
+    },
+    "tests/unit/test_quote_capture_domain.py": {
+      "git_blob": "4e4ad7a445915e93bbad168c840b838c6a4f2a0a",
+      "mode": "100644"
+    },
+    "tests/unit/test_reset_local_conversation.py": {
+      "git_blob": "2a7be5e17c9708a821c39c1b8fc57755d3ecbf16",
+      "mode": "100644"
+    },
+    "tests/unit/test_seed_holidays.py": {
+      "git_blob": "ea90cdbf3d2a1e0c62a23b4ca1ac5080f0f57b98",
+      "mode": "100644"
+    },
+    "tests/unit/test_settings.py": {
+      "git_blob": "d76c604f91b282ede821b3d7acc551fd33d8cf9d",
+      "mode": "100644"
+    },
+    "tests/unit/test_slice2a2_enumerated_contracts.py": {
+      "git_blob": "c3059d1b770b3debeb6feadf13f1e8d7d909fc06",
+      "mode": "100644"
+    },
+    "tests/unit/test_slot_presentation_boundary.py": {
+      "git_blob": "1e50f5ed57d95de9a3ad83effd8cb3317b09af83",
+      "mode": "100644"
+    },
+    "tests/unit/test_sync_knowledge_versions.py": {
+      "git_blob": "422cd71b2dda8df778258a72db7be679fd21d178",
+      "mode": "100644"
+    }
+  }
+}
