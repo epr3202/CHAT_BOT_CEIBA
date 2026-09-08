@@ -201,6 +201,16 @@ def main() -> None:
         source_root = Path(app.__file__).resolve().parent
         if source_root != Path("/source/app"):
             raise RuntimeError("Imported product outside candidate source")
+        imported = {}
+        for name, module in list(sys.modules.items()):
+            if name.startswith(("app.", "tests.")) and getattr(module, "__file__", None):
+                path = Path(module.__file__).resolve()
+                if not path.is_relative_to(Path("/source") / name.split(".")[0]):
+                    raise RuntimeError("Imported application/test module outside candidate")
+                imported[name] = {
+                    "path": str(path),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
         write(
             "import_provenance.json",
             dict(
@@ -210,6 +220,7 @@ def main() -> None:
                 runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                 test_root="/source/tests",
                 diagnostic_plugin_loaded=False,
+                imported_modules=imported,
             ),
         )
         result = json.loads((OUT / "results.json").read_text())
@@ -227,6 +238,10 @@ def main() -> None:
         ]
         bad_phase = any(r["outcome"] != "passed" or r["wasxfail"] for r in result["results"])
         summary["incomplete_nodes"] = incomplete
+        new_nodes = [n for n in result["nodes"] if n.startswith("tests/remediation/")]
+        summary["r1_nodes"] = new_nodes
+        missing_r1 = len(new_nodes) != 37
+        summary["expected_r1_count"] = 37
         exit_code = int(
             bool(
                 code
@@ -236,6 +251,7 @@ def main() -> None:
                 or missing
                 or incomplete
                 or bad_phase
+                or missing_r1
             )
         )
     except Exception as error:

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
-from uuid import UUID
+from typing import Any, Literal, Protocol
+from uuid import UUID, uuid4
 
 import httpx
 import structlog
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.models_registry  # noqa: F401
@@ -21,6 +23,21 @@ from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
 
 logger = structlog.get_logger(__name__)
+
+
+SettlementOutcome = Literal["APPLIED", "DISCARDED"]
+
+
+@dataclass(frozen=True)
+class OutboxClaim:
+    """Detached acquisition snapshot. Never refresh its identity from the row."""
+
+    id: int
+    claim_token: UUID
+    recipient_phone_number: str
+    message_kind: str
+    payload: dict[str, Any]
+    catalog_asset_id: UUID | None
 
 
 class OutboundSender(Protocol):
@@ -39,7 +56,7 @@ async def claim_due_outbox_batch(
     sessionmaker: async_sessionmaker[AsyncSession],
     claimed_at: datetime,
     batch_size: int,
-) -> Sequence[Outbox]:
+) -> Sequence[OutboxClaim]:
     async with sessionmaker() as session:
         async with session.begin():
             result = await session.scalars(
@@ -53,10 +70,22 @@ async def claim_due_outbox_batch(
                 .with_for_update(skip_locked=True)
             )
             outbox_items = list(result.all())
+            claims = []
             for outbox_item in outbox_items:
                 outbox_item.status = "SENDING"
                 outbox_item.claimed_at = claimed_at
-        return outbox_items
+                outbox_item.claim_token = uuid4()
+                claims.append(
+                    OutboxClaim(
+                        id=outbox_item.id,
+                        claim_token=outbox_item.claim_token,
+                        recipient_phone_number=outbox_item.recipient_phone_number,
+                        message_kind=outbox_item.message_kind,
+                        payload=deepcopy(outbox_item.payload),
+                        catalog_asset_id=outbox_item.catalog_asset_id,
+                    )
+                )
+        return claims
 
 
 async def recover_stale_sending_outbox(
@@ -75,14 +104,20 @@ async def recover_stale_sending_outbox(
                 select(Outbox)
                 .where(
                     Outbox.status == "SENDING",
-                    Outbox.claimed_at.is_not(None),
-                    Outbox.claimed_at < stale_before,
+                    or_(
+                        Outbox.claimed_at < stale_before,
+                        and_(
+                            Outbox.claim_token.is_(None),
+                            Outbox.claimed_at.is_(None),
+                            Outbox.created_at < stale_before,
+                        ),
+                    ),
                 )
                 .order_by(Outbox.created_at)
                 .with_for_update(skip_locked=True)
             )
             for outbox_item in result.all():
-                await mark_outbox_failure(
+                await _mark_outbox_failure_locked(
                     session,
                     outbox_item,
                     TimeoutError("stale SENDING recovered by reaper"),
@@ -157,38 +192,38 @@ async def process_outbox_once(
 
 async def process_claimed_outbox_item(
     sessionmaker: async_sessionmaker[AsyncSession],
-    outbox_item: Outbox,
+    outbox_item: OutboxClaim,
     sender: OutboundSender,
     max_attempts: int,
     max_backoff_seconds: int,
-) -> None:
+) -> SettlementOutcome:
     try:
         if outbox_item.message_kind == "DOCUMENT":
-            await process_claimed_document_outbox_item(
+            return await process_claimed_document_outbox_item(
                 sessionmaker,
                 outbox_item,
                 sender,
                 max_attempts=max_attempts,
                 max_backoff_seconds=max_backoff_seconds,
             )
-            return
         body = extract_text_body(outbox_item)
         sent_at = datetime.now(UTC)
         provider_message_id = await sender.send_text(outbox_item.recipient_phone_number, body)
     except Exception as error:
-        await settle_outbox_failure(
+        return await settle_outbox_failure(
             sessionmaker,
             outbox_item.id,
             error,
             datetime.now(UTC),
+            claim_token=outbox_item.claim_token,
             max_attempts=max_attempts,
             max_backoff_seconds=max_backoff_seconds,
         )
-        return
 
-    await settle_outbox_success(
+    return await settle_outbox_success(
         sessionmaker,
         outbox_id=outbox_item.id,
+        claim_token=outbox_item.claim_token,
         body=body,
         provider_message_id=provider_message_id,
         sent_at=sent_at,
@@ -199,11 +234,11 @@ async def process_claimed_outbox_item(
 
 async def process_claimed_document_outbox_item(
     sessionmaker: async_sessionmaker[AsyncSession],
-    outbox_item: Outbox,
+    outbox_item: OutboxClaim,
     sender: OutboundSender,
     max_attempts: int,
     max_backoff_seconds: int,
-) -> None:
+) -> SettlementOutcome:
     media_service = MediaService(sessionmaker, get_settings(), sender)
     try:
         caption = extract_document_caption(outbox_item)
@@ -231,30 +266,31 @@ async def process_claimed_document_outbox_item(
             )
             sent_at = datetime.now(UTC)
     except PermanentCatalogMediaError as error:
-        await settle_outbox_failure(
+        return await settle_outbox_failure(
             sessionmaker,
             outbox_item.id,
             error,
             datetime.now(UTC),
+            claim_token=outbox_item.claim_token,
             max_attempts=max_attempts,
             max_backoff_seconds=max_backoff_seconds,
             permanent=True,
         )
-        return
     except Exception as error:
-        await settle_outbox_failure(
+        return await settle_outbox_failure(
             sessionmaker,
             outbox_item.id,
             error,
             datetime.now(UTC),
+            claim_token=outbox_item.claim_token,
             max_attempts=max_attempts,
             max_backoff_seconds=max_backoff_seconds,
         )
-        return
 
-    await settle_outbox_success(
+    return await settle_outbox_success(
         sessionmaker,
         outbox_id=outbox_item.id,
+        claim_token=outbox_item.claim_token,
         body=caption,
         provider_message_id=provider_message_id,
         sent_at=sent_at,
@@ -271,6 +307,31 @@ async def process_claimed_document_outbox_item(
     )
 
 
+async def _lock_owned_outbox(
+    session: AsyncSession,
+    outbox_id: int,
+    claim_token: UUID,
+    outcome: str,
+) -> Outbox | None:
+    """Ownership check and subsequent effects share the caller's transaction/row lock."""
+    row = await session.get(Outbox, outbox_id, with_for_update=True)
+    reason = (
+        "missing"
+        if row is None
+        else "invalid_identity"
+        if not isinstance(claim_token, UUID)
+        else "not_sending"
+        if row.status != "SENDING"
+        else "identity_mismatch"
+        if row.claim_token != claim_token
+        else None
+    )
+    if reason is not None:
+        logger.info("outbox_result_discarded", outbox_id=outbox_id, outcome=outcome, reason=reason)
+        return None
+    return row
+
+
 async def settle_outbox_success(
     sessionmaker: async_sessionmaker[AsyncSession],
     outbox_id: int,
@@ -281,17 +342,18 @@ async def settle_outbox_success(
     max_backoff_seconds: int,
     message_type: str = "text",
     content: dict[str, object] | None = None,
-) -> None:
+    *,
+    claim_token: UUID,
+) -> SettlementOutcome:
     async with sessionmaker() as session:
         async with session.begin():
-            outbox_item = await session.get(Outbox, outbox_id, with_for_update=True)
+            outbox_item = await _lock_owned_outbox(session, outbox_id, claim_token, "success")
             if outbox_item is None:
-                logger.warning("outbox_missing_during_success_settle", outbox_id=outbox_id)
-                return
+                return "DISCARDED"
 
             inbound_message = await session.get(Message, outbox_item.message_id)
             if inbound_message is None:
-                await mark_outbox_failure(
+                await _mark_outbox_failure_locked(
                     session,
                     outbox_item,
                     RuntimeError(f"Input message {outbox_item.message_id} does not exist"),
@@ -299,9 +361,10 @@ async def settle_outbox_success(
                     max_attempts=max_attempts,
                     max_backoff_seconds=max_backoff_seconds,
                 )
-                return
+                return "APPLIED"
 
             outbox_item.status = "SENT"
+            outbox_item.claim_token = None
             outbox_item.sent_at = sent_at
             outbox_item.claimed_at = None
             outbox_item.next_attempt_at = None
@@ -324,6 +387,8 @@ async def settle_outbox_success(
                     )
                 )
 
+    return "APPLIED"
+
 
 async def settle_outbox_failure(
     sessionmaker: async_sessionmaker[AsyncSession],
@@ -333,14 +398,15 @@ async def settle_outbox_failure(
     max_attempts: int,
     max_backoff_seconds: int,
     permanent: bool = False,
-) -> None:
+    *,
+    claim_token: UUID,
+) -> SettlementOutcome:
     async with sessionmaker() as session:
         async with session.begin():
-            outbox_item = await session.get(Outbox, outbox_id, with_for_update=True)
+            outbox_item = await _lock_owned_outbox(session, outbox_id, claim_token, "failure")
             if outbox_item is None:
-                logger.warning("outbox_missing_during_failure_settle", outbox_id=outbox_id)
-                return
-            await mark_outbox_failure(
+                return "DISCARDED"
+            await _mark_outbox_failure_locked(
                 session,
                 outbox_item,
                 error,
@@ -350,8 +416,10 @@ async def settle_outbox_failure(
                 permanent=permanent,
             )
 
+    return "APPLIED"
 
-async def mark_outbox_failure(
+
+async def _mark_outbox_failure_locked(
     session: AsyncSession,
     outbox_item: Outbox,
     error: Exception,
@@ -360,6 +428,8 @@ async def mark_outbox_failure(
     max_backoff_seconds: int,
     permanent: bool = False,
 ) -> None:
+    # Only called with a row lock by verified settlement or the expiry reaper.
+    outbox_item.claim_token = None
     outbox_item.attempts += 1
     outbox_item.last_error = str(error)[:1000]
     outbox_item.claimed_at = None
@@ -400,7 +470,7 @@ async def mark_outbox_failure(
     )
 
 
-def extract_text_body(outbox_item: Outbox) -> str:
+def extract_text_body(outbox_item: OutboxClaim) -> str:
     text = outbox_item.payload.get("text")
     if isinstance(text, dict):
         body = text.get("body")
@@ -409,7 +479,7 @@ def extract_text_body(outbox_item: Outbox) -> str:
     raise ValueError(f"Outbox {outbox_item.id} does not contain text.body")
 
 
-def extract_document_caption(outbox_item: Outbox) -> str:
+def extract_document_caption(outbox_item: OutboxClaim) -> str:
     document = outbox_item.payload.get("document")
     if isinstance(document, dict):
         caption = document.get("caption")
@@ -418,7 +488,7 @@ def extract_document_caption(outbox_item: Outbox) -> str:
     raise ValueError(f"Outbox {outbox_item.id} does not contain document.caption")
 
 
-def document_catalog_asset_id(outbox_item: Outbox) -> UUID:
+def document_catalog_asset_id(outbox_item: OutboxClaim) -> UUID:
     if outbox_item.catalog_asset_id is None:
         raise ValueError(f"Outbox {outbox_item.id} does not reference a catalog asset")
     return outbox_item.catalog_asset_id
