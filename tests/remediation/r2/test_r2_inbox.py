@@ -18,6 +18,8 @@ from app.channel import inbound, inbox
 from app.config.settings import get_settings
 from app.conversation.models import Conversation
 from app.customer.models import Customer
+from app.event.models import Event
+from app.lead.models import Lead
 from app.orchestrator import service as orchestrator
 from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries
@@ -44,10 +46,11 @@ async def snapshot(db: Any) -> dict[str, Any]:
             "conversation",
             "customer",
             "lead",
+            "event",
             "handoff",
             "payment_evidence",
         ):
-            order = "lead_id" if name == "lead" else "id"
+            order = name + "_id" if name in {"lead", "event"} else "id"
             result[name] = [
                 dict(r)
                 for r in (
@@ -502,6 +505,11 @@ async def test_agenda_runs_outside_locks_and_uncertainty_is_not_retried(
         conversation = await session.get(Conversation, 1)
         customer = await session.get(Customer, 1)
         customer.full_name = "Synthetic Customer"
+        lead = Lead(customer_id=customer.id, channel="WHATSAPP")
+        session.add(lead)
+        await session.flush()
+        session.add(Event(lead_id=lead.lead_id))
+        conversation.active_lead_id = lead.lead_id
         conversation.state = "APPOINTMENT_PENDING_CONFIRMATION"
         conversation.pending_action = "CONFIRM_APPOINTMENT"
         conversation.last_question_code = "RESP-VISIT-CONFIRM-001"
@@ -511,6 +519,7 @@ async def test_agenda_runs_outside_locks_and_uncertainty_is_not_retried(
             "visit_time": "08:00:00",
             "attendee_count": 2,
             "visit_reason": "synthetic",
+            "resume": {},
         }
 
     class Calendar(FakeCalendarAdapter):
