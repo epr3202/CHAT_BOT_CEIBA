@@ -1,0 +1,8 @@
+[
+  "tests/remediation/r4/test_r4_red.py::test_explicit_request_is_independent_of_ai[active]",
+  "tests/remediation/r4/test_r4_red.py::test_explicit_request_is_independent_of_ai[services]",
+  "tests/remediation/r4/test_r4_red.py::test_unrecognized_control_keeps_existing_ai_path[ordinary]",
+  "tests/remediation/r4/test_r4_red.py::test_unrecognized_control_keeps_existing_ai_path[transport]",
+  "tests/remediation/r4/test_r4_red.py::test_unrecognized_control_keeps_existing_ai_path[negated]",
+  "tests/remediation/r4/test_r4_red.py::test_unrecognized_control_keeps_existing_ai_path[quoted]"
+]
