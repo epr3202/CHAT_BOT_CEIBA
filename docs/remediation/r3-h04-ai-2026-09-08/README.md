@@ -71,3 +71,26 @@ sobre el VPS ni autorizacion de produccion.
 
 Informe final, matriz y ZIP descargados pueden quedar solo locales despues del CI;
 el cierre distinguira esos archivos de los publicados en el candidato.
+
+## Implementacion candidata y reproduccion verificada
+
+El intento 34250301495 solo detecto un fallo de preparacion del driver R3 (escritura
+de jerarquia antes de crear /quality-output); sus artefactos se conservan y no
+cuentan como reproduccion H04. Corregido solo ese orden, el RED
+`7629d4bc38f8d9f2fa8e1a51342805d073bf2bf4`, run 34250711362, acredita en el focal
+79 casos: 73 PASS y 6 FAIL, con 79 setup/call/teardown completos. Pasan los 71 R1/R2
+y los dos controles validos; fallan dos contratos del cliente, dos flujos BOT_ACTIVE
+y ambas tareas auxiliares. Las excepciones escaparon sin normalizar y los trabajos
+quedaron PENDING; no son fallos de fixture, tabla ni dobles HTTP.
+
+El cambio de producto se limita a client.py: captura explicita de NetworkError,
+RemoteProtocolError y ProxyError en _post_with_retries; sanitizacion del detalle de
+timeout/estado HTTP/transporte y del warning best-effort de persistencia. No cambia
+AIUnavailable, enum, modelos, prompts, defaults, consumidores ni esquema. Una
+escritura SQL fallida de AIExecution no reemplaza el resultado de la tarea.
+
+65 casos R3 forman la matriz candidata: 8 criterios RED intactos, 37 contratos de
+cliente y 20 controles de flujo/propiedad. Se exige 706 + 65 en suite y 71 + 65 en
+focal, sin sumar el focal de nuevo. La cifra deriva de las familias comprobadas y
+se valida por lista exacta de nodos. El control de varias salidas legitimas tambien
+permanece en las regresiones R2 retenidas, sin imponer unicidad por entrada.

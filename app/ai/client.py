@@ -227,8 +227,9 @@ class OpenRouterIntentClient:
                 logger.warning(
                     "ai_execution_persist_failed",
                     request_id=str(request_id) if request_id is not None else None,
+                    conversation_id=conversation_id,
                     task=task,
-                    error=str(persistence_error),
+                    error=type(persistence_error).__name__,
                 )
 
     def _build_payload(
@@ -283,14 +284,24 @@ class OpenRouterIntentClient:
             except httpx.TimeoutException as error:
                 last_timeout = error
                 if attempt + 1 >= attempts:
-                    raise AIUnavailable(AIErrorReason.TIMEOUT, str(error)) from error
+                    raise AIUnavailable(AIErrorReason.TIMEOUT, type(error).__name__) from error
+                continue
+            except (httpx.NetworkError, httpx.RemoteProtocolError, httpx.ProxyError) as error:
+                # These failures belong to the provider call. Configuration/protocol misuse,
+                # cancellation and programming/guard errors keep their existing propagation.
+                if attempt + 1 >= attempts:
+                    raise AIUnavailable(
+                        AIErrorReason.HTTP_ERROR, f"TRANSPORT_{type(error).__name__}"
+                    ) from error
                 continue
 
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as error:
                 if attempt + 1 >= attempts:
-                    raise AIUnavailable(AIErrorReason.HTTP_ERROR, str(error)) from error
+                    raise AIUnavailable(
+                        AIErrorReason.HTTP_ERROR, f"HTTP_STATUS_{response.status_code}"
+                    ) from error
                 continue
 
             return response

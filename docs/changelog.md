@@ -23,3 +23,10 @@ Cierre local R1: candidato 66a398124c007bdc54895fe891601e470910ce8e, run 3423583
 Candidato R2: migracion 0026 sobre 0025, recuperacion automatica de inbox, CLI coordinado y 34 pruebas nuevas. Se conserva RED real y el primer intento fallido; el cierre con SHAs y hashes se documenta en el informe de validacion. Compatibilidad puntual: prueba de migracion R1 fija upgrade a 0025; inventario estricto de modelos agrega inbox_job.
 
 [Diseno, limites y validacion](remediation/r2-h01-inbox-2026-09-08/README.md).
+
+
+## 2026-09-08 - R3 H04 transporte IA
+
+R3 candidato: normalizacion de NetworkError, RemoteProtocolError y ProxyError; detalles tecnicos sanitizados y telemetria best-effort. RED real sobre R2, 65 controles nuevos y workflow aislado. Sin cambios de esquema/dependencias ni pruebas historicas.
+
+[Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).

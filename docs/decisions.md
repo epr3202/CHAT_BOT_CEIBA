@@ -26,3 +26,10 @@ Decision R1 limitada: UUID nullable por adquisicion, sin backfill de propietario
 Decision R2 limitada: control durable por Message, orden local por conversacion, reintentos acotados, finalizacion silenciosa explicita y separacion de operaciones de agenda. No hay backfill de exito ni convivencia segura con API/worker/CLI antiguos. No completa H06/H07 ni modifica las reglas de negocio.
 
 [Diseno, limites y validacion](remediation/r2-h01-inbox-2026-09-08/README.md).
+
+
+## 2026-09-08 - R3 H04 transporte IA
+
+R3 conserva AIUnavailable y HTTP_ERROR para llamada fallida con subtipo sanitizado, TIMEOUT separado. No captura indiscriminadamente TransportError/Exception; configuracion, cancelacion y programacion conservan propagacion. No se cambian prompts ni rutas comerciales.
+
+[Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).

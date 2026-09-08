@@ -19,3 +19,10 @@ R1 implementa en el candidato una identidad UUID por reclamacion de Outbox, snap
 R2 agrega InboxJob separado de Message, consumo continuo en el worker y finalizacion atomica con efectos locales. API, worker y CLI comparten propiedad UUID por intento. Agenda se ejecuta fuera de locks y la incertidumbre externa queda REVIEW. La descripcion inicial de ausencia de consumidor corresponde al producto auditado 8935687, anterior a este candidato.
 
 [Diseno, limites y validacion](remediation/r2-h01-inbox-2026-09-08/README.md).
+
+
+## 2026-09-08 - R3 H04 transporte IA
+
+R3 candidato acota H04 en el cliente IA: transporte esperado normalizado, retries limitados y degradacion existente por tarea/estado. Inbox/Outbox, sus tokens y transacciones permanecen R2/R1. Sin nueva migracion.
+
+[Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).

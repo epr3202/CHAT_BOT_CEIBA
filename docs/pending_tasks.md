@@ -27,3 +27,10 @@ H02.Outbox: RESUELTO_EN_CANDIDATO en 66a398124c007bdc54895fe891601e470910ce8e, r
 H01: implementacion R2 candidata y validacion en curso; consultar el informe final antes de atribuir cierre. Pendientes operativos: revision de legacy ambiguo, reconciliacion externa y activacion coordinada no ejecutada. Continuan abiertos H02.payment, orden de salidas, comandos humanos, H03/H04/H05/H06/H07/H17/H29 y los demas hallazgos fuera de R2.
 
 [Diseno, limites y validacion](remediation/r2-h01-inbox-2026-09-08/README.md).
+
+
+## 2026-09-08 - R3 H04 transporte IA
+
+H04 en validacion R3; el informe final delimita el veredicto por frontera. H01 local/H02.Outbox conservan cierre candidato. H05, H03, H17, H29, H02.payment y demas hallazgos siguen abiertos. Activacion/reconciliacion operativa R1/R2 no ejecutadas.
+
+[Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).
