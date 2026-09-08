@@ -229,7 +229,8 @@ class OpenRouterIntentClient:
                     request_id=str(request_id) if request_id is not None else None,
                     conversation_id=conversation_id,
                     task=task,
-                    error=type(persistence_error).__name__,
+                    error="ai_execution unavailable",
+                    error_type=type(persistence_error).__name__,
                 )
 
     def _build_payload(

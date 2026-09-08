@@ -236,6 +236,8 @@ async def test_telemetry_sql_failure_does_not_replace_task_outcome(
         warnings = [r for r in logs if r.get("event") == "ai_execution_persist_failed"]
         evidence(request, final=final, calls=provider.calls, logs=logs)
         assert len(warnings) == 1 and warnings[0]["task"] == MAIN
+        assert warnings[0]["error"] == "ai_execution unavailable"
+        assert warnings[0]["error_type"] == "DBAPIError"
         assert "R3_SYNTHETIC_PRIVATE" not in json.dumps(logs, default=str)
         assert final["ai_execution"] == []
         async with db() as session:

@@ -100,3 +100,10 @@ critico: exigia bot_enabled=False, pero el handoff vigente pausa por el estado
 WAITING_FOR_HUMAN y conserva ese flag. Se corrige esa expectativa explicitamente:
 se exige conservar el flag y se comprueba silencio efectivo en un turno posterior
 real, sin repetir Outbox/handoff. No se cambia producto ni se remedia H03.
+
+La suite completa del primer candidato revelo ademas dos aserciones historicas
+del warning AIExecution: esperaban el mensaje "ai_execution unavailable". Se
+conservan intactas. El candidato siguiente usa ese mensaje como constante segura
+y coloca el tipo sanitizado en error_type, sin interpolar texto de la excepcion.
+Las pruebas nuevas SQL comprueban ambos campos y mantienen la ausencia de datos
+sensibles. Los ocho criterios RED y sus auxiliares permanecen sin cambios.
