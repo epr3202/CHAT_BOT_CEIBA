@@ -139,3 +139,8 @@ Se añaden 67 nodos R4 en total: los seis criterios RED intactos, 34 frases y
 27 escenarios de flujo. Colección esperada: 838 en suite y 203 en focal incluido.
 Solo se modifican dos nodos históricos según lo documentado; sus IDs y las demás
 aserciones permanecen. El resto de R1/R2/R3 y las 26 migraciones están protegidos.
+
+El primer candidato `c13ce71e268d0575eb1db0c59026b4d1b4eefc25`, run 34268231895,
+pasó las 203 pruebas del focal, pero el gate falló por I001 (separación de imports
+en la prueba pura nueva). Se conserva el intento y se corrige solo ese formato;
+no se cambia producto, criterio RED ni aserciones para la siguiente ejecución.

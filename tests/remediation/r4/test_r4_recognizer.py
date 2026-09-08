@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from app.conversation.explicit_human import is_explicit_human_request
 
+from app.conversation.explicit_human import is_explicit_human_request
 from tests.remediation.test_r1_outbox import evidence
 
 CASES = {
