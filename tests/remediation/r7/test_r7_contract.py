@@ -164,10 +164,13 @@ async def test_invalid_real_turn_keeps_previous_and_accepts_independent_field(
     assert diagnostics[-1]["new_value"]["entity"] == name
     # A generic yes cannot re-present the preserved field as the rejected correction.
     if name not in {"requested_services", "special_requests"}:
-        next_turn = await send(db, "si", proposal())
+        next_turn = (
+            await type_followup(db) if name == "event_type" else await send(db, "si", proposal())
+        )
         completed(next_turn)
         assert not next_turn["after"]["quote_request"]
         assert field_value(next_turn["after"], name) == field_value(step["before"], name)
+        evidence(request, case=case, steps=[step, next_turn], final=next_turn["after"])
 
 
 @pytest.mark.parametrize("case,name,value,expected", VALID, ids=[c[0] for c in VALID])
@@ -470,3 +473,160 @@ async def test_valid_legacy_wrapper_crosses_real_turn(
         assert step["after"]["event"][0]["guest_count"] == 45
     else:
         assert step["after"]["event"][0]["event_date"] == date(2027, 2, 20)
+
+
+@pytest.mark.parametrize("state", ["COLLECTING_EVENT_DATA", "WAITING_FOR_APPOINTMENT_SELECTION"])
+async def test_invalid_legacy_name_proposal_with_previous_name_still_asks(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, state: str,
+) -> None:
+    configured(monkeypatch)
+    event = await prepare(db, body="si")
+    async with db() as session, session.begin():
+        conversation = await session.get(Conversation, 1)
+        conversation.state = state
+        conversation.pending_action = "COLLECT_CUSTOMER_NAME"
+        conversation.last_question_code = "RESP-CUSTOMER-001"
+        conversation.pending_confirmation = {
+            "type": "FULL_NAME_CONFIRMATION", "full_name": "12345",
+        }
+        if state == "WAITING_FOR_APPOINTMENT_SELECTION":
+            conversation.visit_draft = dict(
+                visit_date="2027-02-20", visit_time="09:00", attendee_count=2,
+                visit_reason="Conocer el lugar", return_to="VISIT_CONFIRMATION_SUMMARY")
+    step = await send(db, "si", proposal(
+        "SCHEDULE_VISIT" if state == "WAITING_FOR_APPOINTMENT_SELECTION" else "QUOTE_REQUEST"),
+        event_id=event)
+    evidence(request, step=step, final=step["after"])
+    completed(step)
+    assert step["after"]["customer"] == step["before"]["customer"]
+    assert not step["after"]["quote_request"] and not step["after"]["appointment"]
+    assert step["after"]["conversation"][0]["last_question_code"] == "RESP-CUSTOMER-001"
+
+
+@pytest.mark.parametrize("followup", ["yes", "false"])
+async def test_rejected_budget_correction_does_not_reuse_previous_decline(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, followup: str,
+) -> None:
+    configured(monkeypatch)
+    body = "Corrijo mi presupuesto"
+    event = await prepare(db, body=body)
+    first = await send(db, body, proposal(entities=[
+        entity("estimated_budget", -5, quality_status="CORRECTED")]), event_id=event)
+    completed(first)
+    last = await send(db, "si" if followup == "yes" else "Todavia estoy pensando",
+                      proposal(entities=[] if followup == "yes" else [
+                          entity("budget_declined", False)]))
+    evidence(request, steps=[first, last], final=last["after"])
+    completed(last)
+    assert last["after"]["conversation"][0]["last_question_code"] == "RESP-BUDGET-001"
+    assert not last["after"]["quote_request"]
+    assert actions(last["after"], "BUDGET_DECLINED") == 0
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+async def test_uncertain_nonfinite_value_is_not_stored_as_pending(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, value: float,
+) -> None:
+    configured(monkeypatch)
+    body = "Tengo un presupuesto"
+    event = await prepare(db, body=body)
+    step = await send(db, body, proposal(confidence=0.65, entities=[
+        entity("estimated_budget", value)]), event_id=event)
+    evidence(request, step=step, final=step["after"])
+    completed(step)
+    assert step["after"]["conversation"][0]["pending_confirmation"] is None
+    assert step["after"]["conversation"][0]["last_question_code"] == "RESP-FALLBACK-004"
+    assert actions(step["after"], "ENTITY_INVALID") == 1
+
+
+@pytest.mark.parametrize("name,value", [
+    ("full_name", {"name": "No convertir"}), ("event_type", {"type": "BIRTHDAY"}),
+    ("guest_count", True), ("guest_count_range", {"min": 50, "max": 30}),
+    ("event_date", {"event_date_type": "EXACT", "event_date": "2027-02-31"}),
+    ("estimated_budget", float("inf")), ("budget_declined", "si"),
+    ("requested_services", [{"name": "FOOD"}]), ("special_requests", ["No convertir"]),
+])
+async def test_direct_entity_consumer_revalidates_constructed_values(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+    name: str, value: Any,
+) -> None:
+    from app.customer.models import Customer
+    from app.orchestrator import service
+    from tests.remediation.r7.helpers import snapshot
+
+    configured(monkeypatch)
+    await prepare(db)
+    before = await snapshot(db)
+    async with db() as session, session.begin():
+        conversation = await session.get(Conversation, 1)
+        customer = await session.get(Customer, conversation.customer_id)
+        lead = await service.active_lead(session, conversation)
+        event = await service.active_event(session, lead)
+        item = ExtractedEntity.model_construct(**entity(
+            name, value, raw_value="Dato para 2027", quality_status="CORRECTED"))
+        await service.apply_extracted_entities(
+            session, conversation, customer, lead, event, [item], None)
+    final = await snapshot(db)
+    evidence(request, before=before, final=final, boundary="Direct consumer, not provider parser")
+    for table in ("customer", "event", "lead", "event_service_request", "outbox"):
+        assert final[table] == before[table]
+    assert (
+        actions(final, "ENTITY_INVALID")
+        + actions(final, "PENDING_CONFIRMATION_INVALID_NAME")
+    ) == 1
+
+
+async def test_capture_resumption_keeps_rejected_field_unresolved(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy import select
+
+    from app.channel.models import Message
+    from app.config.settings import get_settings
+    from app.customer.models import Customer
+    from app.orchestrator import service
+    from tests.remediation.r7.helpers import snapshot
+
+    configured(monkeypatch)
+    body = "Corrijo invitados"
+    event_id = await prepare(db, body=body)
+    first = await send(db, body, proposal(entities=[
+        entity("guest_count", -5, quality_status="CORRECTED")]), event_id=event_id)
+    completed(first)
+    # Synthetic completed visit context; exercise only its real capture-resume consumer.
+    async with db() as session, session.begin():
+        conversation = await session.get(Conversation, 1)
+        conversation.state = "APPOINTMENT_CONFIRMED"
+        conversation.visit_draft = {"resume": {"state": "COLLECTING_EVENT_DATA"}}
+        customer = await session.get(Customer, conversation.customer_id)
+        message = await session.scalar(select(Message).order_by(Message.id).limit(1))
+        await service.clear_visit_draft_and_resume_capture(
+            session, db, service.OrchestrationInput(conversation, customer, message, body))
+    final = await snapshot(db)
+    evidence(request, first=first, final=final, settings_mode=get_settings().calendar_adapter)
+    assert final["event"] == first["after"]["event"]
+    assert final["conversation"][0]["pending_action"] == "COLLECT_GUEST_COUNT"
+    assert final["conversation"][0]["last_question_code"] == "RESP-EVENT-DATA-004"
+    assert not final["quote_request"]
+
+
+async def type_followup(db: Any) -> dict[str, Any]:
+    import respx
+
+    from app.channel import inbound
+    from tests.remediation.r3.helpers import EXTRACT, MAIN, Provider
+    from tests.remediation.r4.helpers import message_payload
+    from tests.remediation.r7.helpers import snapshot
+
+    before = await snapshot(db)
+    event = await inbound.store_webhook_event(message_payload("r7.type-followup", "si"), db, None)
+    with respx.mock(assert_all_called=False) as router:
+        provider = Provider(router, {
+            MAIN: [proposal()], EXTRACT: [{"event_type": "UNSUPPORTED_SYNTHETIC"}],
+        })
+        counts = await inbound.process_webhook_event(event, db)
+    provider.exhausted()
+    assert provider.calls == {MAIN: 1, EXTRACT: 1}
+    return dict(before=before, after=await snapshot(db), counts=counts,
+                event_id=event, calls=dict(provider.calls), input="si")
+

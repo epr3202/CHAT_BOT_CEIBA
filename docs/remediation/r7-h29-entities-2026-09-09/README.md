@@ -146,3 +146,15 @@ histórico de descarte. Ruff además detectó un import del test nuevo sin forma
 El nuevo test de conflicto de presupuesto comparaba todo el lead, incluyendo su transición
 legítima NEW a QUALIFYING: se corrige a igualdad de los tres campos de presupuesto. No se
 cambian criterios RED ni más expectativas históricas. Intento y artefactos preservados.
+Consumidor adicional indispensable dentro de service.py: reanudación de captura tras
+visita. Antes de editarlo se documenta que debe conservar pending_fields aún sin resolver,
+en vez de sustituirlos por completitud de valores anteriores. El control prueba el consumidor
+real con contexto sintético de visita terminada; no afirma ejecutar una agenda externa.
+También se cubre un nombre legacy semánticamente inválido con nombre previo, presupuesto
+previamente DECLINED y valores no finitos en propuestas inciertas. No son RED retroactivos.
+Candidato2 1062185 / run 34403088382: focal 602 PASS / 1 FAIL, Ruff PASS. El único
+fallo focal ocurre al siguiente sí del caso type_object: se solicita el extractor auxiliar
+vigente y el arnés tenía solo MAIN. Se agrega EXTRACT estricto con respuesta desconocida,
+sin cambiar el mensaje ni la expectativa de repregunta y conservación del dato. El rechazo
+inicial sí completó el turno. Los controles nuevos de continuidad y consumidor directo se
+agregan después de este CI, sin atribuirles RED previo. Se conserva el intento completo.

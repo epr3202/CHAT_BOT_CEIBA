@@ -463,6 +463,13 @@ async def resolve_pending_confirmation(
     if pending.kind == "ABSENT":
         return PendingConfirmationResolution(classification, False)
     if pending.kind in {"INVALID", "RESOLVED"}:
+        if (
+            pending.reason == "INVALID_NAME_SHAPE"
+            and conversation.pending_action == "COLLECT_CUSTOMER_NAME"
+        ):
+            conversation.pending_fields = list(dict.fromkeys(
+                [*(conversation.pending_fields or []), "full_name"],
+            ))
         discard_pending(session, conversation, pending, request_id, pending.reason or "INVALID")
         return PendingConfirmationResolution(classification, False)
 
@@ -1796,8 +1803,15 @@ async def clear_visit_draft_and_resume_capture(
         event,
         conversation,
     )
-    conversation.pending_fields = pending_fields_for(progress)
+    unresolved = [
+        field for field in (conversation.pending_fields or []) if field in ENTITY_ACTION
+    ]
+    conversation.pending_fields = list(dict.fromkeys(
+        [*pending_fields_for(progress), *unresolved],
+    ))
     next_action = select_next_question(progress)
+    if next_action is None and unresolved:
+        next_action = ENTITY_ACTION[unresolved[0]]
     if next_action is None:
         await transition_to_quote_request_ready(
             session,
@@ -1817,7 +1831,7 @@ async def clear_visit_draft_and_resume_capture(
         conversation,
         orchestration_input.customer,
         orchestration_input.inbound_message,
-        QUESTION_CODE_BY_ACTION[next_action],
+        QUESTION_CODE_BY_ACTION.get(next_action, "RESP-FALLBACK-004"),
         {},
     )
 
