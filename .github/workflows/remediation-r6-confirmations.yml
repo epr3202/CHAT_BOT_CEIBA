@@ -1,0 +1,49 @@
+name: Remediation R6 confirmations candidate regression
+on:
+  push:
+    branches: ['fix/r6-h17-confirmations-*']
+permissions:
+  contents: read
+concurrency:
+  group: remediation-r6-confirmations-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/fix/r6-h17-confirmations-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: [regressions, suite]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Execute isolated candidate tests
+        id: validation
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: python scripts/quality/r6/run_ci.py '${{ matrix.stage }}'
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: remediation-r6-confirmations-${{ matrix.stage }}-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: quality-output/${{ matrix.stage }}/
+          if-no-files-found: error
+          retention-days: 7
+      - name: R6 regression gate
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validation.outcome }}
+          STAGE: ${{ matrix.stage }}
+        run: |
+          test "$OUTCOME" = success
+          test -s "quality-output/$STAGE/stage_summary.json"
+          test -s "quality-output/$STAGE/host_manifest.json"
