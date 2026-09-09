@@ -453,6 +453,7 @@ async def test_absence_and_partial_date_keep_their_meaning() -> None:
 @pytest.mark.parametrize("name,value", [
     ("full_name", "Nombre Legacy"), ("guest_count", "45"),
     ("event_date", {"event_date": "2027-02-20", "event_date_type": "EXACT"}),
+    ("requested_services", "comida"),
 ])
 async def test_valid_legacy_wrapper_crosses_real_turn(
     db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
@@ -471,6 +472,8 @@ async def test_valid_legacy_wrapper_crosses_real_turn(
         assert step["after"]["customer"][0]["full_name"] == value
     elif name == "guest_count":
         assert step["after"]["event"][0]["guest_count"] == 45
+    elif name == "requested_services":
+        assert "FOOD" in [r["service_name"] for r in step["after"]["event_service_request"]]
     else:
         assert step["after"]["event"][0]["event_date"] == date(2027, 2, 20)
 
@@ -630,3 +633,35 @@ async def type_followup(db: Any) -> dict[str, Any]:
     return dict(before=before, after=await snapshot(db), counts=counts,
                 event_id=event, calls=dict(provider.calls), input="si")
 
+
+
+async def test_supported_services_keep_historical_unknown_item_discard(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured(monkeypatch)
+    body = "Quiero cotizar mi evento"
+    event = await prepare(db, body=body)
+    step = await send(db, body, proposal(entities=[entity(
+        "requested_services", ["FOOD", "comida", "UNSUPPORTED_SYNTHETIC"])]), event_id=event)
+    evidence(request, step=step, final=step["after"])
+    completed(step)
+    codes = [row["service_name"] for row in step["after"]["event_service_request"]]
+    assert codes.count("FOOD") == 1 and "UNSUPPORTED_SYNTHETIC" not in codes
+    assert actions(step["after"], "SERVICE_REQUESTED") == 1
+    assert actions(step["after"], "ENTITY_INVALID") == 1
+    assert step["after"]["conversation"][0]["last_question_code"] == "RESP-QUOTE-002"
+    assert step["after"]["quote_request"][0]["request_status"] == "DRAFT"
+
+
+async def test_representation_limits_do_not_invent_visit_or_budget_rules() -> None:
+    # A Sunday is a valid event date; the unchanged visit engine decides eligibility.
+    item = ExtractedEntity.model_validate(entity(
+        "event_date", {"event_date": "2027-02-21", "event_date_type": "EXACT"},
+        raw_value="21 de febrero de 2027"))
+    assert validate_entity(item, date(2026, 9, 9)).value.event_date == date(2027, 2, 21)
+    cent = ExtractedEntity.model_validate(entity("estimated_budget", "0.01"))
+    assert validate_entity(cent, date(2026, 9, 9)).value == Decimal("0.01")
+    lossy = ExtractedEntity.model_validate(entity(
+        "estimated_budget", None, raw_value="Tengo 5000.001 COP"))
+    with pytest.raises(InvalidEntity, match="BUDGET_PRECISION_LOSS"):
+        validate_entity(lossy, date(2026, 9, 9))

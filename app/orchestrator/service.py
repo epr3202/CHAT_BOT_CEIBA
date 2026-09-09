@@ -2290,7 +2290,9 @@ async def handle_collecting_event_data(
     if captured_requested_services:
         conversation.services_failed_understanding_count = 0
 
-    if batch.rejected and next_action is None:
+    if next_action is None and any(
+        item.code != "UNSUPPORTED_SERVICE_ITEM" for item in batch.rejected
+    ):
         set_pending_action(conversation, "CLASSIFY_MESSAGE")
         await enqueue_template(
             session, knowledge_sessionmaker, conversation, customer, inbound_message,

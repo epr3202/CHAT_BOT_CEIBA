@@ -335,6 +335,8 @@ def validate_entity(entity: ExtractedEntity, today: date) -> Accepted:
             _fail("INVALID_DECLINED_TYPE")
         result = value
     elif name == "requested_services":
+        if isinstance(value, str):
+            value = [value]
         if value is None:
             value = [entity.raw_value]
         if not isinstance(value, list) or not value:

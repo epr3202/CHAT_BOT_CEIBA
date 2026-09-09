@@ -158,3 +158,12 @@ vigente y el arnés tenía solo MAIN. Se agrega EXTRACT estricto con respuesta d
 sin cambiar el mensaje ni la expectativa de repregunta y conservación del dato. El rechazo
 inicial sí completó el turno. Los controles nuevos de continuidad y consumidor directo se
 agregan después de este CI, sin atribuirles RED previo. Se conserva el intento completo.
+Control de descarte de servicios: una lista con códigos admitidos y un texto desconocido
+conserva los admitidos, deduplicados y en orden; el desconocido se audita sin crear código.
+La política vigente de descarte permite continuar captura/resumen con los códigos válidos;
+el aviso por elemento desconocido no se convierte en fallo de toda la lista. Una estructura
+inválida o una lista sin ningún código admitido sí exige aclaración. Control adicional de fecha
+de evento en domingo y presupuesto de 0.01 COP: no inventar reglas de visita ni mínimo.
+Compatibilidad de servicios legacy: un texto único que ya identifica un código/alias se
+normaliza como lista de un elemento. El consumidor BASE ya admitía ese texto mediante
+raw_value; se conserva explícitamente sin aceptar objetos, bool ni números como texto.
