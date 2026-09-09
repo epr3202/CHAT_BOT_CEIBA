@@ -71,7 +71,7 @@ async def test_current_name_only_can_be_confirmed(
     db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, corrected: bool
 ) -> None:
     configure(monkeypatch)
-    event = await prepare(db, name=None)
+    event = await prepare(db, name=None, body="Mi nombre tal vez sea Sintetico Uno")
     first = await send(db, "Mi nombre tal vez sea Sintetico Uno", proposal(entities=[
         entity("full_name", "Sintetico Uno", quality_status="PENDING_CONFIRMATION",
                needs_confirmation=True)]), event_id=event)

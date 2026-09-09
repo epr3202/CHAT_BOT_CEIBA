@@ -97,3 +97,13 @@ Sin TTL ni identificación del referente de un sí tardío sin referencia del ca
 H17 agregado y last_question_code ante fallback de conocimiento no se certifican.
 La activación futura requiere coordinación R1/R2 de API/BackgroundTasks/workers/CLI;
 publicar la rama no la activa.
+
+## Primer intento de arnés conservado
+
+SHA d0b66ea95c8948a1379ec26af4d1a432d939b3af, run 34371745073.
+Focal 386: 382 PASS y 4 FAIL, fases completas; Ruff falla por longitud/imports.
+DENY y retorno guardan KeyError; nombre corregido vuelve al viejo. No se usa este
+intento como RED final: el primer payload de nombre no coincidía con la frase reportada,
+y el control uplift buscaba una acción independiente en vez de AI_CONFIDENCE_DECISION
+con decision=CONFIRMATION_UPLIFT. Se corrigen solo estas precondiciones/observaciones y
+lint; se repite producto BASE intacto. No se relaja el criterio de negocio.

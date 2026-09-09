@@ -82,7 +82,9 @@ def main() -> None:
         if os.environ.get("CANDIDATE_SHA") != actual:
             raise RuntimeError("Event candidate SHA mismatch")
         run("git", "merge-base", "--is-ancestor", PARENT_BASE, actual)
-        changed = run("git", "diff", "--name-only", PARENT_BASE, actual).stdout.decode().splitlines()
+        changed = (
+            run('git', 'diff', '--name-only', PARENT_BASE, actual).stdout.decode().splitlines()
+        )
         allowed = set(json.loads((audit / "allowed_paths.json").read_text()))
         if not changed or set(changed) - allowed:
             raise RuntimeError("Candidate changes paths outside the explicit allowlist")

@@ -15,8 +15,10 @@ from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.event.models import Event, EventServiceRequest
 from app.lead.models import Lead
-from tests.remediation.r3.helpers import MAIN, Provider, snapshot as snapshot, valid
-from tests.remediation.r4.helpers import admin_cases, message_payload, prepare as intake
+from tests.remediation.r3.helpers import MAIN, Provider, valid
+from tests.remediation.r3.helpers import snapshot as snapshot
+from tests.remediation.r4.helpers import admin_cases, message_payload
+from tests.remediation.r4.helpers import prepare as intake
 
 
 def proposal(intent: str = "QUOTE_REQUEST", *, confidence: float = 0.99,
@@ -60,6 +62,10 @@ async def send(db: Any, body: str, response: dict[str, Any] | None = None, *,
     if event_id is None:
         event_id = await inbound.store_webhook_event(
             message_payload(external_id or "r6." + uuid.uuid4().hex, body), db, None)
+    stored = next(e for e in (await snapshot(db))['webhook_event'] if e['id'] == event_id)
+    actual = list(inbound.extract_inbound_messages(stored['payload']))
+    assert len(actual) == 1
+    assert inbound.extract_text_body(actual[0].storage_content()) == body
     with respx.mock(assert_all_called=False) as router:
         provider = Provider(router, {MAIN: [response or proposal()] * expected_calls})
         counts = await inbound.process_webhook_event(event_id, db)
@@ -75,7 +81,10 @@ def completed(step: dict[str, Any]) -> None:
 
 
 def actions(rows: dict[str, Any], action: str) -> int:
-    return sum(a["action"] == action for a in rows["audit_event"])
+    if action == 'CONFIRMATION_UPLIFT':
+        return sum(a['action'] == 'AI_CONFIDENCE_DECISION' and
+                   (a['new_value'] or {}).get('decision') == action for a in rows['audit_event'])
+    return sum(a['action'] == action for a in rows['audit_event'])
 
 
 async def human_return(db: Any) -> dict[str, Any]:
