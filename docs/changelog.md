@@ -51,3 +51,9 @@ BASE R5 aprobada d237ad7/run 34364403706. R6 distingue propuestas de clasificaci
 nombre de resoluciones inertes, valida contexto legacy y retira autoridad al negar o
 reemplazar. Consumo y descarte permanecen bajo R2; sin migración ni activación.
 [Contrato, RED y límites R6](remediation/r6-h17-confirmations-2026-09-09/README.md).
+
+## R7 en validacion — H29 / U04
+
+BASE R6 aprobada cfdc09b/run 34381466698. Contrato semantico de nueve entidades antes
+de aplicarlas, sin migraciones ni activacion. RED sobre producto BASE intacto.
+[Contrato y evidencia R7](remediation/r7-h29-entities-2026-09-09/README.md).
