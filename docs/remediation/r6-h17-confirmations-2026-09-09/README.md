@@ -44,9 +44,10 @@ puede contener legacy no-objeto. No se deduce validez del tipo Python anotado.
 ## Criterios antes del arreglo
 
 - Resumen real→no→sí: turno procesable, DRAFT, sin aceptación/handoff; captura completa
-  puede emitir un resumen nuevo RESP-QUOTE-002. Ese turno no registra READY.
+  puede emitir un resumen nuevo si la clasificación fresca es comercial. Con CONFIRM sin
+  acción, el guard existente exige RESP-FALLBACK-004; ese turno no registra READY.
 - Resolución confirmada→handoff→take/return autenticado→sí: conservar READY anterior y
-  único caso RETURNED, sin aceptación nueva; BOT_ACTIVE usa RESP-FALLBACK-001.
+  único caso RETURNED, sin aceptación nueva; CONFIRM sin acción usa RESP-FALLBACK-004.
 - Nombre propuesto→corrección explícita→sí: conservar corregido; si ya se emitió resumen
   actualizado, la confirmación legítima de ese resumen continúa por el matcher existente.
 - Propuesta incierta→sí conserva AI_CONFIRMATION_ACCEPTED/CONFIRMATION_UPLIFT y confianza.
@@ -107,3 +108,7 @@ intento como RED final: el primer payload de nombre no coincidía con la frase r
 y el control uplift buscaba una acción independiente en vez de AI_CONFIDENCE_DECISION
 con decision=CONFIRMATION_UPLIFT. Se corrigen solo estas precondiciones/observaciones y
 lint; se repite producto BASE intacto. No se relaja el criterio de negocio.
+
+Revisión previa a congelar RED: is_action_allowed_for_slice rechaza CONFIRM sin acción
+confirmable antes del routing por estado. Se precisa RESP-FALLBACK-004 en deny/return;
+no se cambia producto ni se fuerza una clasificación comercial para mostrar otro resumen.

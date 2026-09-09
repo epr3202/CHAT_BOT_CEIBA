@@ -56,11 +56,11 @@ async def test_summary_resolution_followed_by_affirmation(
         assert final["quote_request"][0]["request_status"] == "DRAFT"
         assert not final["handoff"]
         assert actions(final, "QUOTE_REQUEST_READY") == 0
-        assert final["conversation"][0]["last_question_code"] == "RESP-QUOTE-002"
+        assert final["conversation"][0]["last_question_code"] == "RESP-FALLBACK-004"
     elif mode == "return":
         assert actions(final, "QUOTE_REQUEST_READY") == 1
         assert len(final["handoff"]) == 1 and final["handoff"][0]["status"] == "RETURNED"
-        assert final["conversation"][0]["last_question_code"] == "RESP-FALLBACK-001"
+        assert final["conversation"][0]["last_question_code"] == "RESP-FALLBACK-004"
     else:
         assert actions(final, "QUOTE_REQUEST_READY") == 1
         assert final["event"][0]["guest_count"] == 50
