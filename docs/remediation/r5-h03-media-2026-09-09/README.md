@@ -77,3 +77,13 @@ last_question_code=RESP-FILE-003. R5 exige conservar None, cero Outbox y caso/pa
 intactos; se mantienen ausencia de evidencia y cero IA. BASE/RED preservan la versión.
 La suite RED completa ya fue inspeccionada: 845 nodos, 842 PASS y los mismos tres
 FAIL funcionales; los 838 históricos pasan con fases completas.
+
+Tercera adaptación, documentada antes de editar: tests/test_w2a_inbound_media_adversarial.py::
+test_tc_media_016_payment_image_uses_existing_payment_handoff. Su seed usa
+WAITING_FOR_HUMAN, WAIT_FOR_HUMAN y PAYMENT_REVIEW, con image/jpeg sin caption y
+metadata declarada. Exigía RESP-PAYMENT-002 y un Outbox. Ahora exige last_question_code
+None, cero Outbox, caso único PENDING/URGENT, pausa conservada, evidencia vinculada a
+Message y todavía PENDING/PENDING_REVIEW, más InboxJob COMPLETED silencioso.
+Se conservan cero IA, motivo PAYMENT_REVIEW y auditoría de contexto. No cambia el payload.
+La suite del candidato 717f0f8 (run 34357972656) tuvo 1006 PASS / 2 FAIL: este nodo y
+audio TC-PAY-006, ambos históricos. Sus 373 focales pasaron; producto no cambió después.
