@@ -285,7 +285,10 @@ def main() -> None:
             n for n in required if n.startswith("tests/remediation/")
         } | required_r4
         required_r5 = set(json.loads(Path("scripts/quality/r5/new_nodes.json").read_text()))
-        expected_nodes |= required_r5
+        discovered_r5 = {n for n in result["nodes"] if n.startswith("tests/remediation/r5/")}
+        summary["new_r5_nodes"] = sorted(discovered_r5)
+        summary["missing_red_nodes"] = sorted(required_r5 - discovered_r5)
+        expected_nodes |= discovered_r5 | required_r5
         collection_mismatch = set(result["nodes"]) != expected_nodes
         summary["unexpected_nodes"] = sorted(set(result["nodes"]) - expected_nodes)
         exit_code = int(

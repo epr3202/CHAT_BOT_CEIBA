@@ -22,7 +22,7 @@ from app.ai.schemas import IntentClassification
 from app.audit.models import AuditEvent
 from app.channel.inbound import process_whatsapp_webhook
 from app.channel.media import InboundMediaFile, InboundMediaHashMismatch
-from app.channel.models import Message, Outbox
+from app.channel.models import InboxJob, Message, Outbox
 from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation, KnowledgeEntry
 from app.customer.models import Customer
@@ -379,7 +379,14 @@ async def test_tc_pay_001_no_caption_in_payment_context_creates_evidence_and_rai
     assert rows[0].download_status == "PENDING"
     assert rows[0].review_status == "PENDING_REVIEW"
     assert handoff.priority == "URGENT"
-    assert conversation.last_question_code == "RESP-PAYMENT-002"
+    assert conversation.last_question_code is None
+    assert conversation.state == "WAITING_FOR_HUMAN" and conversation.bot_enabled is True
+    assert handoff.status == "PENDING"
+    async with sessionmaker() as session:
+        assert await session.scalar(select(func.count()).select_from(Outbox)) == 0
+        job = await session.scalar(select(InboxJob))
+        assert job.status == "COMPLETED"
+        assert job.completion_reason.startswith("SILENT_")
     assert calls.messages == [] and ai_count == 0
     assert {"HANDOFF_PRIORITY_RAISED", "NON_TEXT_MESSAGE_RECEIVED"} <= set(
         await audit_actions(sessionmaker)

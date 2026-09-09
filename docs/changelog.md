@@ -37,3 +37,10 @@ R3 candidato: normalizacion de NetworkError, RemoteProtocolError y ProxyError; d
 Candidato R4: ruta previa para solicitud inequívoca de asesor, pruebas por frases/estado/propiedad/commit y bandeja real. Dos adaptaciones históricas acotadas de llamadas IA se documentan. Sin migraciones.
 
 [Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).
+
+
+## R5 en validacion: H03.entrada_multimedia / U12a
+
+Guard de medios pausados y captura pasiva en inbox R2; candidato pendiente de CI.
+Sin cambios al worker de comprobantes ni invalidacion de Outbox previo (U12c).
+Contrato y evidencia: [R5](remediation/r5-h03-media-2026-09-09/README.md).

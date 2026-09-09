@@ -37,7 +37,7 @@ from app.orchestrator.service import (
 )
 from app.orchestrator.service import OrchestrationInput as OrchestrationInput
 from app.orchestrator.service import orchestrate_inbound_message as orchestrate_inbound_message
-from app.payment.service import create_payment_evidence_for_open_handoff
+from app.payment.service import create_payment_evidence_for_open_handoff, payment_media_fields
 
 logger = structlog.get_logger(__name__)
 
@@ -409,9 +409,14 @@ async def route_non_text_in_session(
     settings: Settings,
     request_id: uuid.UUID | None,
 ) -> bool:
+    paused = persisted.message_type != "text" and (
+        conversation.state in {"WAITING_FOR_HUMAN", "HUMAN_ACTIVE", "CLOSED"}
+        or not conversation.bot_enabled
+    )
     if (
         persisted.message_type in {"text", "interactive", "button"}
         and persisted.message_text.strip()
+        and not paused
     ):
         return False
     media_types = {"image", "document", "audio", "video"}
@@ -424,6 +429,52 @@ async def route_non_text_in_session(
             request_id=request_id,
         )
     )
+
+    if paused:
+        capture_result = "NOT_PAYMENT_MEDIA"
+        if conversation.state == "CLOSED":
+            capture_result = "CLOSED"
+        elif persisted.message_type in {"image", "document"}:
+            capture_result = "NO_OPEN_PAYMENT_CASE"
+            if payment_context:
+                # Administrative routes can own Handoff before Conversation. Never
+                # wait in the reverse order: contention rolls back into R2 retry.
+                handoff = await session.scalar(
+                    select(Handoff)
+                    .where(
+                        Handoff.conversation_id == conversation.id,
+                        Handoff.reason == "PAYMENT_REVIEW",
+                        Handoff.status.in_(("PENDING", "TAKEN")),
+                    )
+                    .order_by(Handoff.id.desc())
+                    .limit(1)
+                    .with_for_update(nowait=True)
+                )
+                if handoff is not None:
+                    capture_result = "MISSING_METADATA"
+                    if payment_media_fields(message) is not None:
+                        evidence = await create_payment_evidence_for_open_handoff(
+                            session, conversation, customer, message, request_id=request_id
+                        )
+                        capture_result = (
+                            "EVIDENCE_REGISTERED" if evidence else "NO_OPEN_PAYMENT_CASE"
+                        )
+        session.add(
+            AuditEvent(
+                actor=SYSTEM_ACTOR,
+                action="NON_TEXT_MESSAGE_PAUSED",
+                entity="message",
+                old_value=None,
+                new_value={
+                    "message_id": message.id,
+                    "conversation_id": conversation.id,
+                    "capture_result": capture_result,
+                },
+                reason="Passive reception without automatic response",
+                request_id=request_id,
+            )
+        )
+        return True
 
     if persisted.message_type in media_types and caption:
         return False

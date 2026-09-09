@@ -250,7 +250,7 @@ async def apply_turn(
                 fail_locked(job, "CONTEXT_CHANGED_RECLASSIFY", datetime.now(UTC), get_settings())
                 return "RETRY"
         message = await session.get(Message, claim.message_id)
-        # Multimedia routing retains its existing business behavior (H03 remains separate).
+        # Fresh human guards and passive media effects share this owned transaction.
         handled = await inbound.route_non_text_in_session(
             session,
             claim.persisted,
@@ -291,7 +291,11 @@ async def apply_turn(
                 agenda_results.reset(token)
         retire(job, "COMPLETED")
         job.completed_at = datetime.now(UTC)
-        job.completion_reason = "ROUTED_NON_TEXT" if handled else silent or "ORCHESTRATED"
+        job.completion_reason = (
+            silent + "_NON_TEXT" if handled and silent
+            else "ROUTED_NON_TEXT" if handled
+            else silent or "ORCHESTRATED"
+        )
     logger.info(
         "inbox_completed",
         job_id=claim.id,
@@ -334,8 +338,10 @@ async def record_external_result(sm: SessionMaker, claim: InboxClaim, value: Any
 async def process_claimed_inbox(sm: SessionMaker, claim: InboxClaim) -> str:
     try:
         text = claim.persisted.message_text.strip()
+        passive = claim.silent and claim.persisted.message_type != "text"
         turn = (
-            await inbound.classify_message(claim.persisted, sm, claim.request_id) if text else None
+            await inbound.classify_message(claim.persisted, sm, claim.request_id)
+            if text and not passive else None
         )
         results = AgendaResults()
         for _ in range(12):  # Bound the number of deferred agenda reads/calls in one turn.

@@ -45,3 +45,27 @@ No cerrar H03 agregado. Pendientes: U12c/Outbox previo, H02.payment, H05.agotami
 H17/H29/H11 y demás hallazgos. Sin descarga/revisión certificada, atención humana efectiva,
 silencio externo global, notificaciones, PR, merge, tags, despliegue ni activación.
 Activación futura requiere coordinar API/BackgroundTasks/workers/CLI R1/R2.
+
+## RED observado y adaptación histórica prevista antes de editar
+
+RED inspeccionado: SHA 243e6516744d06b058e07956f36c5bc44cd0adcf, run 34356802721,
+focal 210 = 203 históricos + siete nuevos. 207 PASS y tres FAIL en call: salida
+automática sin caption, evidencia omitida con caption en imagen/documento, cada uno
+con una clasificación IA indebida. Ruff PASS, fases completas y cero red inesperada.
+El primer run 34355991796 conserva sus artefactos; no se atribuye resultado funcional
+sin inspeccionar sus aserciones. La repetición añadió transporte de ZIP por logs del
+conector autorizado porque el proxy del PC no conecta; producto y criterios idénticos.
+
+Nodo histórico a adaptar: tests/test_w2b_payment_evidence_adversarial.py::
+test_tc_pay_001_no_caption_in_payment_context_creates_evidence_and_raises_priority.
+Su seed usa WAITING_FOR_HUMAN, flag verdadero, PAYMENT_REVIEW/PENDING; image sin caption.
+Antes exige last_question_code=RESP-PAYMENT-002, incompatible con silencio R5.
+Después exigirá last_question_code intacto (None), cero Outbox, caso PENDING y conversación
+WAITING_FOR_HUMAN con flag verdadero conservados, un InboxJob COMPLETED silencioso.
+Se conservan identidad, media_id, descarga/revisión pendientes, prioridad urgente,
+auditoría y cero IA. Atomicidad se refuerza en test_real_commit_failure_then_recovery.
+Versión anterior permanece en BASE y ambos RED; no se cambia estado ni payload.
+
+El inventario R5 conserva siete nodeids RED fijos y registra todos los nodos nuevos
+descubiertos en tests/remediation/r5, incluidos en suite/focal. El gate compara exactamente
+los históricos más ese inventario; no suma el focal al total ni omite fallos de fases.

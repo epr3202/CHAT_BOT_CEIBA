@@ -33,3 +33,10 @@ R3 candidato acota H04 en el cliente IA: transporte esperado normalizado, retrie
 Reconocimiento textual puro al inicio de classify_message; decisión DETERMINISTIC aplicada por HUMAN_REQUEST dentro del settlement R2, después de guards. Sin llamadas IA en el turno reconocido ni escritura paralela.
 
 [Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).
+
+
+## R5 en validacion: H03.entrada_multimedia / U12a
+
+Guard de medios pausados y captura pasiva en inbox R2; candidato pendiente de CI.
+Sin cambios al worker de comprobantes ni invalidacion de Outbox previo (U12c).
+Contrato y evidencia: [R5](remediation/r5-h03-media-2026-09-09/README.md).
