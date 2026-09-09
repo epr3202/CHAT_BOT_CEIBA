@@ -97,3 +97,7 @@ SHA 46147c5c73e272fdf5f8f6faab785ff470f1e074, run 34395929801:
 ambos jobs fallaron antes de pytest por KeyError parent_base_sha en el manifiesto.
 Cero pruebas de producto; no se atribuye RED funcional. Se añade la clave requerida
 por el launcher derivado, manteniendo BASE/producto/criterios intactos.
+Segundo intento 51af774/run 34396179372: focal 479, 471 PASS/8 FAIL; Ruff PASS,
+fases completas, cero red inesperada. Siete fallos funcionales previstos reproducidos;
+el octavo es del control: snapshot devuelve datetime.date, comparado incorrectamente
+con string. Se compara isoformat conservando la fecha y criterio; producto sin cambios.

@@ -86,7 +86,8 @@ async def test_valid_or_existing_discard_control(
         assert row["guest_count"] is None and row["guest_count_min"] == 35
         assert row["guest_count_max"] == 45
     elif kind == "date":
-        assert row["event_date"] == "2027-02-20" and row["event_date_type"] == "EXACT"
+        assert row["event_date"].isoformat() == "2027-02-20"
+        assert row["event_date_type"] == "EXACT"
     else:
         assert row["event_type"] == "BIRTHDAY"
 
