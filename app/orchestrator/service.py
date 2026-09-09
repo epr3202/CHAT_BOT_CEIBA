@@ -37,12 +37,22 @@ from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings
 from app.conversation.catalog_event_type import resolve_catalog_event_type_label
-from app.conversation.confirmation import resolve_contextual_confirmation
+from app.conversation.confirmation import (
+    DENIALS,
+    normalize_confirmation_text,
+    resolve_contextual_confirmation,
+)
 from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.knowledge import KnowledgeRenderError, render_response
 from app.conversation.models import Conversation
 from app.conversation.pending_actions import validate_pending_action
+from app.conversation.pending_confirmation import (
+    PendingProposal,
+    name_value,
+    proposal_context,
+    read_pending,
+)
 from app.conversation.presentation import (
     format_date_natural,
     format_event_type,
@@ -350,6 +360,8 @@ async def _orchestrate_inbound_message(
             request_id=orchestration_input.request_id,
         )
         conversation.pending_confirmation = {
+            "type": "CLASSIFICATION_CONFIRMATION", "version": 1,
+            "context": proposal_context(conversation.state, conversation.active_lead_id),
             "classification": classification.model_dump(mode="json"),
             "original_intent": classification.primary_intent,
             "original_confidence": classification.confidence,
@@ -389,6 +401,29 @@ def conversation_context(conversation: Conversation) -> dict[str, Any]:
     }
 
 
+def current_pending(conversation: Conversation) -> PendingProposal:
+    return read_pending(
+        conversation.pending_confirmation, state=conversation.state,
+        pending_action=conversation.pending_action,
+        last_question_code=conversation.last_question_code,
+        active_lead_id=conversation.active_lead_id,
+    )
+
+
+def discard_pending(
+    session: AsyncSession, conversation: Conversation, pending: PendingProposal,
+    request_id: str | None, reason: str,
+) -> None:
+    audit_orchestrator_event(
+        session,
+        "AI_CONFIRMATION_DISCARDED" if pending.kind == "CLASSIFICATION"
+        else "PENDING_CONFIRMATION_DISCARDED",
+        conversation, reason=reason, request_id=request_id,
+        extra={"pending_type": pending.kind, "discard_reason": reason},
+    )
+    conversation.pending_confirmation = None
+
+
 async def resolve_pending_confirmation(
     session: AsyncSession,
     conversation: Conversation,
@@ -396,40 +431,55 @@ async def resolve_pending_confirmation(
     message_text: str,
     request_id: str | None,
 ) -> PendingConfirmationResolution:
-    if not conversation.pending_confirmation:
+    pending = current_pending(conversation)
+    if pending.kind == "ABSENT":
+        return PendingConfirmationResolution(classification, False)
+    if pending.kind in {"INVALID", "RESOLVED"}:
+        discard_pending(session, conversation, pending, request_id, pending.reason or "INVALID")
         return PendingConfirmationResolution(classification, False)
 
-    pending = conversation.pending_confirmation
-    if isinstance(pending, dict) and pending.get("type") == "FULL_NAME_CONFIRMATION":
+    if (
+        classification.primary_intent == "GENERAL_INFORMATION"
+        and not is_affirmative(message_text)
+        and normalize_confirmation_text(message_text) not in DENIALS
+        and classification.information_category is not None
+        and not is_catalog_request_category(classification.information_category)
+        and response_code_for_category(classification.information_category) != NO_APPROVED_ANSWER
+    ):
+        # A recognized interruption does not create a new proposal. Legacy already
+        # validated in its actual question context is made explicit before that changes.
+        if "version" not in conversation.pending_confirmation:
+            conversation.pending_confirmation = {
+                **conversation.pending_confirmation,
+                "type": "FULL_NAME_CONFIRMATION" if pending.kind == "NAME"
+                else "CLASSIFICATION_CONFIRMATION",
+                "version": 1,
+                "context": proposal_context(conversation.state, conversation.active_lead_id),
+            }
         return PendingConfirmationResolution(classification, False)
 
-    if is_affirmative(message_text):
-        confirmed = IntentClassification.model_validate(pending["classification"])
+    if pending.kind == "NAME":
+        if normalize_confirmation_text(message_text) in DENIALS:
+            discard_pending(session, conversation, pending, request_id, "NAME_DENIED")
+        return PendingConfirmationResolution(classification, False)
+
+    corrected = any(e.quality_status == "CORRECTED" for e in normalized_entities(classification))
+    if is_affirmative(message_text) and not corrected:
+        confirmed = pending.classification
+        # The discriminator guarantees this model; unexpected programming faults propagate.
+        assert confirmed is not None
         audit_orchestrator_event(
-            session,
-            "AI_CONFIRMATION_ACCEPTED",
-            conversation,
-            reason="Customer confirmed tentative classification",
-            request_id=request_id,
-            extra={
-                "confirmed_intent": confirmed.primary_intent,
-                "original_confidence": confirmed.confidence,
-            },
+            session, "AI_CONFIRMATION_ACCEPTED", conversation,
+            reason="Customer confirmed tentative classification", request_id=request_id,
+            extra={"confirmed_intent": confirmed.primary_intent,
+                   "original_confidence": confirmed.confidence},
         )
         conversation.pending_confirmation = None
         if conversation.pending_action == "CLASSIFY_MESSAGE":
             set_pending_action(conversation, None)
         return PendingConfirmationResolution(confirmed, True)
 
-    audit_orchestrator_event(
-        session,
-        "AI_CONFIRMATION_DISCARDED",
-        conversation,
-        reason="Customer did not confirm tentative classification",
-        request_id=request_id,
-        extra={"pending_confirmation": pending},
-    )
-    conversation.pending_confirmation = None
+    discard_pending(session, conversation, pending, request_id, "NOT_AFFIRMATIVE_OR_CORRECTED")
     return PendingConfirmationResolution(classification, False)
 
 
@@ -1970,7 +2020,7 @@ async def handle_general_information(
     )
     persist_classification_context(conversation, classification)
     conversation.failed_understanding_count = 0
-    conversation.pending_confirmation = None
+    # A validated proposal survives an approved FAQ interruption and its restored action.
 
     target_state = (
         previous_state
@@ -2058,17 +2108,17 @@ async def handle_collecting_event_data(
             reason="Commercial intent starts quote data capture",
         )
 
-    handled_name_confirmation = await maybe_apply_name_confirmation(
-        session,
-        conversation,
-        customer,
-        orchestration_input.message_text,
-        orchestration_input.request_id,
-    )
     entities = contextual_requested_service_entities(
         conversation,
         orchestration_input.message_text,
         normalized_entities(classification),
+    )
+    handled_name_confirmation = (
+        await maybe_apply_name_confirmation(
+            session, conversation, customer,
+            orchestration_input.message_text, orchestration_input.request_id,
+        )
+        if not any(entity.quality_status == "CORRECTED" for entity in entities) else False
     )
     captured_requested_services = any(
         entity.entity == "requested_services" and entity.quality_status != "INVALID"
@@ -2197,6 +2247,18 @@ async def handle_quote_request_ready(
             knowledge_sessionmaker,
             orchestration_input,
             classification,
+        )
+        return
+
+    if (
+        conversation.pending_action != "CONFIRM_QUOTE_REQUEST"
+        or not conversation.last_question_code
+    ):
+        if conversation.pending_action == 'CONFIRM_QUOTE_REQUEST':
+            set_pending_action(conversation, None)
+        await enqueue_template(
+            session, knowledge_sessionmaker, conversation, customer,
+            orchestration_input.inbound_message, "RESP-FALLBACK-004", {},
         )
         return
 
@@ -2504,22 +2566,32 @@ async def apply_full_name(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    name = str(entity.normalized_value or entity.raw_value).strip()
-    if not name:
+    value = entity.normalized_value if entity.normalized_value is not None else entity.raw_value
+    name = name_value(value)
+    if name is None:
+        audit_orchestrator_event(
+            session, "PENDING_CONFIRMATION_INVALID_NAME", conversation,
+            reason="NON_TEXTUAL_OR_EMPTY", request_id=request_id,
+            extra={"pending_type": "NAME"},
+        )
         return
     if entity.needs_confirmation or entity.quality_status == "PENDING_CONFIRMATION":
-        conversation.pending_confirmation = {"type": "FULL_NAME_CONFIRMATION", "full_name": name}
+        conversation.pending_confirmation = {
+            "type": "FULL_NAME_CONFIRMATION", "version": 1, "full_name": name,
+            "context": proposal_context(conversation.state, conversation.active_lead_id),
+        }
         return
+    pending = conversation.pending_confirmation
+    if isinstance(pending, dict) and pending.get("type") == "FULL_NAME_CONFIRMATION":
+        discard_pending(
+            session, conversation, PendingProposal("NAME"), request_id, "NAME_REPLACED",
+        )
     old = {"full_name": customer.full_name}
     customer.full_name = name
     audit_domain_change(
-        session,
-        "CUSTOMER_NAME_CAPTURED",
-        "customer",
-        old,
+        session, "CUSTOMER_NAME_CAPTURED", "customer", old,
         {"customer_id": customer.id, "full_name": name},
-        "Customer name captured during quote data collection",
-        request_id,
+        "Customer name captured during quote data collection", request_id,
     )
 
 
@@ -2530,23 +2602,20 @@ async def maybe_apply_name_confirmation(
     message_text: str,
     request_id: str | None,
 ) -> bool:
-    pending = conversation.pending_confirmation
-    if not isinstance(pending, dict) or pending.get("type") != "FULL_NAME_CONFIRMATION":
+    pending = current_pending(conversation)
+    if pending.kind != "NAME" or conversation.pending_action != "COLLECT_CUSTOMER_NAME":
         return False
     if not is_affirmative(message_text):
         return False
-    name = str(pending["full_name"])
+    name = pending.full_name
+    assert name is not None
     old = {"full_name": customer.full_name}
     customer.full_name = name
     conversation.pending_confirmation = None
     audit_domain_change(
-        session,
-        "CUSTOMER_NAME_CONFIRMED",
-        "customer",
-        old,
+        session, "CUSTOMER_NAME_CONFIRMED", "customer", old,
         {"customer_id": customer.id, "full_name": name},
-        "Customer confirmed inferred name",
-        request_id,
+        "Customer confirmed inferred name", request_id,
     )
     return True
 
@@ -2835,8 +2904,7 @@ async def capture_progress(
         guest_count_max=event.guest_count_max,
         date_resolved=date_resolved(event),
         full_name=customer.full_name,
-        full_name_needs_confirmation=isinstance(conversation.pending_confirmation, dict)
-        and conversation.pending_confirmation.get("type") == "FULL_NAME_CONFIRMATION",
+        full_name_needs_confirmation=current_pending(conversation).kind == "NAME",
         budget_data_status=lead.budget_data_status,
         services_requested=has_services,
         pending_fields=conversation.pending_fields or [],

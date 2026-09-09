@@ -112,3 +112,38 @@ lint; se repite producto BASE intacto. No se relaja el criterio de negocio.
 Revisión previa a congelar RED: is_action_allowed_for_slice rechaza CONFIRM sin acción
 confirmable antes del routing por estado. Se precisa RESP-FALLBACK-004 en deny/return;
 no se cambia producto ni se fuerza una clasificación comercial para mostrar otro resumen.
+
+## RED definitivo y adaptación histórica declarada antes de editar el nodo
+
+RED congelado: 7a52cd493f04dc1f5623dba1bc60f178b9b8749c, run 34373130121.
+Focal inspeccionado: 383 PASS + 3 FAIL / 386, Ruff PASS, fases completas y cero red
+inesperada. Helpers y criterios no volverán a editarse. El intento previo corregido
+3cd067f/run 34372828513 conserva 1014 históricos + 4 controles PASS y 3 fallos R6.
+
+Nodo histórico: tests/unit/test_orchestrator.py::test_affirmative_message_uses_pending_confirmation.
+Su fixture original BOT_ACTIVE conserva acción/pregunta ausentes, JSON legacy con
+GENERAL_INFORMATION/parqueadero@0.72, entrada de orquestación «sí» y clasificación fresca
+UNKNOWN@0.91. Antes exige RESP-PARKING-001 y AI_CONFIRMATION_ACCEPTED. Esa aceptación
+inventa contexto ausente y contradice la compatibilidad estrecha R6. Se mantienen la
+preparación, payload, nombre del nodo y clasificación: nueva expectativa exige pendiente
+retirado, cero aceptación, diagnóstico CLASSIFICATION_CONTEXT_MISSING, cero handoff,
+cliente sin nombre aplicado y aclaración RESP-FALLBACK-001 por la ruta UNKNOWN existente.
+La versión original permanece en BASE y RED; los positivos TC-B3 y R6 con contexto real
+conservan aceptación/uplift. Atomicidad se demuestra aparte con trigger SQL diferido.
+
+El lector nuevo no crea propuesta desde resolved_intent. Las propuestas nuevas usan type,
+version=1 y contexto de estado/lead; legacy válido requiere acción/pregunta existentes.
+FAQ aprobada puede conservar y explicitar ese mismo pendiente validado, sin nueva autoridad.
+La validación de nombre es estructural (texto no vacío); H29 semántico sigue fuera.
+La captura de nombre aceptada retira solo un pendiente anterior de nombre. El resultado
+intermedio recién producido puede bloquear mínimos antes de que se seleccione la siguiente
+pregunta; solo COLLECT_CUSTOMER_NAME permite consumirlo por afirmación.
+El guard de resumen también exige acción CONFIRM_QUOTE_REQUEST y pregunta presentes.
+Una fixture legacy sin acción/pregunta se aclara sin READY; no se regenera autoridad al
+encolar la aclaración. No se modifican funciones de agenda, confirmación contextual del
+canal ni rutas administrativas. Se añaden controles del caso incompleto y del siguiente sí.
+
+Cambio diagnóstico: AI_CONFIRMATION_DISCARDED conserva el tipo de evento, con motivo
+controlado y tipo de pendiente, sin copiar su JSON completo. Nuevos descartes de formas
+inválidas/resoluciones/nombres usan PENDING_CONFIRMATION_DISCARDED; los eventos de aceptación,
+CUSTOMER_NAME_CAPTURED/CONFIRMED y cambios comerciales autorizados conservan sus contratos.

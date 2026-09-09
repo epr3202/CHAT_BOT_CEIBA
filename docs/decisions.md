@@ -47,3 +47,10 @@ R4 separa H05.solicitud_explicita de H05.agotamiento_fallback. Coincidencia comp
 Guard de medios pausados y captura pasiva en inbox R2; candidato pendiente de CI.
 Sin cambios al worker de comprobantes ni invalidacion de Outbox previo (U12c).
 Contrato y evidencia: [R5](remediation/r5-h03-media-2026-09-09/README.md).
+
+## R6 en validación — H17.contrato_y_consumo_de_pendientes / U03
+
+BASE R5 aprobada d237ad7/run 34364403706. R6 distingue propuestas de clasificación y
+nombre de resoluciones inertes, valida contexto legacy y retira autoridad al negar o
+reemplazar. Consumo y descarte permanecen bajo R2; sin migración ni activación.
+[Contrato, RED y límites R6](remediation/r6-h17-confirmations-2026-09-09/README.md).

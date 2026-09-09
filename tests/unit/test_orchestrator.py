@@ -359,12 +359,21 @@ async def test_affirmative_message_uses_pending_confirmation(
     async with sessionmaker_fixture() as session:
         conversation = await session.get(Conversation, conversation_id)
         outbox = await session.scalar(select(Outbox))
+        discarded = await session.scalar(
+            select(AuditEvent).where(AuditEvent.action == 'PENDING_CONFIRMATION_DISCARDED')
+        )
+        handoff = await session.scalar(select(Handoff))
+        customer = await session.get(Customer, conversation.customer_id)
         audit = await session.scalar(
             select(AuditEvent).where(AuditEvent.action == "AI_CONFIRMATION_ACCEPTED")
         )
 
     assert conversation is not None
     assert conversation.pending_confirmation is None
-    assert conversation.last_question_code == "RESP-PARKING-001"
+    assert conversation.last_question_code == "RESP-FALLBACK-001"
     assert outbox is not None
-    assert audit is not None
+    assert audit is None
+    assert discarded is not None
+    assert discarded.new_value['discard_reason'] == 'CLASSIFICATION_CONTEXT_MISSING'
+    assert handoff is None
+    assert customer.full_name is None
