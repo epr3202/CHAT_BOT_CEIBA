@@ -69,3 +69,11 @@ Versión anterior permanece en BASE y ambos RED; no se cambia estado ni payload.
 El inventario R5 conserva siete nodeids RED fijos y registra todos los nodos nuevos
 descubiertos en tests/remediation/r5, incluidos en suite/focal. El gate compara exactamente
 los históricos más ese inventario; no suma el focal al total ni omite fallos de fases.
+
+Segunda adaptación identificada antes de editar: mismo archivo histórico, nodo
+test_tc_pay_006_audio_in_payment_context_is_not_evidence. El seed también deja
+WAITING_FOR_HUMAN/PENDING y flag verdadero; audio/ogg sin caption. Exigía
+last_question_code=RESP-FILE-003. R5 exige conservar None, cero Outbox y caso/pausa
+intactos; se mantienen ausencia de evidencia y cero IA. BASE/RED preservan la versión.
+La suite RED completa ya fue inspeccionada: 845 nodos, 842 PASS y los mismos tres
+FAIL funcionales; los 838 históricos pasan con fases completas.

@@ -525,7 +525,12 @@ async def test_tc_pay_006_audio_in_payment_context_is_not_evidence(
     async with sessionmaker() as session:
         conversation = await session.scalar(select(Conversation))
     assert await evidence_rows(sessionmaker) == []
-    assert conversation.last_question_code == "RESP-FILE-003"
+    assert conversation.last_question_code is None
+    assert conversation.state == "WAITING_FOR_HUMAN" and conversation.bot_enabled is True
+    async with sessionmaker() as session:
+        assert await session.scalar(select(func.count()).select_from(Outbox)) == 0
+        handoff = await session.scalar(select(Handoff))
+        assert handoff.status == "PENDING" and handoff.priority == "NORMAL"
     assert calls.messages == []
 
 

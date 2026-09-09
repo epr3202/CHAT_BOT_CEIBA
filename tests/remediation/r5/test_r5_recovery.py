@@ -102,6 +102,15 @@ async def test_state_and_case_are_rechecked_at_apply(
     if change == "activate":
         assert result == "RETRY" and final["payment_evidence"] == []
         assert final["inbox_job"][0]["last_error"] == "CONTEXT_CHANGED_RECLASSIFY"
+        with respx.mock as router:
+            resumed_provider = Provider(router, {MAIN: [valid()]})
+            resumed = await claim(db, datetime.now(UTC) + timedelta(seconds=5))
+            assert await inbox.process_claimed_inbox(db, resumed) == "COMPLETED"
+            assert resumed_provider.calls == {MAIN: 1}
+        recovered = await snapshot(db)
+        assert recovered["message"] == before["message"]
+        evidence(request, before=before, retry=final, recovered=recovered,
+                 calls=resumed_provider.calls)
     else:
         assert result == "COMPLETED"
         assert_passive(before, final, change == "pause")
@@ -208,3 +217,25 @@ async def test_busy_handoff_rolls_back_without_waiting_under_conversation_lock(
     final = await snapshot(db)
     assert_passive(before, final, True)
     evidence(request, before=before, failed=failed, final=final)
+
+
+async def test_two_consumers_of_same_claim_commit_only_once(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure(monkeypatch)
+    await prepare(db, payment="TAKEN")
+    current = await claim(db)
+    before = await snapshot(db)
+    start = asyncio.Event()
+
+    async def consumer() -> str:
+        await start.wait()
+        return await inbox.process_claimed_inbox(db, current)
+
+    tasks = [asyncio.create_task(consumer()), asyncio.create_task(consumer())]
+    start.set()
+    outcomes = await asyncio.wait_for(asyncio.gather(*tasks), 10)
+    final = await snapshot(db)
+    assert sorted(outcomes) == ["COMPLETED", "DISCARDED"]
+    assert_passive(before, final, True)
+    evidence(request, before=before, final=final, outcomes=outcomes)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -16,7 +16,9 @@ from app.agent.models import Agent, AgentSession
 from app.channel import inbound
 from app.conversation.models import Conversation
 from app.customer.models import Customer
+from app.event.models import Event
 from app.handoff.models import Handoff
+from app.lead.models import Lead
 from tests.remediation.r3.helpers import MAIN, Provider, valid
 from tests.remediation.r4.helpers import configure, message_payload
 from tests.remediation.r5.helpers import assert_passive, media_payload, prepare, snapshot
@@ -39,8 +41,12 @@ async def test_paused_media_matrix(
     state: str, enabled: bool, kind: str, caption: str | None, payment: str | None,
 ) -> None:
     configure(monkeypatch)
+    data = media_payload(kind, caption)
+    if kind in {"audio", "video"}:
+        raw = data["entry"][0]["changes"][0]["value"]["messages"][0][kind]
+        raw["mime_type"] = "audio/ogg" if kind == "audio" else "video/mp4"
     event = await prepare(db, kind=kind, caption=caption, state=state,
-                          enabled=enabled, payment=payment)
+                          enabled=enabled, payment=payment, data=data)
     before = await snapshot(db)
     with respx.mock(assert_all_called=False) as router:
         provider = Provider(router, {MAIN: [valid()]})
@@ -131,7 +137,11 @@ async def test_active_no_caption_routes_unchanged(
     db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, kind: str,
 ) -> None:
     configure(monkeypatch)
-    event = await prepare(db, kind=kind, state="BOT_ACTIVE", enabled=True, payment="PENDING")
+    data = media_payload(kind)
+    if kind in {"audio", "video"}:
+        raw = data["entry"][0]["changes"][0]["value"]["messages"][0][kind]
+        raw["mime_type"] = "audio/ogg" if kind == "audio" else "video/mp4"
+    event = await prepare(db, data=data, state="BOT_ACTIVE", enabled=True, payment="PENDING")
     with respx.mock(assert_all_called=False) as router:
         provider = Provider(router, {MAIN: [valid()]})
         await inbound.process_webhook_event(event, db)
@@ -175,6 +185,13 @@ async def test_operational_admin_visibility_and_human_output(
         cases = await client.get("/admin/handoffs", params={"status": "PENDING"})
         assert cases.status_code == 200 and len(cases.json()) == 1
         case_id = cases.json()[0]["id"]
+        waiting = await snapshot(db)
+        await inbound.process_whatsapp_webhook(media_payload(external_id="r5.while.waiting"), db)
+        after_waiting = await snapshot(db)
+        assert after_waiting["outbox"] == waiting["outbox"]
+        assert after_waiting["ai_execution"] == waiting["ai_execution"]
+        assert len(after_waiting["handoff"]) == 1
+        assert after_waiting["conversation"][0]["state"] == "WAITING_FOR_HUMAN"
         taken = await client.post(f"/admin/handoffs/{case_id}/take")
         assert taken.status_code == 200
         before = await snapshot(db)
@@ -185,7 +202,7 @@ async def test_operational_admin_visibility_and_human_output(
         updated = await client.get("/admin/handoffs", params={"status": "TAKEN"})
         assert messages.status_code == files.status_code == updated.status_code == 200
         assert any(m.get("message_type") == "image" for m in messages.json())
-        assert len(files.json()) == (2 if payment else 0)
+        assert len(files.json()) == (3 if payment else 0)
         if payment:
             assert "evidencia #" in updated.json()[0]["summary"]
         human = await client.post("/admin/conversations/1/messages",
@@ -193,9 +210,59 @@ async def test_operational_admin_visibility_and_human_output(
         assert human.status_code == 200
     after_human = await snapshot(db)
     evidence(request, before=before, final=final, after_human=after_human,
+             waiting=waiting, after_waiting=after_waiting,
              administrative_evidence=files.json(), administrative_cases=updated.json(),
              calls=provider.calls)
     assert final["outbox"] == before["outbox"]  # U12c remains outside R5.
     assert len(final["handoff"]) == 1
     assert final["ai_execution"] == before["ai_execution"]
+    for field in ("state", "bot_enabled", "assigned_agent_id"):
+        assert final["conversation"][0][field] == before["conversation"][0][field]
+    for field in ("status", "assigned_to", "assigned_agent_id"):
+        assert final["handoff"][0][field] == before["handoff"][0][field]
     assert len(after_human["outbox"]) == len(final["outbox"]) + 1
+
+
+@pytest.mark.parametrize("kind", ["image", "document", "audio", "video"])
+async def test_missing_provider_media_id_is_rejected(
+    request: pytest.FixtureRequest, kind: str,
+) -> None:
+    data = media_payload(kind)
+    data["entry"][0]["changes"][0]["value"]["messages"][0][kind].pop("id")
+    parsed = inbound.extract_inbound_messages(data)
+    evidence(request, parser_result_count=len(parsed),
+             boundary="Parser only; no Message materialized")
+    assert parsed == []
+
+
+async def test_confirmed_context_and_pending_proposals_are_preserved(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure(monkeypatch)
+    event = await prepare(db, payment="TAKEN", caption="Quiero hablar con un asesor")
+    async with db() as session, session.begin():
+        conversation = await session.get(Conversation, 1)
+        lead = Lead(customer_id=conversation.customer_id, channel="WHATSAPP",
+                    lead_status="QUALIFYING")
+        session.add(lead)
+        await session.flush()
+        session.add(Event(lead_id=lead.lead_id, event_type="BIRTHDAY",
+                          event_date=date(2027, 2, 20), event_date_type="EXACT",
+                          guest_count=40, guest_count_status="PROVIDED"))
+        conversation.active_lead_id = lead.lead_id
+        conversation.pending_action = "CONFIRM_QUOTE_REQUEST"
+        conversation.pending_fields = ["requested_services"]
+        conversation.pending_confirmation = {"type": "AI_CONFIRMATION", "classification": valid()}
+        conversation.visit_draft = {"visit_date": "2027-02-20", "mode": "SCHEDULE"}
+        conversation.last_question_code = "RESP-EVENT-DATA-006"
+    before = await snapshot(db)
+    with respx.mock(assert_all_called=False) as router:
+        provider = Provider(router, {MAIN: [valid()]})
+        await inbound.process_webhook_event(event, db)
+    final = await snapshot(db)
+    evidence(request, before=before, final=final, calls=provider.calls)
+    assert_passive(before, final, True)
+    for table in ("lead", "event", "customer", "appointment", "quote_request"):
+        assert final[table] == before[table]
+    assert final["payment_evidence"][0]["lead_id"] == before["conversation"][0]["active_lead_id"]
+    assert provider.calls == {}
