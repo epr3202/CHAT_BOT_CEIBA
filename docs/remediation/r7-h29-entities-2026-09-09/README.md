@@ -91,3 +91,9 @@ agenda/reconciliación, H17 residual, H05, U12c, pagos, H11, roles o reparación
 La activación conserva los requisitos R1/R2. Finales locales posteriores a CI se
 identificarán como tales. Las cachés pytest-cache-files-* ilegibles del host se excluyen
 explícitamente de la afirmación de integridad; no se cambian permisos.
+
+## Preparación fallida conservada
+SHA 46147c5c73e272fdf5f8f6faab785ff470f1e074, run 34395929801:
+ambos jobs fallaron antes de pytest por KeyError parent_base_sha en el manifiesto.
+Cero pruebas de producto; no se atribuye RED funcional. Se añade la clave requerida
+por el launcher derivado, manteniendo BASE/producto/criterios intactos.
