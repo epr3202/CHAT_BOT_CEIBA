@@ -346,7 +346,8 @@ async def test_affirmation_of_classification_precedes_fresh_faq_guess(
     assert last["after"]["conversation"][0]["last_question_code"] == "RESP-QUOTE-002"
 
 
-@pytest.mark.parametrize("mode", ["valid", "deny", "resolved", "malformed", "absent", "correct", "faq"])
+@pytest.mark.parametrize("mode", [
+    "valid", "deny", "resolved", "malformed", "absent", "correct", "faq"])
 async def test_visit_name_reader_obeys_same_pending_authority(
     db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
@@ -383,6 +384,7 @@ async def test_visit_name_reader_obeys_same_pending_authority(
     if mode in {"deny", "resolved", "malformed", "absent", "faq"}:
         if mode == "faq":
             assert first["after"]["conversation"][0]["last_question_code"] == "RESP-PARKING-001"
+            assert first["after"]["conversation"][0]["visit_draft"] == draft
             assert first["after"]["customer"][0]["full_name"] is None
         last = await send(db, "si", proposal("SCHEDULE_VISIT"))
         completed(last)

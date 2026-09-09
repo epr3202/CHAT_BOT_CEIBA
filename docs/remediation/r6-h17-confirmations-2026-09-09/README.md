@@ -158,3 +158,11 @@ con pendiente de nombre conserva draft y reanuda. Son siete controles adicionale
 fixtures legacy/contexto de visita explícitos, sin atribuirles reproducción natural en BASE.
 El cambio sigue en service.py; no cambia el servicio de agenda ni crea citas al aceptar
 un nombre. Los tests históricos de nombres directos y confirmación de visita se conservan.
+
+
+Intento de ampliación 30d20adc/run 34380292893 conservado: focal 465 PASS / 1 FAIL,
+Ruff detectó dos líneas largas (incluida la copia build/lib). El fallo FAQ de visita
+mostró transición a BOT_ACTIVE, pérdida del contexto de la propuesta y reinicio del draft
+al reanudar. Se conserva el criterio y se refuerza la comprobación del draft intermedio.
+La ruta FAQ ahora mantiene el estado cuando atiende un nombre activo en captura directa
+de visita; no se modifica el grafo de estados ni el servicio de agenda. Se corrige lint.

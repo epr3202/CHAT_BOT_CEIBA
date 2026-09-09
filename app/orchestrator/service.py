@@ -1262,7 +1262,8 @@ async def handle_waiting_for_appointment_selection(
             and classification.primary_intent == "GENERAL_INFORMATION"
             and classification.information_category is not None
             and not is_catalog_request_category(classification.information_category)
-            and response_code_for_category(classification.information_category) != NO_APPROVED_ANSWER
+            and response_code_for_category(classification.information_category)
+            != NO_APPROVED_ANSWER
             and not is_affirmative(message_text)
             and normalize_confirmation_text(message_text) not in DENIALS
         ):
@@ -1931,8 +1932,14 @@ async def handle_general_information(
     conversation = orchestration_input.conversation
     previous_state = ConversationState(conversation.state)
     previous_pending_action = conversation.pending_action
+    preserve_name_context = (
+        previous_state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
+        and previous_pending_action == "COLLECT_CUSTOMER_NAME"
+        and current_pending(conversation).kind == "NAME"
+    )
     if (
-        not is_catalog_request_category(classification.information_category)
+        not preserve_name_context
+        and not is_catalog_request_category(classification.information_category)
         and ConversationState.ANSWERING_INFORMATION in ALLOWED_TRANSITIONS[previous_state]
     ):
         set_pending_action(conversation, "ANSWER_INFORMATION")
@@ -2054,8 +2061,10 @@ async def handle_general_information(
 
     target_state = (
         previous_state
-        if previous_state != ConversationState.ANSWERING_INFORMATION
-        and previous_state in ALLOWED_TRANSITIONS[ConversationState.ANSWERING_INFORMATION]
+        if preserve_name_context or (
+            previous_state != ConversationState.ANSWERING_INFORMATION
+            and previous_state in ALLOWED_TRANSITIONS[ConversationState.ANSWERING_INFORMATION]
+        )
         else ConversationState.BOT_ACTIVE
     )
     if conversation.state != target_state.value:
