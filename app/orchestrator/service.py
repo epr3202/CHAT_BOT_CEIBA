@@ -373,6 +373,7 @@ async def _orchestrate_inbound_message(
                 audit_entity_rejection(
                     session, item, orchestration_input.request_id, conversation,
                 )
+            set_pending_action(conversation, "CLASSIFY_MESSAGE")
             await enqueue_template(
                 session, knowledge_sessionmaker, conversation, customer, inbound_message,
                 "RESP-FALLBACK-004", {},
@@ -1324,8 +1325,21 @@ async def handle_waiting_for_appointment_selection(
                     session, conversation, orchestration_input.customer,
                     name_entity, orchestration_input.request_id,
                 )
+        if name_rejected:
+            conversation.pending_fields = list(dict.fromkeys(
+                [*(conversation.pending_fields or []), "full_name"],
+            ))
+        elif confirmed or (
+            not is_affirmative(message_text)
+            and current_pending(conversation).kind != "NAME"
+            and any(item.entity == "full_name" for item in normalized_entities(classification))
+        ):
+            conversation.pending_fields = [
+                field for field in (conversation.pending_fields or []) if field != "full_name"
+            ]
         if (
             name_rejected or current_pending(conversation).kind == "NAME"
+            or "full_name" in (conversation.pending_fields or [])
             or not (orchestration_input.customer.full_name or "").strip()
         ):
             await enqueue_template(
@@ -1782,29 +1796,8 @@ async def clear_visit_draft_and_resume_capture(
         event,
         conversation,
     )
-    unresolved = [
-        field for field in held_fields
-        if field in ENTITY_ACTION and field not in {
-            canonical_field(item.entity) for item in entities
-        }
-    ]
-    if handled_name_confirmation:
-        unresolved = [field for field in unresolved if field != "full_name"]
-    if lead.budget_data_status == "DECLINED" and not any(
-        canonical_field(item.entity) == "estimated_budget" for item in batch.rejected
-    ):
-        unresolved = [field for field in unresolved if field != "estimated_budget"]
-    rejected_fields = [
-        canonical_field(item.entity) for item in batch.rejected
-        if item.code != "UNSUPPORTED_SERVICE_ITEM" and item.entity != "UNKNOWN"
-    ]
-    conversation.pending_fields = list(dict.fromkeys(
-        [*pending_fields_for(progress), *unresolved, *rejected_fields]
-    ))
-    next_action = next(
-        (ENTITY_ACTION[field] for field in [*rejected_fields, *unresolved]
-         if field in ENTITY_ACTION), select_next_question(progress),
-    )
+    conversation.pending_fields = pending_fields_for(progress)
+    next_action = select_next_question(progress)
     if next_action is None:
         await transition_to_quote_request_ready(
             session,
@@ -2249,12 +2242,35 @@ async def handle_collecting_event_data(
             entities,
             orchestration_input.request_id,
         )
-    if not batch.rejected and should_mark_budget_declined_by_evasion(lead, entities):
+    declined_by_evasion = not batch.rejected and should_mark_budget_declined_by_evasion(
+        lead, entities,
+    )
+    if declined_by_evasion:
         apply_budget_declined(session, lead, orchestration_input.request_id)
 
     progress = await capture_progress(session, customer, lead, event, conversation)
-    conversation.pending_fields = pending_fields_for(progress)
-    next_action = select_next_question(progress)
+    unresolved = [
+        field for field in held_fields
+        if field in ENTITY_ACTION and field not in {
+            canonical_field(item.entity) for item in entities
+            if item.entity != "budget_declined" or item.normalized_value is True
+        }
+    ]
+    if handled_name_confirmation:
+        unresolved = [field for field in unresolved if field != "full_name"]
+    if declined_by_evasion:
+        unresolved = [field for field in unresolved if field != "estimated_budget"]
+    rejected_fields = [
+        canonical_field(item.entity) for item in batch.rejected
+        if item.code != "UNSUPPORTED_SERVICE_ITEM" and item.entity != "UNKNOWN"
+    ]
+    conversation.pending_fields = list(dict.fromkeys(
+        [*pending_fields_for(progress), *unresolved, *rejected_fields]
+    ))
+    next_action = next(
+        (ENTITY_ACTION[field] for field in [*rejected_fields, *unresolved]
+         if field in ENTITY_ACTION), select_next_question(progress),
+    )
     persist_classification_context(conversation, classification)
     conversation.failed_understanding_count = 0
     if captured_requested_services:
@@ -2651,7 +2667,10 @@ def checked_entity(
     try:
         accepted = validate_entity(entity, entity_today())
     except InvalidEntity as error:
-        audit_entity_rejection(session, rejection(entity, str(error)), request_id, conversation)
+        if str(error) == "UNSUPPORTED_EVENT_TYPE":
+            audit_discarded_event_type(session, entity, request_id)
+        else:
+            audit_entity_rejection(session, rejection(entity, str(error)), request_id, conversation)
         return None
     for item in accepted.warnings:
         audit_entity_rejection(session, item, request_id, conversation)
@@ -3116,6 +3135,12 @@ def normalize_event_type_entities(
         if value is None:
             value = entity.raw_value
         if not isinstance(value, str):
+            normalized_entities_list.append(entity)
+            continue
+        if any(
+            "\x00" in text or any(0xD800 <= ord(char) <= 0xDFFF for char in text)
+            for text in (value, entity.raw_value)
+        ):
             normalized_entities_list.append(entity)
             continue
         event_type = normalize_event_type(value)

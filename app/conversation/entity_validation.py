@@ -18,7 +18,7 @@ from app.event.validation import (
     parse_customer_date_expression,
     validate_event_date_triplet,
 )
-from app.lead.budget import parse_cop_amount
+from app.lead.budget import _parse_spanish_number, parse_cop_amount
 
 ENTITY_NAMES = frozenset(get_args(EntityName))
 MAX_INTEGER = 2**31 - 1
@@ -152,18 +152,24 @@ def amount_value(value: object, raw: str) -> Decimal:
             text = re.sub(r"\d{1,3}(?:\.\d{3}){2,}", lambda m: m[0].replace(".", ""), text)
             # The existing COP parser handles the approved colloquial forms.
             amount = parse_cop_amount(text)
-            numeric = re.fullmatch(r"\s*\$?\s*(\d+(?:[.,]\d+)?)\s*(cop|m)?\s*", text)
-            scaled = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:millones?|millón)", text)
-            if numeric:
-                exact = Decimal(numeric[1].replace(",", "."))
-                if numeric[2] == "m" or (exact < 1000 and "." in numeric[1]):
-                    exact *= 1_000_000
-                amount = exact
-            elif scaled:
-                exact = Decimal(scaled[1].replace(",", "."))
-                if "medio" in text or "media" in text:
+            # Mirror only the parser's exact Decimal arithmetic, before its integer
+            # quantization, so a supported phrase cannot silently lose cents.
+            compact = text.replace("$", "").replace("cop", "").strip().replace(",", ".")
+            millions = re.search(r"(\d+(?:\.\d+)?)\s*m\b", compact)
+            if millions:
+                amount = Decimal(millions[1]) * 1_000_000
+            elif any(word in compact for word in ("millon", "millón", "millones")):
+                before = re.split(r"millones?|millón", compact, maxsplit=1)[0].strip()
+                exact = _parse_spanish_number(before)
+                if "medio" in compact or "media" in compact:
                     exact += Decimal("0.5")
                 amount = exact * 1_000_000
+            else:
+                digits = re.sub(r"[^\d.]", "", compact)
+                if digits:
+                    amount = Decimal(digits)
+                    if amount < 1000 and "." in digits:
+                        amount *= 1_000_000
     except (InvalidOperation, ValueError) as error:
         if isinstance(error, InvalidEntity):
             raise
@@ -178,6 +184,8 @@ def amount_value(value: object, raw: str) -> Decimal:
 
 
 def date_value(value: object, raw: str, today: date) -> EventDateTriplet:
+    if not raw and isinstance(value, dict):
+        raw = value.get("event_date_raw", "")
     raw = text_value(raw)
     if len(raw) > 200:
         _fail("DATE_RAW_OVERFLOW")

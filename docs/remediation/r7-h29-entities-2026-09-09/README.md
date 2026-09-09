@@ -128,3 +128,21 @@ para los códigos/alias ya vigentes; no permite REMOVED ni inventa códigos.
 El límite Integer es técnico; esta validación no certifica el aforo ni todas sus rutas
 de revisión comercial. No se modifica esa política ni se presenta un máximo técnico
 como capacidad del negocio.
+
+## Controles adicionales del candidato
+
+El candidato siguiente agrega controles de telemetría SQL, prioridad R4, servicios
+auxiliares, nombre durante visita, parser COP sin pérdida de centavos, ausencia,
+calidad de las nueve familias y envolturas legacy válidas. No se atribuyen como RED
+en BASE. La validación de dinero reutiliza parse_cop_amount y su suma Decimal española;
+comprueba el resultado exacto previo a la cuantización a pesos del parser existente.
+Se preserva el evento histórico de descarte de tipo desconocido; los rechazos semánticos
+nuevos usan solo código, entidad y tipo técnico. Ninguna migración.
+
+Candidato1 f708c907 / run 34399958997: focal 512 PASS / 52 FAIL; suite 1142 PASS /
+57 FAIL. El bloque de aclaración se insertó en reanudación de visita por error de edición;
+se mueve a captura. Se restaura CLASSIFY_MESSAGE en degradación incierta y el evento
+histórico de descarte. Ruff además detectó un import del test nuevo sin formato.
+El nuevo test de conflicto de presupuesto comparaba todo el lead, incluyendo su transición
+legítima NEW a QUALIFYING: se corrige a igualdad de los tres campos de presupuesto. No se
+cambian criterios RED ni más expectativas históricas. Intento y artefactos preservados.
