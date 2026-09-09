@@ -344,3 +344,63 @@ async def test_affirmation_of_classification_precedes_fresh_faq_guess(
     assert actions(last["after"], "AI_CONFIRMATION_ACCEPTED") == 1
     assert actions(last["after"], "CONFIRMATION_UPLIFT") == 1
     assert last["after"]["conversation"][0]["last_question_code"] == "RESP-QUOTE-002"
+
+
+@pytest.mark.parametrize("mode", ["valid", "deny", "resolved", "malformed", "absent", "correct", "faq"])
+async def test_visit_name_reader_obeys_same_pending_authority(
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    configure(monkeypatch)
+    body = "no" if mode == "deny" else (
+        "si, corrijo mi nombre a Nombre Corregido" if mode == "correct" else (
+            "Hay parqueadero?" if mode == "faq" else "si"))
+    event = await prepare(db, name=None, body=body)
+    pending = dict(type="FULL_NAME_CONFIRMATION", full_name="Nombre Vigente")
+    if mode == "resolved":
+        pending = dict(resolved_intent="DENY")
+    elif mode == "malformed":
+        pending = dict(type="FULL_NAME_CONFIRMATION", full_name=["No coercion"])
+    elif mode == "absent":
+        pending = None
+    draft = dict(visit_date="2027-02-20", visit_time="09:00", attendee_count=2,
+                 visit_reason="Conocer el lugar", return_to="VISIT_CONFIRMATION_SUMMARY")
+    async with db() as session, session.begin():
+        conversation = await session.get(Conversation, 1)
+        conversation.state = "WAITING_FOR_APPOINTMENT_SELECTION"
+        conversation.pending_action = "COLLECT_CUSTOMER_NAME"
+        conversation.last_question_code = "RESP-CUSTOMER-001"
+        conversation.pending_confirmation = pending
+        conversation.visit_draft = draft
+    response = proposal("SCHEDULE_VISIT")
+    if mode == "correct":
+        response = proposal("SCHEDULE_VISIT", entities=[
+            entity("full_name", "Nombre Corregido", quality_status="CORRECTED")])
+    elif mode == "faq":
+        response = proposal("GENERAL_INFORMATION", information_category="parqueadero")
+    first = await send(db, body, response, event_id=event)
+    completed(first)
+    steps = [first]
+    if mode in {"deny", "resolved", "malformed", "absent", "faq"}:
+        if mode == "faq":
+            assert first["after"]["conversation"][0]["last_question_code"] == "RESP-PARKING-001"
+            assert first["after"]["customer"][0]["full_name"] is None
+        last = await send(db, "si", proposal("SCHEDULE_VISIT"))
+        completed(last)
+        steps.append(last)
+    last = steps[-1]
+    evidence(request, legacy_fixture=dict(pending=pending, visit_draft=draft),
+             steps=steps, final=last["after"])
+    expected = "Nombre Corregido" if mode == "correct" else (
+        "Nombre Vigente" if mode in {"valid", "faq"} else None)
+    assert last["after"]["customer"][0]["full_name"] == expected
+    assert last["after"]["conversation"][0]["pending_confirmation"] is None
+    assert actions(last["after"], "CUSTOMER_NAME_CONFIRMED") == int(mode in {"valid", "faq"})
+    assert not last["after"]["appointment"] and not last["after"]["handoff"]
+    assert not last["after"]["quote_request"]
+    assert last["after"]["event"] == first["before"]["event"]
+    assert last["after"]["event_service_request"] == first["before"]["event_service_request"]
+    if expected is None:
+        assert last["after"]["conversation"][0]["visit_draft"] == draft
+        assert last["after"]["conversation"][0]["last_question_code"] == "RESP-CUSTOMER-001"
+    else:
+        assert last["after"]["conversation"][0]["last_question_code"] == "RESP-VISIT-CONFIRM-001"

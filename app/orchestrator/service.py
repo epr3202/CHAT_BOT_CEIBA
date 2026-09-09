@@ -1256,13 +1256,43 @@ async def handle_waiting_for_appointment_selection(
         return
 
     if pending_action == "COLLECT_CUSTOMER_NAME":
-        await apply_full_name(
-            session,
-            conversation,
-            orchestration_input.customer,
-            direct_customer_name_entity(classification, orchestration_input.message_text),
-            orchestration_input.request_id,
+        message_text = orchestration_input.message_text
+        if (
+            current_pending(conversation).kind == "NAME"
+            and classification.primary_intent == "GENERAL_INFORMATION"
+            and classification.information_category is not None
+            and not is_catalog_request_category(classification.information_category)
+            and response_code_for_category(classification.information_category) != NO_APPROVED_ANSWER
+            and not is_affirmative(message_text)
+            and normalize_confirmation_text(message_text) not in DENIALS
+        ):
+            await handle_general_information(
+                session, settings, knowledge_sessionmaker, orchestration_input, classification,
+            )
+            return
+        corrected = any(
+            entity.quality_status == "CORRECTED" for entity in normalized_entities(classification)
         )
+        confirmed = (
+            await maybe_apply_name_confirmation(
+                session, conversation, orchestration_input.customer,
+                message_text, orchestration_input.request_id,
+            ) if not corrected else False
+        )
+        # A bare answer cannot become a fresh name through the direct-text fallback.
+        if not confirmed and (
+            corrected or (
+                not is_affirmative(message_text)
+                and normalize_confirmation_text(message_text) not in DENIALS
+            )
+        ):
+            await apply_full_name(
+                session,
+                conversation,
+                orchestration_input.customer,
+                direct_customer_name_entity(classification, message_text),
+                orchestration_input.request_id,
+            )
         if not (orchestration_input.customer.full_name or "").strip():
             await enqueue_template(
                 session,

@@ -141,10 +141,20 @@ intermedio recién producido puede bloquear mínimos antes de que se seleccione 
 pregunta; solo COLLECT_CUSTOMER_NAME permite consumirlo por afirmación.
 El guard de resumen también exige acción CONFIRM_QUOTE_REQUEST y pregunta presentes.
 Una fixture legacy sin acción/pregunta se aclara sin READY; no se regenera autoridad al
-encolar la aclaración. No se modifican funciones de agenda, confirmación contextual del
+encolar la aclaración. No se modifican servicios de agenda, confirmación contextual del
 canal ni rutas administrativas. Se añaden controles del caso incompleto y del siguiente sí.
 
 Cambio diagnóstico: AI_CONFIRMATION_DISCARDED conserva el tipo de evento, con motivo
 controlado y tipo de pendiente, sin copiar su JSON completo. Nuevos descartes de formas
 inválidas/resoluciones/nombres usan PENDING_CONFIRMATION_DISCARDED; los eventos de aceptación,
 CUSTOMER_NAME_CAPTURED/CONFIRMED y cambios comerciales autorizados conservan sus contratos.
+
+Revisión del candidato inicial fcd8aaa (run 34378609886, suite y focal verdes):
+la captura directa de nombre en handle_visit_direct_answer tenía un lector alternativo
+que convertía una afirmación en nombre nuevo. Se conecta esa rama al mismo consumidor
+validado; una negación o afirmación aislada sin propuesta pide RESP-CUSTOMER-001.
+El nombre legacy vigente se confirma una vez; una corrección prevalece; FAQ aprobada
+con pendiente de nombre conserva draft y reanuda. Son siete controles adicionales con
+fixtures legacy/contexto de visita explícitos, sin atribuirles reproducción natural en BASE.
+El cambio sigue en service.py; no cambia el servicio de agenda ni crea citas al aceptar
+un nombre. Los tests históricos de nombres directos y confirmación de visita se conservan.
