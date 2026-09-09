@@ -134,7 +134,8 @@ conservan aceptación/uplift. Atomicidad se demuestra aparte con trigger SQL dif
 El lector nuevo no crea propuesta desde resolved_intent. Las propuestas nuevas usan type,
 version=1 y contexto de estado/lead; legacy válido requiere acción/pregunta existentes.
 FAQ aprobada puede conservar y explicitar ese mismo pendiente validado, sin nueva autoridad.
-La validación de nombre es estructural (texto no vacío); H29 semántico sigue fuera.
+La validación de nombre exige texto de 2 a 120 caracteres, según ENT full_name; no
+se añaden reglas semánticas generales de H29.
 La captura de nombre aceptada retira solo un pendiente anterior de nombre. El resultado
 intermedio recién producido puede bloquear mínimos antes de que se seleccione la siguiente
 pregunta; solo COLLECT_CUSTOMER_NAME permite consumirlo por afirmación.

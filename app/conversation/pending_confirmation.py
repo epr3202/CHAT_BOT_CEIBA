@@ -33,7 +33,10 @@ def proposal_context(state: str, active_lead_id: object) -> dict[str, Any]:
 
 def name_value(value: object) -> str | None:
     # Structural boundary only. No coercion of arbitrary JSON into customer data.
-    return value.strip() if isinstance(value, str) and value.strip() else None
+    if not isinstance(value, str):
+        return None
+    name = value.strip()
+    return name if 2 <= len(name) <= 120 else None
 
 
 def read_pending(

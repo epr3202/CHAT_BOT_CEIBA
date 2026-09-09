@@ -38,6 +38,8 @@ BAD_PENDING = [
     {"type": "FULL_NAME_CONFIRMATION", "full_name": {"name": "Nombre"}},
     {"type": "FULL_NAME_CONFIRMATION", "full_name": "Anterior", "classification": proposal()},
     {"type": "CLASSIFICATION_CONFIRMATION", "version": 999, "classification": proposal()},
+    {"type": "FULL_NAME_CONFIRMATION", "full_name": "A"},
+    {"type": "FULL_NAME_CONFIRMATION", "full_name": "A" * 121},
 ]
 
 
@@ -276,7 +278,7 @@ async def test_legacy_summary_without_confirmation_context_is_not_accepted(
     assert last["after"]["conversation"][0]["last_question_code"] == "RESP-FALLBACK-004"
 
 
-@pytest.mark.parametrize("value", [42, [], {"name": "No coercion"}, ""])
+@pytest.mark.parametrize("value", [42, [], {"name": "No coercion"}, "", "A", "A" * 121])
 async def test_invalid_name_correction_does_not_replace_a_valid_proposal(
     db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, value: Any
 ) -> None:
