@@ -1,1 +1,23 @@
-["app/conversation/entity_validation.py","app/conversation/pending_confirmation.py","app/orchestrator/service.py","tests/remediation/r7/helpers.py","tests/remediation/r7/test_r7_red.py","tests/remediation/r7/test_r7_contract.py","tests/remediation/r7/test_r7_recovery.py",".github/workflows/remediation-r7-entities.yml","docs/architecture.md","docs/decisions.md","docs/changelog.md","docs/pending_tasks.md","docs/remediation/r7-h29-entities-2026-09-09/README.md","scripts/quality/r7/run_ci.py","scripts/quality/r7/driver.py","scripts/quality/r7/allowed_paths.json","scripts/quality/r7/baseline_manifest.json","scripts/quality/r7/source_manifest.json","scripts/quality/r7/r6_nodes.json","scripts/quality/r7/new_nodes.json"]
+[
+  "app/conversation/entity_validation.py",
+  "app/conversation/pending_confirmation.py",
+  "app/orchestrator/service.py",
+  "tests/remediation/r7/helpers.py",
+  "tests/remediation/r7/test_r7_red.py",
+  "tests/remediation/r7/test_r7_contract.py",
+  "tests/remediation/r7/test_r7_recovery.py",
+  ".github/workflows/remediation-r7-entities.yml",
+  "docs/architecture.md",
+  "docs/decisions.md",
+  "docs/changelog.md",
+  "docs/pending_tasks.md",
+  "docs/remediation/r7-h29-entities-2026-09-09/README.md",
+  "scripts/quality/r7/run_ci.py",
+  "scripts/quality/r7/driver.py",
+  "scripts/quality/r7/allowed_paths.json",
+  "scripts/quality/r7/baseline_manifest.json",
+  "scripts/quality/r7/source_manifest.json",
+  "scripts/quality/r7/r6_nodes.json",
+  "scripts/quality/r7/new_nodes.json",
+  "tests/remediation/r6/test_r6_contract.py"
+]

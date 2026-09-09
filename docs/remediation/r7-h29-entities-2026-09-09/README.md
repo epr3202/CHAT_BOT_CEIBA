@@ -101,3 +101,30 @@ Segundo intento 51af774/run 34396179372: focal 479, 471 PASS/8 FAIL; Ruff PASS,
 fases completas, cero red inesperada. Siete fallos funcionales previstos reproducidos;
 el octavo es del control: snapshot devuelve datetime.date, comparado incorrectamente
 con string. Se compara isoformat conservando la fecha y criterio; producto sin cambios.
+## Decisiones de integración y adaptación, antes del producto (RED3)
+
+El RED funcional se fija en 962957346a93ce0fc177bee377af7ac9332983d8.
+No se cambian sus 13 nodos ni helpers. Los intentos RED1/RED2 quedan preservados
+como preparación fallida / RED funcional con un control mal comparado, respectivamente.
+
+Consumidores indispensables dentro de service.py: captura comercial, mutadores apply_*,
+confirmación de resumen y nombre en visita. La modificación del resumen actualmente
+aplica entidades dos veces: se pasa a una única aplicación en captura. No cambia agenda.
+Las representaciones tipada y legacy se comparan antes de mutar; las propiedades
+dependientes son atómicas. Los descartes desconocidos de tipo/servicio mantienen catálogo.
+
+Adaptación autorizada por el contrato R7, antes de editar:
+tests/remediation/r6/test_r6_contract.py::
+test_invalid_name_correction_does_not_replace_a_valid_proposal
+en sus seis parametrizaciones (42, lista, objeto, vacío, A, 121 caracteres).
+R6 exigía conservar la propuesta NAME ante una corrección inválida. R7 exige conservar
+el nombre persistido válido y repreguntar sin aceptar por un sí posterior la propuesta
+que la corrección pretendía reemplazar. Se retira esa autoridad pendiente; se conservan
+nodos, entrada, preparación, ausencia de CUSTOMER_NAME_CAPTURED y diagnóstico existente,
+y se agrega el control del siguiente sí. La versión anterior vive intacta en BASE y RED3.
+
+requested_services acepta además la forma ENT-13 {service_code, status: REQUESTED}
+para los códigos/alias ya vigentes; no permite REMOVED ni inventa códigos.
+El límite Integer es técnico; esta validación no certifica el aforo ni todas sus rutas
+de revisión comercial. No se modifica esa política ni se presenta un máximo técnico
+como capacidad del negocio.

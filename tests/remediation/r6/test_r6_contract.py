@@ -294,10 +294,14 @@ async def test_invalid_name_correction_does_not_replace_a_valid_proposal(
     evidence(request, steps=[first, last], final=last["after"])
     completed(last)
     assert last["after"]["customer"][0]["full_name"] is None
-    assert last["after"]["conversation"][0]["pending_confirmation"] == (
-        first["after"]["conversation"][0]["pending_confirmation"])
+    # R7: a rejected correction retires the old proposal's authority, not persisted data.
+    assert last["after"]["conversation"][0]["pending_confirmation"] is None
     assert actions(last["after"], "CUSTOMER_NAME_CAPTURED") == 0
     assert actions(last["after"], "PENDING_CONFIRMATION_INVALID_NAME") == 1
+    next_turn = await send(db, "sí", proposal())
+    completed(next_turn)
+    assert next_turn["after"]["customer"][0]["full_name"] is None
+    assert actions(next_turn["after"], "CUSTOMER_NAME_CONFIRMED") == 0
 
 
 async def test_inferred_replacement_of_existing_name_blocks_summary_until_confirmed(

@@ -4,7 +4,6 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -42,6 +41,15 @@ from app.conversation.confirmation import (
     normalize_confirmation_text,
     resolve_contextual_confirmation,
 )
+from app.conversation.entity_validation import (
+    Accepted,
+    InvalidEntity,
+    Rejection,
+    decode_entities,
+    rejection,
+    validate_entities,
+    validate_entity,
+)
 from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.knowledge import KnowledgeRenderError, render_response
@@ -49,7 +57,6 @@ from app.conversation.models import Conversation
 from app.conversation.pending_actions import validate_pending_action
 from app.conversation.pending_confirmation import (
     PendingProposal,
-    name_value,
     proposal_context,
     read_pending,
 )
@@ -61,19 +68,14 @@ from app.conversation.presentation import (
 from app.conversation.service import ALLOWED_TRANSITIONS, transition_conversation
 from app.conversation.services_catalog import (
     match_requested_services,
-    service_catalog_codes,
 )
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.event_type import normalize_event_type
 from app.event.models import Event, EventServiceRequest
-from app.event.validation import (
-    EventDateTriplet,
-    parse_customer_date_expression,
-    validate_event_date_triplet,
-)
+from app.event.validation import EventDateTriplet
 from app.handoff.service import create_handoff
-from app.lead.budget import calculate_budget_range, parse_cop_amount
+from app.lead.budget import calculate_budget_range
 from app.lead.models import Lead
 from app.orchestrator.inbox_effects import defer_agenda_service
 from app.orchestrator.slot_filling import (
@@ -268,6 +270,20 @@ async def _orchestrate_inbound_message(
         )
         return
 
+    _, envelope_errors = decode_entities(classification)
+    envelope_errors = [
+        item for item in envelope_errors
+        if item.code in {"INVALID_ENVELOPE", "INVALID_LEGACY"}
+    ]
+    if envelope_errors:
+        for item in envelope_errors:
+            audit_entity_rejection(session, item, orchestration_input.request_id, conversation)
+        await enqueue_template(
+            session, knowledge_sessionmaker, conversation, customer, inbound_message,
+            "RESP-FALLBACK-004", {},
+        )
+        return
+
     classification = resolve_contextual_confirmation_classification(
         conversation,
         orchestration_input.message_text,
@@ -351,6 +367,17 @@ async def _orchestrate_inbound_message(
             }
         )
     elif classification.confidence < settings.ai_confidence_probable:
+        batch = validate_entities(classification, entity_today())
+        if batch.rejected:
+            for item in batch.rejected:
+                audit_entity_rejection(
+                    session, item, orchestration_input.request_id, conversation,
+                )
+            await enqueue_template(
+                session, knowledge_sessionmaker, conversation, customer, inbound_message,
+                "RESP-FALLBACK-004", {},
+            )
+            return
         audit_confidence_decision(
             session,
             conversation,
@@ -1280,6 +1307,7 @@ async def handle_waiting_for_appointment_selection(
                 message_text, orchestration_input.request_id,
             ) if not corrected else False
         )
+        name_rejected = False
         # A bare answer cannot become a fresh name through the direct-text fallback.
         if not confirmed and (
             corrected or (
@@ -1287,14 +1315,19 @@ async def handle_waiting_for_appointment_selection(
                 and normalize_confirmation_text(message_text) not in DENIALS
             )
         ):
-            await apply_full_name(
-                session,
-                conversation,
-                orchestration_input.customer,
-                direct_customer_name_entity(classification, message_text),
-                orchestration_input.request_id,
-            )
-        if not (orchestration_input.customer.full_name or "").strip():
+            name_entity = direct_customer_name_entity(classification, message_text)
+            name_rejected = checked_entity(
+                session, name_entity, orchestration_input.request_id, conversation,
+            ) is None
+            if not name_rejected:
+                await apply_full_name(
+                    session, conversation, orchestration_input.customer,
+                    name_entity, orchestration_input.request_id,
+                )
+        if (
+            name_rejected or current_pending(conversation).kind == "NAME"
+            or not (orchestration_input.customer.full_name or "").strip()
+        ):
             await enqueue_template(
                 session,
                 knowledge_sessionmaker,
@@ -1749,8 +1782,29 @@ async def clear_visit_draft_and_resume_capture(
         event,
         conversation,
     )
-    conversation.pending_fields = pending_fields_for(progress)
-    next_action = select_next_question(progress)
+    unresolved = [
+        field for field in held_fields
+        if field in ENTITY_ACTION and field not in {
+            canonical_field(item.entity) for item in entities
+        }
+    ]
+    if handled_name_confirmation:
+        unresolved = [field for field in unresolved if field != "full_name"]
+    if lead.budget_data_status == "DECLINED" and not any(
+        canonical_field(item.entity) == "estimated_budget" for item in batch.rejected
+    ):
+        unresolved = [field for field in unresolved if field != "estimated_budget"]
+    rejected_fields = [
+        canonical_field(item.entity) for item in batch.rejected
+        if item.code != "UNSUPPORTED_SERVICE_ITEM" and item.entity != "UNKNOWN"
+    ]
+    conversation.pending_fields = list(dict.fromkeys(
+        [*pending_fields_for(progress), *unresolved, *rejected_fields]
+    ))
+    next_action = next(
+        (ENTITY_ACTION[field] for field in [*rejected_fields, *unresolved]
+         if field in ENTITY_ACTION), select_next_question(progress),
+    )
     if next_action is None:
         await transition_to_quote_request_ready(
             session,
@@ -1882,7 +1936,9 @@ def direct_customer_name_entity(
         ),
         None,
     )
-    raw_value = extracted_name.raw_value if extracted_name is not None else message_text
+    if extracted_name is not None:
+        return extracted_name
+    raw_value = message_text
     normalized_value = (
         extracted_name.normalized_value if extracted_name is not None else message_text
     )
@@ -2152,12 +2208,21 @@ async def handle_collecting_event_data(
         orchestration_input.message_text,
         normalized_entities(classification),
     )
+    original_entities = entities
+    batch = validate_entities(
+        classification.model_copy(update={"extracted_entities": entities}), entity_today(),
+    )
+    for item in batch.rejected:
+        audit_entity_rejection(session, item, orchestration_input.request_id, conversation)
+    entities = [item.canonical() for item in batch.accepted]
+    held_fields = list(conversation.pending_fields or [])
     handled_name_confirmation = (
         await maybe_apply_name_confirmation(
             session, conversation, customer,
             orchestration_input.message_text, orchestration_input.request_id,
         )
-        if not any(entity.quality_status == "CORRECTED" for entity in entities) else False
+        if not any(entity.quality_status == "CORRECTED" for entity in original_entities)
+        and not any(item.entity == "full_name" for item in batch.rejected) else False
     )
     captured_requested_services = any(
         entity.entity == "requested_services" and entity.quality_status != "INVALID"
@@ -2184,7 +2249,7 @@ async def handle_collecting_event_data(
             entities,
             orchestration_input.request_id,
         )
-    if should_mark_budget_declined_by_evasion(lead, entities):
+    if not batch.rejected and should_mark_budget_declined_by_evasion(lead, entities):
         apply_budget_declined(session, lead, orchestration_input.request_id)
 
     progress = await capture_progress(session, customer, lead, event, conversation)
@@ -2194,6 +2259,14 @@ async def handle_collecting_event_data(
     conversation.failed_understanding_count = 0
     if captured_requested_services:
         conversation.services_failed_understanding_count = 0
+
+    if batch.rejected and next_action is None:
+        set_pending_action(conversation, "CLASSIFY_MESSAGE")
+        await enqueue_template(
+            session, knowledge_sessionmaker, conversation, customer, inbound_message,
+            "RESP-FALLBACK-004", {},
+        )
+        return
 
     if next_action is not None:
         set_pending_action(conversation, next_action)
@@ -2205,7 +2278,7 @@ async def handle_collecting_event_data(
             conversation,
             customer,
             inbound_message,
-            QUESTION_CODE_BY_ACTION[next_action],
+            QUESTION_CODE_BY_ACTION.get(next_action, "RESP-FALLBACK-004"),
             {},
         )
         return
@@ -2263,16 +2336,9 @@ async def handle_quote_request_ready(
         persist_classification_context(conversation, classification)
         return
 
-    if classification.primary_intent == "MODIFY_EVENT_DATA":
-        await apply_extracted_entities(
-            session,
-            conversation,
-            customer,
-            lead,
-            event,
-            normalized_entities(classification),
-            orchestration_input.request_id,
-        )
+    if classification.primary_intent == "MODIFY_EVENT_DATA" or validate_entities(
+        classification, entity_today(),
+    ).rejected:
         await transition_conversation(
             session,
             conversation,
@@ -2538,6 +2604,60 @@ async def get_or_create_quote_request(
     return quote_request
 
 
+ENTITY_ACTION = {
+    "event_type": "COLLECT_EVENT_TYPE",
+    "guest_count": "COLLECT_GUEST_COUNT",
+    "event_date": "COLLECT_EVENT_DATE",
+    "full_name": "COLLECT_CUSTOMER_NAME",
+    "estimated_budget": "COLLECT_BUDGET",
+    "requested_services": "COLLECT_SERVICES",
+    "special_requests": "CLASSIFY_MESSAGE",
+}
+
+
+def canonical_field(name: str) -> str:
+    return {"guest_count_range": "guest_count", "budget_declined": "estimated_budget"}.get(
+        name, name,
+    )
+
+
+def entity_today() -> date:
+    return datetime.now(ZoneInfo("America/Bogota")).date()
+
+
+def audit_entity_rejection(
+    session: AsyncSession, item: Rejection, request_id: str | None,
+    conversation: Conversation | None = None,
+) -> None:
+    action = "PENDING_CONFIRMATION_INVALID_NAME" if item.entity == "full_name" else "ENTITY_INVALID"
+    audit_domain_change(
+        session, action, "conversation", None,
+        {"entity": item.entity, "code": item.code, "value_type": item.value_type},
+        "Entity rejected before domain mutation", request_id,
+    )
+    if conversation is not None and item.entity == "full_name" and item.correction:
+        pending = conversation.pending_confirmation
+        if isinstance(pending, dict) and pending.get("type") == "FULL_NAME_CONFIRMATION":
+            discard_pending(
+                session, conversation, PendingProposal("NAME"), request_id,
+                "INVALID_NAME_CORRECTION",
+            )
+
+
+def checked_entity(
+    session: AsyncSession, entity: ExtractedEntity, request_id: str | None,
+    conversation: Conversation | None = None,
+) -> Accepted | None:
+    try:
+        accepted = validate_entity(entity, entity_today())
+    except InvalidEntity as error:
+        audit_entity_rejection(session, rejection(entity, str(error)), request_id, conversation)
+        return None
+    for item in accepted.warnings:
+        audit_entity_rejection(session, item, request_id, conversation)
+    return accepted
+
+
 async def apply_extracted_entities(
     session: AsyncSession,
     conversation: Conversation,
@@ -2547,37 +2667,11 @@ async def apply_extracted_entities(
     entities: list[ExtractedEntity],
     request_id: str | None,
 ) -> None:
-    for entity in entities:
-        if entity.quality_status == "INVALID":
-            audit_domain_change(
-                session,
-                "ENTITY_INVALID",
-                "conversation",
-                None,
-                {
-                    "conversation_id": conversation.id,
-                    "entity": entity.entity,
-                    "validation_errors": entity.validation_errors,
-                },
-                "Extracted entity failed deterministic validation",
-                request_id,
-            )
+    for proposed in entities:
+        accepted = checked_entity(session, proposed, request_id, conversation)
+        if accepted is None:
             continue
-        if entity.entity == "event_type" and entity.quality_status == "INFERRED":
-            audit_domain_change(
-                session,
-                "EVENT_TYPE_INFERRED_IGNORED",
-                "event",
-                {"event_type": event.event_type},
-                {
-                    "event_id": str(event.event_id),
-                    "raw_value": entity.raw_value,
-                    "normalized_value": entity.normalized_value,
-                },
-                "Inferred event_type is not treated as confirmed",
-                request_id,
-            )
-            continue
+        entity = accepted.canonical()
         if entity.entity == "full_name":
             await apply_full_name(session, conversation, customer, entity, request_id)
         elif entity.entity == "event_type":
@@ -2590,7 +2684,7 @@ async def apply_extracted_entities(
             apply_event_date(session, event, entity, request_id)
         elif entity.entity == "estimated_budget":
             apply_budget(session, lead, entity, request_id)
-        elif entity.entity == "budget_declined":
+        elif entity.entity == "budget_declined" and entity.normalized_value is True:
             apply_budget_declined(session, lead, request_id)
         elif entity.entity == "requested_services":
             apply_requested_services(session, event, entity, request_id)
@@ -2605,16 +2699,11 @@ async def apply_full_name(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    value = entity.normalized_value if entity.normalized_value is not None else entity.raw_value
-    name = name_value(value)
-    if name is None:
-        audit_orchestrator_event(
-            session, "PENDING_CONFIRMATION_INVALID_NAME", conversation,
-            reason="NON_TEXTUAL_OR_EMPTY", request_id=request_id,
-            extra={"pending_type": "NAME"},
-        )
+    accepted = checked_entity(session, entity, request_id, conversation)
+    if accepted is None:
         return
-    if entity.needs_confirmation or entity.quality_status == "PENDING_CONFIRMATION":
+    name = accepted.value
+    if entity.needs_confirmation or entity.quality_status in {"PENDING_CONFIRMATION", "INFERRED"}:
         conversation.pending_confirmation = {
             "type": "FULL_NAME_CONFIRMATION", "version": 1, "full_name": name,
             "context": proposal_context(conversation.state, conversation.active_lead_id),
@@ -2665,10 +2754,10 @@ def apply_event_type(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    event_type = normalize_event_type(entity.normalized_value or entity.raw_value)
-    if event_type is None:
-        audit_discarded_event_type(session, entity, request_id)
+    accepted = checked_entity(session, entity, request_id)
+    if accepted is None:
         return
+    event_type = accepted.value
     old = {"event_type": event.event_type, "event_type_other": event.event_type_other}
     event.event_type = event_type
     audit_domain_change(
@@ -2728,7 +2817,10 @@ def apply_guest_count(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    count = int(entity.normalized_value)
+    accepted = checked_entity(session, entity, request_id)
+    if accepted is None:
+        return
+    count = accepted.value
     old = guest_count_snapshot(event)
     event.guest_count = count
     event.guest_count_min = None
@@ -2751,13 +2843,14 @@ def apply_guest_count_range(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    value = entity.normalized_value
-    if not isinstance(value, dict):
+    accepted = checked_entity(session, entity, request_id)
+    if accepted is None:
         return
+    low, high = accepted.value
     old = guest_count_snapshot(event)
     event.guest_count = None
-    event.guest_count_min = int(value["min"])
-    event.guest_count_max = int(value["max"])
+    event.guest_count_min = low
+    event.guest_count_max = high
     event.guest_count_status = "RANGE"
     audit_domain_change(
         session,
@@ -2776,12 +2869,15 @@ def apply_event_date(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    triplet = triplet_from_entity(entity)
+    accepted = checked_entity(session, entity, request_id)
+    if accepted is None:
+        return
+    triplet = accepted.value
     old = date_snapshot(event)
     event.event_date = triplet.event_date
     event.event_month = triplet.event_month
     event.event_date_type = triplet.event_date_type
-    event.event_date_raw = triplet.event_date_raw[:200]
+    event.event_date_raw = triplet.event_date_raw
     audit_domain_change(
         session,
         "EVENT_DATE_CAPTURED" if entity.quality_status != "CORRECTED" else "EVENT_DATE_CORRECTED",
@@ -2799,11 +2895,10 @@ def apply_budget(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    amount = (
-        Decimal(str(entity.normalized_value))
-        if entity.normalized_value is not None
-        else parse_cop_amount(entity.raw_value)
-    )
+    accepted = checked_entity(session, entity, request_id)
+    if accepted is None:
+        return
+    amount = accepted.value
     old = {
         "estimated_budget": str(lead.estimated_budget) if lead.estimated_budget else None,
         "budget_range": lead.budget_range,
@@ -2855,48 +2950,31 @@ def apply_requested_services(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
-    values = entity.normalized_value
-    services = values if isinstance(values, list) else [entity.raw_value]
-    allowed_codes = frozenset(service_catalog_codes())
-    position = 0
-    for service_name in services:
-        raw_service = str(service_name).strip()
-        normalized_code = raw_service.upper()
-        service_codes = (
-            [normalized_code]
-            if normalized_code in allowed_codes
-            else match_requested_services(raw_service) or []
+    accepted = checked_entity(session, entity, request_id)
+    if accepted is None:
+        return
+    for position, service_code in enumerate(accepted.value):
+        session.add(
+            EventServiceRequest(
+                event_id=event.event_id,
+                service_name=service_code,
+                status="REQUESTED",
+                position=position,
+            )
         )
-        if not service_codes:
-            logger.warning(
-                "requested_service_code_discarded",
-                event_id=str(event.event_id),
-                discarded_value=raw_service,
-            )
-            continue
-        for service_code in service_codes:
-            session.add(
-                EventServiceRequest(
-                    event_id=event.event_id,
-                    service_name=service_code,
-                    status="REQUESTED",
-                    position=position,
-                )
-            )
-            audit_domain_change(
-                session,
-                "SERVICE_REQUESTED",
-                "event_service_request",
-                None,
-                {
-                    "event_id": str(event.event_id),
-                    "service_name": service_code,
-                    "position": position,
-                },
-                "Customer requested event service",
-                request_id,
-            )
-            position += 1
+        audit_domain_change(
+            session,
+            "SERVICE_REQUESTED",
+            "event_service_request",
+            None,
+            {
+                "event_id": str(event.event_id),
+                "service_name": service_code,
+                "position": position,
+            },
+            "Customer requested event service",
+            request_id,
+        )
 
 
 def apply_special_requests(
@@ -2905,8 +2983,11 @@ def apply_special_requests(
     entity: ExtractedEntity,
     request_id: str | None,
 ) -> None:
+    accepted = checked_entity(session, entity, request_id)
+    if accepted is None:
+        return
     old = {"special_requests": event.special_requests}
-    event.special_requests = str(entity.normalized_value or entity.raw_value).strip()
+    event.special_requests = accepted.value
     audit_domain_change(
         session,
         "EVENT_SPECIAL_REQUESTS_CAPTURED",
@@ -3014,34 +3095,11 @@ async def transition_to_quote_request_ready(
 
 
 def normalized_entities(classification: IntentClassification) -> list[ExtractedEntity]:
+    # Decode only here: correction/context resolution must still see original quality.
+    preferred = classification
     if classification.extracted_entities:
-        return classification.extracted_entities
-    entities: list[ExtractedEntity] = []
-    for name, value in classification.entities.items():
-        if isinstance(value, dict):
-            raw_value = str(value.get("raw_value", value.get("raw", "")))
-            normalized_value = value.get("normalized_value", value.get("normalized", value))
-            quality_status = str(value.get("quality_status", "PROVIDED"))
-            needs_confirmation = bool(value.get("needs_confirmation", False))
-            validation_errors = value.get("validation_errors", [])
-        else:
-            raw_value = str(value)
-            normalized_value = value
-            quality_status = "PROVIDED"
-            needs_confirmation = False
-            validation_errors = []
-        entities.append(
-            ExtractedEntity(
-                entity=name,
-                raw_value=raw_value,
-                normalized_value=normalized_value,
-                quality_status=quality_status,
-                confidence=0.9,
-                needs_confirmation=needs_confirmation,
-                validation_errors=validation_errors,
-            )
-        )
-    return entities
+        preferred = classification.model_copy(update={"entities": {}})
+    return decode_entities(preferred)[0]
 
 
 def normalize_event_type_entities(
@@ -3054,7 +3112,13 @@ def normalize_event_type_entities(
         if entity.entity != "event_type":
             normalized_entities_list.append(entity)
             continue
-        event_type = normalize_event_type(entity.normalized_value or entity.raw_value)
+        value = entity.normalized_value
+        if value is None:
+            value = entity.raw_value
+        if not isinstance(value, str):
+            normalized_entities_list.append(entity)
+            continue
+        event_type = normalize_event_type(value)
         if event_type is None:
             audit_discarded_event_type(session, entity, request_id)
             continue
@@ -3075,15 +3139,14 @@ def normalize_classification_event_type_entities(
         request_id,
     )
     legacy_entities = dict(classification.entities)
-    normalized_entity = next(
-        (entity for entity in entities if entity.entity == "event_type"),
-        None,
-    )
-    if "event_type" in legacy_entities:
-        if normalized_entity is None:
+    # Never overwrite a conflicting legacy proposal with the typed representation.
+    legacy_value = legacy_entities.get("event_type")
+    if isinstance(legacy_value, str):
+        legacy_type = normalize_event_type(legacy_value)
+        if legacy_type is None:
             legacy_entities.pop("event_type")
         else:
-            legacy_entities["event_type"] = normalized_entity.normalized_value
+            legacy_entities["event_type"] = legacy_type
     return classification.model_copy(
         update={
             "entities": legacy_entities,
@@ -3198,33 +3261,7 @@ def resolve_contextual_confirmation_classification(
 
 
 def triplet_from_entity(entity: ExtractedEntity) -> EventDateTriplet:
-    value = entity.normalized_value
-    if not raw_value_has_explicit_year(entity.raw_value):
-        return parse_customer_date_expression(
-            entity.raw_value,
-            datetime.now(ZoneInfo("America/Bogota")).date(),
-        )
-    if isinstance(value, dict):
-        parsed_date = value.get("event_date")
-        return validate_event_date_triplet(
-            date.fromisoformat(parsed_date) if parsed_date else None,
-            value.get("event_month"),
-            value["event_date_type"],
-            str(value.get("event_date_raw") or entity.raw_value),
-        )
-    if isinstance(value, str) and value:
-        try:
-            parsed = date.fromisoformat(value)
-        except ValueError:
-            return parse_customer_date_expression(
-                entity.raw_value,
-                datetime.now(ZoneInfo("America/Bogota")).date(),
-            )
-        return validate_event_date_triplet(parsed, None, "EXACT", entity.raw_value)
-    return parse_customer_date_expression(
-        entity.raw_value,
-        datetime.now(ZoneInfo("America/Bogota")).date(),
-    )
+    return validate_entity(entity, entity_today()).value
 
 
 def raw_value_has_explicit_year(raw_value: str) -> bool:

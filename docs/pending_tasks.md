@@ -61,3 +61,9 @@ reemplazar. Consumo y descarte permanecen bajo R2; sin migración ni activación
 BASE R6 aprobada cfdc09b/run 34381466698. Contrato semantico de nueve entidades antes
 de aplicarlas, sin migraciones ni activacion. RED sobre producto BASE intacto.
 [Contrato y evidencia R7](remediation/r7-h29-entities-2026-09-09/README.md).
+
+R7 candidato: frontera pura para las nueve entidades, revalidación en consumidores,
+correcciones rechazadas con aclaración y conservación del valor previo. RED3:
+962957346a93ce0fc177bee377af7ac9332983d8 / run 34397740618.
+Seis expectativas R6 de propuesta de nombre se adaptan conforme al contrato documentado;
+se conservan sus nodos. Validación remota pendiente. Cero migraciones; H29 agregado abierto.

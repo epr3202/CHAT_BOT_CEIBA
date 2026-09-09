@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from app.ai.schemas import IntentClassification
+from app.conversation.entity_validation import validated_name
 from app.conversation.faq_catalog import FAQ_CATEGORY_VALUES
 
 NAME_ACTIONS = {
@@ -32,11 +33,7 @@ def proposal_context(state: str, active_lead_id: object) -> dict[str, Any]:
 
 
 def name_value(value: object) -> str | None:
-    # Structural boundary only. No coercion of arbitrary JSON into customer data.
-    if not isinstance(value, str):
-        return None
-    name = value.strip()
-    return name if 2 <= len(name) <= 120 else None
+    return validated_name(value)
 
 
 def read_pending(
