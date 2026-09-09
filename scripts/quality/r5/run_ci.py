@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import time
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -261,6 +263,15 @@ def main() -> None:
             if p.is_file()
         }
         (output / "artifact_hashes.json").write_text(json.dumps(hashes, indent=2))
+        archive = output / "evidence-transfer.zip"
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for item in sorted(output.iterdir()):
+                if item.is_file() and item != archive:
+                    bundle.write(item, item.name)
+        encoded = base64.b64encode(archive.read_bytes()).decode()
+        for offset in range(0, len(encoded), 12000):
+            print("R5_ZIP:" + encoded[offset:offset + 12000])
+        print("R5_ZIP_SHA256:" + hashlib.sha256(archive.read_bytes()).hexdigest())
         print(
             json.dumps(
                 {
