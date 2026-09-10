@@ -192,3 +192,22 @@ archivo y se completa exclusivamente su fixture con un UUID de período actual.
 Se retienen el nodo y todas las aserciones del fallback; no se vuelve permisivo el
 producto para aceptar objetos de dominio incompletos. No cambia ninguna fuente
 aprobada de respuestas. Esta adaptación queda declarada antes del siguiente CI.
+
+
+# Corrección de prueba nueva, antes de C3
+
+C2 `148df9db37d7e74b3d89e2b78e8450da8bbee216`, run `34517107330`, intento 1:
+suite 1409 PASS / 1 FAIL; focal 774 PASS / 1 FAIL; Ruff PASS en ambos jobs.
+El único fallo es la nueva rama r5_capture de contención de entrega.
+
+La instantánea independiente muestra un InboxJob PENDING, attempts=0, sin claim,
+y el Outbox humano SENT. process_event persiste la recepción pero claim_inbox_batch
+usa lock_context(skip=True): puede ceder el turno mientras la liquidación Outbox
+retiene Customer/Conversation. Es comportamiento R2 conservado, no pérdida de evidencia.
+
+Se corrige exclusivamente la prueba nueva para registrar ese resultado intermedio y
+ejecutar una vuelta del worker real process_inbox_once después de terminar ambas
+tareas. Se mantienen la prueba de bloqueo SQL con pg_blocking_pids, captura exacta
+de un comprobante pendiente, Inbox COMPLETED, cero IA, estado HUMAN_ACTIVE y un
+único envío humano. No se fuerza un claim, no se modifican filas ni se relajan
+aserciones finales. No cambia producto ni los cinco nodos RED congelados.

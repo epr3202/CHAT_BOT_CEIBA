@@ -378,7 +378,7 @@ async def test_delivery_locks_preserve_r8_authorization_and_r5_passive_capture(
 ) -> None:
     import respx
 
-    from app.channel import inbound
+    from app.channel import inbound, inbox
     from app.config.settings import get_settings
     from app.conversation.models import Conversation
     from app.customer.models import Customer
@@ -424,11 +424,13 @@ async def test_delivery_locks_preserve_r8_authorization_and_r5_passive_capture(
                 waits = await wait_for_any_database_lock(db)
                 release.set()
                 results = await asyncio.wait_for(asyncio.gather(*tasks), 15)
+            contended = await snapshot(db)
+            progress = await inbox.process_inbox_once(db) if contender == "r5_capture" else None
     finally:
         await finish_tasks(tasks)
     after = await snapshot(db)
-    evidence(request, before=before, after=after, database_waits=waits, sends=sender.sends,
-             contender=contender,
+    evidence(request, before=before, contended=contended, after=after, progress=progress,
+             database_waits=waits, sends=sender.sends, contender=contender,
              status=results[1].status_code if contender == "r8_denial" else None)
     assert len(sender.sends) == 1
     assert len(after["outbox"]) == 1 and after["outbox"][0]["status"] == "SENT"
