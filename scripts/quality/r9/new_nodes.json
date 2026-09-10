@@ -1,0 +1,7 @@
+[
+  "tests/remediation/r9/test_r9_red.py::test_active_automatic_output_keeps_sending[DOCUMENT]",
+  "tests/remediation/r9/test_r9_red.py::test_active_automatic_output_keeps_sending[TEXT]",
+  "tests/remediation/r9/test_r9_red.py::test_authorized_human_output_keeps_sending",
+  "tests/remediation/r9/test_r9_red.py::test_previous_automatic_output_does_not_send_after_take[DOCUMENT]",
+  "tests/remediation/r9/test_r9_red.py::test_previous_automatic_output_does_not_send_after_take[TEXT]"
+]

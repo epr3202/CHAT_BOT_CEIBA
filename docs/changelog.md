@@ -73,3 +73,8 @@ sin override ADMIN. Toma pendiente conserva WAITING_FOR_HUMAN; respuesta/retorno
 HUMAN_ACTIVE con bot pausado. Una fixture historica usa ahora la sesion de su propietario.
 Resultado definitivo, SHA y evidencias quedan en el informe local post-CI; H11 agregado
 y U12c siguen abiertos. Sin migraciones ni activacion.
+
+
+## R9 — H03.outbox_previo / U12c (2026-09-10)
+
+Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
