@@ -143,6 +143,16 @@ helper exigía bot_enabled=False también en WAITING_FOR_HUMAN. Ese estado ya pa
 la automatización. Se retira únicamente esa condición de toma pendiente y se
 conserva la exigencia False para HUMAN_ACTIVE, así como todos los controles por ID.
 R5/R6 no se adaptan para ocultar esta regresión; los artefactos fallidos se preservan.
+La suite detectó además que la toma directa debía conservar su detalle 409 de
+"handoff pendiente". El chequeo de asignación se realiza después de validar los
+estados existentes, bajo los mismos locks y antes de escribir. El test histórico
+que exige ese detalle permanece intacto. El segundo candidato
+188cc212479859d4663d865591b169c04f37a50d todavía conserva esa regresión de detalle;
+su run 34495524338/1 también se preserva antes de la publicación siguiente.
+El focal de ese segundo candidato pasó 701/701, incluidos los 79 R8 y la captura
+pasiva R5 bajo contención. El candidato siguiente solo restaura el orden de la
+validación de estado en toma directa y documenta ese resultado; su suite y focal
+deben volver a pasar para el mismo SHA antes de cerrar U12b en el informe local.
 `new_nodes.json` enumera estáticamente los casos R8 y CI verifica colección/fases.
 Ejecución autorizada: push solo a la rama R8 dispara el workflow independiente,
 con `python scripts/quality/r8/run_ci.py suite` y `regressions` dentro del runner

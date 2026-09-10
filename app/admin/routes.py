@@ -1331,7 +1331,6 @@ async def take_conversation(
         conversation, cases = await lock_human_case(
             session, conversation_id=conversation_id,
         )
-        require_unassigned_conversation(conversation, cases)
         customer = await session.get(Customer, conversation.customer_id)
         if customer is None:
             raise HTTPException(
@@ -1359,6 +1358,7 @@ async def take_conversation(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conversation state is not eligible for direct takeover",
             )
+        require_unassigned_conversation(conversation, cases)
 
         now = datetime.now(UTC)
         previous_state = conversation.state
