@@ -153,6 +153,7 @@ async def test_claim_competition_and_independent_outputs(
                     channel=row.channel,
                     recipient_phone_number=row.recipient_phone_number,
                     payload=row.payload,
+                    delivery_context=row.delivery_context,
                     created_at=T0,
                 )
             )

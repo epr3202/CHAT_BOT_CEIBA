@@ -131,3 +131,40 @@ Allowlist exacta y cualquier adaptación histórica se publican antes de ejecuta
 Ruff/colección/aislamiento/integridad/limpieza son gates reales. No pytest ni producto
 local, no instalación, sin PR/merge/tag/main/deploy/SSH/activación. La autorización
 R9 permite expresamente commit/push RED, excepción reportada al gate local AGENTS.
+
+
+# Adaptaciones históricas declaradas antes del candidato
+
+Se conservan los 1336 nodeids BASE. Ninguna adaptación es un RED nuevo. No hay
+plugin que atribuya autorización a filas arbitrarias ni producto alternativo cargado.
+
+| Archivo / nodo o fixture | Preparación / expectativa BASE | Cambio contractual y fortalecimiento |
+|---|---|---|
+| tests/remediation/test_r1_outbox.py::seed (consumida por R1 y otros controles) | Construye una salida automática sintética actual con Conversation BOT_ACTIVE | Añadir automatic_context de esa conversación al construirla, en el mismo TX. No cambiar aserciones de R1 ni filas legacy |
+| tests/remediation/test_r1_outbox_ownership.py::test_claim_competition_and_independent_outputs | Copia salida válida para probar identidad de fila, texto intencionalmente repetido | Copiar también procedencia actual de la fila fuente; no copiar admisión/token. Mantener dos envíos y dos mensajes |
+| tests/integration/test_outbox_worker.py::seed_pending_outbox | Outbox actual sintético para envío, retry, máximo y reaper | Procedencia automática explícita en creación, sin cambiar resultados del transporte |
+| tests/test_slice2a_catalogs_adversarial.py::seed_document_outbox | Documento actual sintético para cache/upload/retry | Procedencia AUTO/CATALOG ligada al período actual; no modificar controles de PDF ni cache |
+| tests/remediation/test_r1_outbox_migration.py::test_legacy_rows_upgrade_parity_recovery_and_downgrade[None / legacy_claimed_at1] | Ensaya 0024→0025, afirma preservación exacta y luego reenvía PENDING/SENDING sin origen | Mantener ensayo/reflexión/ciclo 0025 con expectativas exactas. Antes del consumidor actual, upgrade explícito 0027 y comprobar columnas nuevas null. Las dos filas ambiguas pasan REVIEW sin send, Message adicional, intentos ni auditoría Meta inventados. SENT/FAILED históricos permanecen exactos. Esta expectativa de reenvío legacy es precisamente conducta corregida R9 |
+| tests/remediation/r2/test_r2_migration.py::test_0025_legacy_is_not_mass_replayed_and_new_head_parity | Fixture ORM actual sobre 0025; upgrade head que se compara literalmente a 0026; ciclo borra inbox y conserva historia | Seed SQL de revisión histórica, fijar upgrade de ensayo a 0026 y retener todas sus aserciones de columnas/checks/índices/versión. Upgrade 0027 explícito antes de ejecutar consumidor actual, esperar solamente las cuatro columnas Outbox null. En ciclo histórico, enumerar pérdida de esas columnas por downgrade y su reintroducción null, conservando todos los demás valores y Message/AuditEvent exactos. Nueva prueba R9 comprueba head 0027 independientemente |
+
+No se alteran R8 ownership.py ni sus permisos/pruebas. La autorización R8 rechazada
+debe seguir dejando instantánea completa sin cambios, incluido automation_epoch.
+Otras tres construcciones directas de Outbox en tests que no invocan entrega se
+mantienen sin contexto; no se les concede permiso de forma preventiva.
+
+## Precisión adicional de inventario
+
+states.md §14.4 recomienda FAQ durante WAITING. La instrucción explícita R9 limita
+esa política: automatismos ordinarios se invalidan, igual que los guards runtime R2.
+No se reescribe esa fuente aprobada ni se presenta la recomendación como garantía vigente.
+
+Overrides reales de agenda revisados por código aprobado: VISIT-CONFIRM-006,
+RESCHEDULE-006 y CANCEL-VISIT-005 sí informan transferencia, al igual que
+CALENDAR-ERROR-001/002/003/004. VISIT-DATA-002 y RESCHEDULE-002 preguntan al cliente
+y NO son acuses; aunque su productor cree un handoff en ese turno, conservan AUTO
+y no reciben excepción por mera coincidencia temporal. Lo mismo sucede con
+FALLBACK-001 de inbound desconocido. No se crea otra plantilla.
+
+RED d8f72cc8af547954ad091558cec0bec00f0b26a4, run 34504123258 intento 1: suite 1339 PASS + 2 FAIL; focal 704 PASS + 2 FAIL. Solo fallan los envíos TEXT/DOCUMENT tras toma. Ruff PASS, fases completas, sin red inesperada; dos ZIP originales verificados. Tests/helpers RED congelados. Candidato y nueva migración pendientes de CI.
+
+Detalle implementado: también se rota identidad al salir de un estado pausado o reactivar bot_enabled. Así, una salida ordinaria creada durante la espera tampoco revive al volver al bot. La admisión repetida de un claim ya admitido se descarta sin retirar su identidad mientras otro consumidor puede estar en vuelo.

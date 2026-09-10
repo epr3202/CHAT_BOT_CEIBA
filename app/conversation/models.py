@@ -75,6 +75,10 @@ class Conversation(Base):
         Integer, nullable=True
     )
     bot_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    automation_epoch: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, default=uuid.uuid4,
+        server_default=func.gen_random_uuid(),
+    )
     assigned_agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("agent.id"), index=True, nullable=True
     )
@@ -84,7 +88,19 @@ class Conversation(Base):
 
     @validates("state")
     def validate_state(self, key: str, state: str | ConversationState) -> str:
-        return ConversationState(state).value
+        value = ConversationState(state).value
+        paused = {"WAITING_FOR_HUMAN", "HUMAN_ACTIVE", "CLOSED"}
+        if value != self.state and (value in paused or self.state in paused):
+            self.automation_epoch = uuid.uuid4()
+        return value
+
+    @validates("bot_enabled")
+    def invalidate_disabled_automation(self, key: str, enabled: bool) -> bool:
+        if (enabled is False and self.bot_enabled is not False) or (
+            enabled is True and self.bot_enabled is False
+        ):
+            self.automation_epoch = uuid.uuid4()
+        return enabled
 
     @validates("channel")
     def validate_channel(self, key: str, channel: str | Channel) -> str:

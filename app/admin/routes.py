@@ -49,6 +49,7 @@ from app.appointment.models import Appointment, BlockedDate, Holiday
 from app.audit.models import AuditEvent
 from app.catalog.models import CATALOG_SEND_MODES, CatalogAsset, CatalogEventTypeMap
 from app.channel.media import detect_pdf_mime_type, sha256_file
+from app.channel.delivery import human_context
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.conversation.models import Conversation, KnowledgeEntry
@@ -466,6 +467,7 @@ async def review_payment_evidence(
             inbound_message,
             response_code,
             variables,
+            payment_decision=evidence,
         )
         customer_notification = "ENQUEUED"
 
@@ -1562,6 +1564,7 @@ async def create_agent_message(
         outbox = Outbox(
             conversation_id=conversation.id,
             message_id=latest_message.id,
+            delivery_context=human_context(actor_id),
             channel=Channel.WHATSAPP,
             recipient_phone_number=customer.phone_number,
             payload={

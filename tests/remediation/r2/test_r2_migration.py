@@ -22,7 +22,8 @@ from tests.integration.test_ai_execution_migration_parity import (
 )
 from tests.remediation.r2.test_r2_inbox import snapshot
 from tests.remediation.r2.test_r2_recovery import greeting_http, payload
-from tests.remediation.test_r1_outbox import evidence, seed
+from tests.remediation.r9.test_r9_migration import NEW_OUTBOX_COLUMNS, seed_pre_r9
+from tests.remediation.test_r1_outbox import evidence
 
 
 @pytest.mark.asyncio
@@ -35,7 +36,7 @@ async def test_0025_legacy_is_not_mass_replayed_and_new_head_parity(
     commands = ["fixture upgrade head", "downgrade 20260908_0025"]
     try:
         await asyncio.to_thread(command.downgrade, Config("alembic.ini"), "20260908_0025")
-        await seed(db)
+        await seed_pre_r9(db)
         # Seed legacy events by SQL, without invoking new-version ORM defaults/columns.
         async with db() as session, session.begin():
             for status in ("RECEIVED", "PROCESSED", "FAILED"):
@@ -58,8 +59,8 @@ async def test_0025_legacy_is_not_mass_replayed_and_new_head_parity(
                 ]
                 for table in ("message", "outbox", "audit_event", "webhook_event")
             }
-        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "head")
-        commands.append("upgrade head")
+        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "20260908_0026")
+        commands.append("upgrade 20260908_0026 (historical contract)")
         upgraded = await snapshot(db)
         assert upgraded["inbox_job"] == []
         for table in ("message", "outbox", "audit_event"):
@@ -104,6 +105,16 @@ async def test_0025_legacy_is_not_mass_replayed_and_new_head_parity(
             u["name"] == "uq_inbox_job_message" and u["column_names"] == ["message_id"]
             for u in unique
         )
+        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "20260910_0027")
+        commands.append("upgrade 0027 before current consumer")
+        current = await snapshot(db)
+        assert all(row["automation_epoch"] is not None for row in current["conversation"])
+        assert current == {**upgraded, "outbox": [
+            {**row, **NEW_OUTBOX_COLUMNS} for row in upgraded["outbox"]], "conversation": [
+            {**old, "automation_epoch": new["automation_epoch"]}
+            for old, new in zip(upgraded["conversation"], current["conversation"], strict=True)]}
+        upgraded = current
+        before["outbox"] = [{**row, **NEW_OUTBOX_COLUMNS} for row in before["outbox"]]
         with respx.mock(assert_all_called=False):
             await inbox.process_inbox_once(db)
         assert await snapshot(db) == upgraded
@@ -133,7 +144,9 @@ async def test_0025_legacy_is_not_mass_replayed_and_new_head_parity(
         commands.extend(["downgrade 20260908_0025 (synthetic consumers stopped)", "upgrade head"])
         cycled = await snapshot(db)
         assert cycled["inbox_job"] == []
-        assert cycled["message"] == final["message"] and cycled["outbox"] == final["outbox"]
+        assert cycled["message"] == final["message"]
+        # The deliberate downgrade removes these four new columns, not historical values.
+        assert cycled["outbox"] == [{**row, **NEW_OUTBOX_COLUMNS} for row in final["outbox"]]
         assert cycled["audit_event"] == final["audit_event"]
         evidence(
             request,

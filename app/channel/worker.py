@@ -15,12 +15,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.models_registry  # noqa: F401
 from app.audit.models import AuditEvent
+from app.channel.delivery import (
+    admit_outbox,
+    check_outbox,
+    eligibility,
+    lock_delivery_row,
+    reject_media_admission,
+    stop_delivery,
+)
 from app.channel.media import MediaService, PermanentCatalogMediaError
 from app.channel.models import Message, Outbox
 from app.channel.outbound import WhatsAppInvalidMediaError, WhatsAppOutboundClient
 from app.config.database import create_engine, create_sessionmaker
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
+from app.conversation.models import Conversation
 
 logger = structlog.get_logger(__name__)
 
@@ -99,24 +108,24 @@ async def recover_stale_sending_outbox(
     recovered = 0
 
     async with sessionmaker() as session:
-        async with session.begin():
-            result = await session.scalars(
-                select(Outbox)
-                .where(
-                    Outbox.status == "SENDING",
-                    or_(
-                        Outbox.claimed_at < stale_before,
-                        and_(
-                            Outbox.claim_token.is_(None),
-                            Outbox.claimed_at.is_(None),
-                            Outbox.created_at < stale_before,
-                        ),
-                    ),
-                )
-                .order_by(Outbox.created_at)
-                .with_for_update(skip_locked=True)
-            )
-            for outbox_item in result.all():
+        candidates = list((await session.scalars(select(Outbox.id).where(
+            Outbox.status == "SENDING",
+            or_(Outbox.claimed_at < stale_before, and_(
+                Outbox.claim_token.is_(None), Outbox.claimed_at.is_(None),
+                Outbox.created_at < stale_before,
+            )),
+        ).order_by(Outbox.created_at))).all())
+    for outbox_id in candidates:
+        async with sessionmaker() as session, session.begin():
+            locked = await lock_delivery_row(session, outbox_id, skip=True)
+            if locked is None:
+                continue
+            _, outbox_item = locked
+            stale = (outbox_item.claimed_at is not None
+                     and outbox_item.claimed_at < stale_before) or (
+                outbox_item.claimed_at is None and outbox_item.claim_token is None
+                and outbox_item.created_at < stale_before)
+            if outbox_item.status == "SENDING" and stale:
                 await _mark_outbox_failure_locked(
                     session,
                     outbox_item,
@@ -207,6 +216,9 @@ async def process_claimed_outbox_item(
                 max_backoff_seconds=max_backoff_seconds,
             )
         body = extract_text_body(outbox_item)
+        decision = await admit_outbox(sessionmaker, outbox_item.id, outbox_item.claim_token)
+        if decision != "ADMITTED":
+            return "DISCARDED" if decision == "DISCARDED" else "APPLIED"
         sent_at = datetime.now(UTC)
         provider_message_id = await sender.send_text(outbox_item.recipient_phone_number, body)
     except Exception as error:
@@ -241,9 +253,15 @@ async def process_claimed_document_outbox_item(
 ) -> SettlementOutcome:
     media_service = MediaService(sessionmaker, get_settings(), sender)
     try:
+        decision = await check_outbox(sessionmaker, outbox_item.id, outbox_item.claim_token)
+        if decision != "ELIGIBLE":
+            return "DISCARDED" if decision == "DISCARDED" else "APPLIED"
         caption = extract_document_caption(outbox_item)
         asset_id = document_catalog_asset_id(outbox_item)
         document = await media_service.resolve_document(asset_id)
+        decision = await admit_outbox(sessionmaker, outbox_item.id, outbox_item.claim_token)
+        if decision != "ADMITTED":
+            return "DISCARDED" if decision == "DISCARDED" else "APPLIED"
         sent_at = datetime.now(UTC)
         try:
             provider_message_id = await sender.send_document(
@@ -253,11 +271,21 @@ async def process_claimed_document_outbox_item(
                 caption,
             )
         except WhatsAppInvalidMediaError:
+            if not await reject_media_admission(
+                sessionmaker, outbox_item.id, outbox_item.claim_token,
+            ):
+                return "DISCARDED"
             await media_service.invalidate_media_cache(
                 asset_id,
                 "Meta rejected cached media_id during document send",
             )
+            decision = await check_outbox(sessionmaker, outbox_item.id, outbox_item.claim_token)
+            if decision != "ELIGIBLE":
+                return "DISCARDED" if decision == "DISCARDED" else "APPLIED"
             document = await media_service.resolve_document(asset_id)
+            decision = await admit_outbox(sessionmaker, outbox_item.id, outbox_item.claim_token)
+            if decision != "ADMITTED":
+                return "DISCARDED" if decision == "DISCARDED" else "APPLIED"
             provider_message_id = await sender.send_document(
                 outbox_item.recipient_phone_number,
                 document.media_id,
@@ -314,7 +342,8 @@ async def _lock_owned_outbox(
     outcome: str,
 ) -> Outbox | None:
     """Ownership check and subsequent effects share the caller's transaction/row lock."""
-    row = await session.get(Outbox, outbox_id, with_for_update=True)
+    locked = await lock_delivery_row(session, outbox_id)
+    row = locked[1] if locked is not None else None
     reason = (
         "missing"
         if row is None
@@ -364,6 +393,8 @@ async def settle_outbox_success(
                 return "APPLIED"
 
             outbox_item.status = "SENT"
+            if outbox_item.send_admission is not None:
+                outbox_item.send_admission = {**outbox_item.send_admission, "phase": "SENT"}
             outbox_item.claim_token = None
             outbox_item.sent_at = sent_at
             outbox_item.claimed_at = None
@@ -428,7 +459,23 @@ async def _mark_outbox_failure_locked(
     max_backoff_seconds: int,
     permanent: bool = False,
 ) -> None:
-    # Only called with a row lock by verified settlement or the expiry reaper.
+    # Every caller already holds Customer -> Conversation -> Outbox. Late failure
+    # cannot grant a new retry to an output revoked while its HTTP call was in flight.
+    conversation = await session.get(Conversation, outbox_item.conversation_id)
+    result, reason = await eligibility(session, conversation, outbox_item)
+    if result != "ELIGIBLE":
+        stop_delivery(outbox_item, result, reason, now)
+        if isinstance(outbox_item.send_admission, dict) and (
+            outbox_item.send_admission.get("phase") == "ADMITTED"
+        ):
+            outbox_item.attempts += 1
+            outbox_item.last_error = str(error)[:1000]
+            outbox_item.send_admission = {**outbox_item.send_admission, "phase": "UNKNOWN"}
+        return
+    if isinstance(outbox_item.send_admission, dict) and (
+        outbox_item.send_admission.get("phase") == "ADMITTED"
+    ):
+        outbox_item.send_admission = {**outbox_item.send_admission, "phase": "UNKNOWN"}
     outbox_item.claim_token = None
     outbox_item.attempts += 1
     outbox_item.last_error = str(error)[:1000]

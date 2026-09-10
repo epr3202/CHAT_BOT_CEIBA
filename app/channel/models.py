@@ -89,6 +89,10 @@ class Outbox(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    delivery_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    send_admission: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    delivery_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    delivery_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

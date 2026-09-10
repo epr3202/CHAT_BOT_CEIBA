@@ -32,6 +32,12 @@ from app.catalog.service import (
     handle_explicit_catalog_request,
     is_catalog_request_category,
 )
+from app.channel.delivery import (
+    TRANSFER_RESPONSE_CODES,
+    automatic_context,
+    handoff_context,
+    payment_review_context,
+)
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings
@@ -74,6 +80,7 @@ from app.customer.models import Customer
 from app.event.event_type import normalize_event_type
 from app.event.models import Event, EventServiceRequest
 from app.event.validation import EventDateTriplet
+from app.handoff.models import Handoff
 from app.handoff.service import create_handoff
 from app.lead.budget import calculate_budget_range
 from app.lead.models import Lead
@@ -85,6 +92,7 @@ from app.orchestrator.slot_filling import (
     pending_fields_for,
     select_next_question,
 )
+from app.payment.models import PaymentEvidence
 from app.payment.service import create_payment_evidence
 from app.quote.models import QuoteRequest
 from app.scheduling.availability import AvailabilityService
@@ -2473,7 +2481,7 @@ async def handle_quote_request_ready(
         "Customer confirmed quote summary",
         orchestration_input.request_id,
     )
-    await create_handoff(
+    notice_case, _ = await create_handoff(
         session,
         conversation,
         customer,
@@ -2490,6 +2498,7 @@ async def handle_quote_request_ready(
         orchestration_input.inbound_message,
         "RESP-QUOTE-009" if quote_request.date_pending else "RESP-QUOTE-004",
         {},
+        notice_case=notice_case,
     )
     set_pending_action(conversation, "WAIT_FOR_HUMAN")
 
@@ -3561,6 +3570,7 @@ async def create_handoff_and_pause(
         orchestration_input.inbound_message,
         response_code_override or response_code,
         {},
+        notice_case=handoff,
     )
     persist_classification_context(conversation, classification)
     set_pending_action(conversation, "WAIT_FOR_HUMAN")
@@ -3576,14 +3586,24 @@ async def enqueue_template(
     inbound_message: Message,
     response_code: str,
     variables: dict[str, Any],
+    *,
+    notice_case: Handoff | None = None,
+    payment_decision: PaymentEvidence | None = None,
 ) -> None:
+    rendered_code = response_code
     try:
         body = await render_response(knowledge_sessionmaker, response_code, variables)
     except KnowledgeRenderError:
         logger.error("approved_response_render_failed", response_code=response_code)
         body = await render_response(knowledge_sessionmaker, "RESP-AI-ERROR-001", {})
+        rendered_code = "RESP-AI-ERROR-001"
 
     conversation.last_question_code = response_code
+    context = automatic_context(conversation, "TEMPLATE")
+    if notice_case is not None and rendered_code in TRANSFER_RESPONSE_CODES:
+        context = await handoff_context(session, conversation, notice_case)
+    elif payment_decision is not None and rendered_code in {"RESP-PAYMENT-004", "RESP-PAYMENT-005"}:
+        context = payment_review_context(payment_decision)
     session.add(
         Outbox(
             conversation_id=conversation.id,
@@ -3591,6 +3611,7 @@ async def enqueue_template(
             channel=Channel.WHATSAPP,
             recipient_phone_number=customer.phone_number,
             payload={"type": "text", "text": {"body": body}},
+            delivery_context=context,
             status="PENDING",
         )
     )
