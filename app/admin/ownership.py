@@ -57,8 +57,9 @@ def require_case_owner(
 
 
 def require_pending_case(conversation: Conversation, cases: list[Handoff]) -> Handoff:
+    # WAITING_FOR_HUMAN itself suspends automation; takeover sets bot_enabled=False.
     if (
-        conversation.state != "WAITING_FOR_HUMAN" or conversation.bot_enabled
+        conversation.state != "WAITING_FOR_HUMAN"
         or conversation.assigned_agent_id is not None or len(cases) != 1
         or cases[0].status != "PENDING" or cases[0].assigned_agent_id is not None
         or cases[0].assigned_to is not None

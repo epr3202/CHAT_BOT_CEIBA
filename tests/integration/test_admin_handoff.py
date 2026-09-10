@@ -316,7 +316,7 @@ async def test_agent_can_take_any_bot_active_conversation(
 
     agent_message = await client.post(
         f"/admin/conversations/{conversation_id}/messages",
-        headers=await admin_headers(client),
+        headers={"Authorization": f"Bearer {agent['token']}"},
         json={"text": "Hola, tomo tu caso."},
     )
     assert agent_message.status_code == 200

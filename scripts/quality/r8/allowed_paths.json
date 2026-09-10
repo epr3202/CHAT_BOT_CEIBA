@@ -1,6 +1,7 @@
 [
   "app/admin/routes.py",
   "app/admin/ownership.py",
+  "tests/integration/test_admin_handoff.py",
   "tests/remediation/r8/helpers.py",
   "tests/remediation/r8/test_r8_red.py",
   "tests/remediation/r8/test_r8_contract.py",

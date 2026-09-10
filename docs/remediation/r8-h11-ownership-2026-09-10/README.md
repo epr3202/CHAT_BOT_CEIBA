@@ -130,7 +130,19 @@ antes de commit comprueba rollback desde otra sesión. El cambio de dueño o
 relación mediante SQL es una condición sintética, no una función de reasignación.
 No se atribuye RED retroactivo a esos controles ni cobertura universal de carreras.
 
-No se adaptaron tests históricos. Los helpers y seis tests RED quedan congelados.
+Adaptación histórica declarada antes de editar: el nodo
+`tests/integration/test_admin_handoff.py::test_agent_can_take_any_bot_active_conversation`
+tomaba con Alexandra pero respondía con ADMIN ajeno. Se cambia únicamente el header
+de la respuesta al token de Alexandra ya creado, manteniendo nodo y aserciones.
+La política ADMIN ajeno se acredita con negativos R8 y snapshots. El primer candidato
+97970f112a447100067c9a9ac093d379556bb669 conserva esa fixture original en su run
+34494006371/1; los resultados intermedios se preservan en la entrega local.
+Los helpers y seis tests RED quedan congelados.
+El primer focal candidato detectó 6 fallos al tomar casos reales R4/R5 porque el
+helper exigía bot_enabled=False también en WAITING_FOR_HUMAN. Ese estado ya pausa
+la automatización. Se retira únicamente esa condición de toma pendiente y se
+conserva la exigencia False para HUMAN_ACTIVE, así como todos los controles por ID.
+R5/R6 no se adaptan para ocultar esta regresión; los artefactos fallidos se preservan.
 `new_nodes.json` enumera estáticamente los casos R8 y CI verifica colección/fases.
 Ejecución autorizada: push solo a la rama R8 dispara el workflow independiente,
 con `python scripts/quality/r8/run_ci.py suite` y `regressions` dentro del runner

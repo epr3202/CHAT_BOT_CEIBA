@@ -63,3 +63,9 @@ se conservan sus nodos. Validación remota pendiente. Cero migraciones; H29 agre
 ## R8 — H11.propiedad_mutaciones_humanas / U12b (2026-09-10)
 
 Contrato previo y reproduccion de propiedad en respuesta/retorno. BASE R7 `9af02027672049c1d73f998e9be1fe8c070e791f`; producto BASE intacto durante RED. ADMIN sin override automatico; reasignacion explicita pendiente. [Contrato R8](remediation/r8-h11-ownership-2026-09-10/README.md). H11 agregado permanece abierto; no activacion.
+
+R8 candidato: propiedad por ID dentro de la transaccion y locks Conversation -> Handoff;
+sin override ADMIN. Toma pendiente conserva WAITING_FOR_HUMAN; respuesta/retorno exigen
+HUMAN_ACTIVE con bot pausado. Una fixture historica usa ahora la sesion de su propietario.
+Resultado definitivo, SHA y evidencias quedan en el informe local post-CI; H11 agregado
+y U12c siguen abiertos. Sin migraciones ni activacion.
