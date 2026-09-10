@@ -1,0 +1,8 @@
+[
+  "tests/remediation/r8/test_r8_red.py::test_invalid_session_keeps_case_unchanged[reply]",
+  "tests/remediation/r8/test_r8_red.py::test_invalid_session_keeps_case_unchanged[return]",
+  "tests/remediation/r8/test_r8_red.py::test_nonowner_cannot_mutate_taken_case[reply]",
+  "tests/remediation/r8/test_r8_red.py::test_nonowner_cannot_mutate_taken_case[return]",
+  "tests/remediation/r8/test_r8_red.py::test_owner_keeps_legitimate_mutation[reply]",
+  "tests/remediation/r8/test_r8_red.py::test_owner_keeps_legitimate_mutation[return]"
+]

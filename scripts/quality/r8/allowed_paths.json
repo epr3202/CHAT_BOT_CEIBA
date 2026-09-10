@@ -1,0 +1,21 @@
+[
+  "app/admin/routes.py",
+  "app/admin/ownership.py",
+  "tests/remediation/r8/helpers.py",
+  "tests/remediation/r8/test_r8_red.py",
+  "tests/remediation/r8/test_r8_contract.py",
+  "tests/remediation/r8/test_r8_races.py",
+  "docs/architecture.md",
+  "docs/changelog.md",
+  "docs/decisions.md",
+  "docs/pending_tasks.md",
+  "docs/remediation/r8-h11-ownership-2026-09-10/README.md",
+  ".github/workflows/remediation-r8-ownership.yml",
+  "scripts/quality/r8/run_ci.py",
+  "scripts/quality/r8/driver.py",
+  "scripts/quality/r8/allowed_paths.json",
+  "scripts/quality/r8/baseline_manifest.json",
+  "scripts/quality/r8/source_manifest.json",
+  "scripts/quality/r8/r7_nodes.json",
+  "scripts/quality/r8/new_nodes.json"
+]
