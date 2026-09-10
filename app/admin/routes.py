@@ -26,6 +26,12 @@ from sqlalchemy import cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.admin.ownership import (
+    lock_human_case,
+    require_case_owner,
+    require_pending_case,
+    require_unassigned_conversation,
+)
 from app.agent.auth import (
     DUMMY_PASSWORD_HASH,
     PIN_MIN_LENGTH,
@@ -1271,30 +1277,8 @@ async def take_handoff(
     await session.rollback()
 
     async with session.begin():
-        handoff = await session.get(Handoff, handoff_id, with_for_update=True)
-        if handoff is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Handoff not found")
-        if handoff.status != "PENDING":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Handoff is not pending",
-            )
-
-        conversation = await session.get(
-            Conversation,
-            handoff.conversation_id,
-            with_for_update=True,
-        )
-        if conversation is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found",
-            )
-        if conversation.state != ConversationState.WAITING_FOR_HUMAN.value:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Conversation is not waiting for human",
-            )
+        conversation, cases = await lock_human_case(session, handoff_id=handoff_id)
+        handoff = require_pending_case(conversation, cases)
         customer = await session.get(Customer, conversation.customer_id)
 
         now = datetime.now(UTC)
@@ -1344,12 +1328,10 @@ async def take_conversation(
     await session.rollback()
 
     async with session.begin():
-        conversation = await session.get(Conversation, conversation_id, with_for_update=True)
-        if conversation is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found",
-            )
+        conversation, cases = await lock_human_case(
+            session, conversation_id=conversation_id,
+        )
+        require_unassigned_conversation(conversation, cases)
         customer = await session.get(Customer, conversation.customer_id)
         if customer is None:
             raise HTTPException(
@@ -1498,33 +1480,12 @@ async def return_handoff(
 ) -> dict[str, object]:
     agent = await authenticated_agent(session, authorization)
     actor = agent.name
+    actor_id = agent.id
     await session.rollback()
 
     async with session.begin():
-        handoff = await session.get(Handoff, handoff_id, with_for_update=True)
-        if handoff is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Handoff not found")
-        if handoff.status != "TAKEN":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Handoff is not taken",
-            )
-
-        conversation = await session.get(
-            Conversation,
-            handoff.conversation_id,
-            with_for_update=True,
-        )
-        if conversation is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found",
-            )
-        if conversation.state != ConversationState.HUMAN_ACTIVE.value:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Conversation is not human active",
-            )
+        conversation, cases = await lock_human_case(session, handoff_id=handoff_id)
+        handoff = require_case_owner(conversation, cases, actor_id)
         customer = await session.get(Customer, conversation.customer_id)
 
         handoff.status = "RETURNED"
@@ -1576,20 +1537,14 @@ async def create_agent_message(
 ) -> dict[str, int | str]:
     agent = await authenticated_agent(session, authorization)
     actor = agent.name
+    actor_id = agent.id
     await session.rollback()
 
     async with session.begin():
-        conversation = await session.get(Conversation, conversation_id, with_for_update=True)
-        if conversation is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found",
-            )
-        if conversation.state != ConversationState.HUMAN_ACTIVE.value:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Conversation is not human active",
-            )
+        conversation, cases = await lock_human_case(
+            session, conversation_id=conversation_id,
+        )
+        active_handoff = require_case_owner(conversation, cases, actor_id)
 
         customer = await session.get(Customer, conversation.customer_id)
         latest_message = await session.scalar(
@@ -1617,21 +1572,11 @@ async def create_agent_message(
             status="PENDING",
         )
         session.add(outbox)
-        active_handoff = await session.scalar(
-            select(Handoff)
-            .where(
-                Handoff.conversation_id == conversation.id,
-                Handoff.status == "TAKEN",
-            )
-            .order_by(Handoff.id.desc())
-            .limit(1)
+        active_handoff.summary = append_handoff_summary_line(
+            active_handoff.summary,
+            "OUTBOUND",
+            body.text,
         )
-        if active_handoff is not None:
-            active_handoff.summary = append_handoff_summary_line(
-                active_handoff.summary,
-                "OUTBOUND",
-                body.text,
-            )
         await session.flush()
         session.add(
             AuditEvent(

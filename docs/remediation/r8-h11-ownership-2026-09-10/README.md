@@ -105,3 +105,36 @@ H11 agregado, override/reasignación pendiente, otros recursos admin, U12c, H02.
 H05.agotamiento_fallback, H29/H17 residuales, seguridad/config/deploy y validación operativa.
 Sin migraciones nuevas, roles, prompts, dependencias, estados, frontend ni instalaciones.
 R7 se preserva sin reimplementarlo. Activación requiere R1/R2 y autorización separada.
+
+## Implementación candidata y evidencia RED congelada
+
+RED `dfad8fb7c1493f2dff23a42237b584d8885f54b4`, run 34492006457/1: suite
+1263 (1261 PASS, 2 FAIL), focal 628 (626 PASS, 2 FAIL), Ruff PASS. Ambos fallos
+son call con 200 frente a 403 esperado, tras login real y toma A comprobada.
+Setup/teardown pasan. B cambia Outbox/resumen/auditoría al responder y
+Conversation/Handoff/auditoría al devolver. Controles A=200 e inválida=401 pasan.
+Los 1257 anteriores se conservan. Los ZIP originales y verificaciones completas
+se entregan localmente después de CI; no se incluyen archivos masivos en Git.
+
+`ownership.py` centraliza la carga bloqueada de Conversation y handoffs abiertos,
+la exclusividad/coherencia y el permiso por ID. Las cuatro rutas existentes lo
+usan; respuesta y retorno copian ID/nombre antes del rollback de autenticación.
+Las escrituras, resumen y auditoría siguen en una única transacción. No hay
+override ADMIN, transferencia implícita, migración ni cambio de autenticación.
+
+Las pruebas posteriores añaden políticas/sesiones, inconsistencias, lectura,
+R4/R5 y carreras. Observadores `after_cursor_execute` pausan después de SQL real;
+`pg_blocking_pids` acredita la espera, los eventos liberan el orden. Un trigger
+de restricción diferido produce fallo real al commit. Cancelación tras SQL y
+antes de commit comprueba rollback desde otra sesión. El cambio de dueño o
+relación mediante SQL es una condición sintética, no una función de reasignación.
+No se atribuye RED retroactivo a esos controles ni cobertura universal de carreras.
+
+No se adaptaron tests históricos. Los helpers y seis tests RED quedan congelados.
+`new_nodes.json` enumera estáticamente los casos R8 y CI verifica colección/fases.
+Ejecución autorizada: push solo a la rama R8 dispara el workflow independiente,
+con `python scripts/quality/r8/run_ci.py suite` y `regressions` dentro del runner
+GitHub autorizado. No ejecutar esos comandos en el PC ni contra otra base.
+
+Este README describe el candidato antes de su CI y no certifica un resultado futuro.
+El informe local post-CI identificará SHA, runs, hashes y estado final de U12b.
