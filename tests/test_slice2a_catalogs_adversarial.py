@@ -19,9 +19,9 @@ from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
 from app.catalog.models import CatalogAsset, CatalogEventTypeMap, CatalogSend
+from app.channel.delivery import automatic_context
 from app.channel.inbound import process_whatsapp_webhook
 from app.channel.media import sha256_file
-from app.channel.delivery import automatic_context
 from app.channel.models import Message, Outbox
 from app.channel.outbound import WhatsAppInvalidMediaError
 from app.channel.states import Channel

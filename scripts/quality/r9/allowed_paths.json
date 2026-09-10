@@ -31,5 +31,6 @@
   "scripts/quality/r9/baseline_manifest.json",
   "scripts/quality/r9/source_manifest.json",
   "scripts/quality/r9/r8_nodes.json",
-  "scripts/quality/r9/new_nodes.json"
+  "scripts/quality/r9/new_nodes.json",
+  "tests/unit/test_slot_presentation_boundary.py"
 ]

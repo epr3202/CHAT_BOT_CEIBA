@@ -89,9 +89,21 @@ async def test_legitimate_pause_invalidates_period(
 @pytest.mark.parametrize("queued", ["pending", "backoff", "claimed"])
 async def test_unobserved_pause_return_never_revives_old_output(
     db: Any, api: Any, request: pytest.FixtureRequest, queued: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.admin import routes
+    from app.channel import delivery
+
     conversation_id, outbox_id = await enqueue(db)
     at = datetime.now(UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return at.astimezone(tz) if tz else at.replace(tzinfo=None)
+
+    monkeypatch.setattr(routes, "datetime", Clock)
+    monkeypatch.setattr(delivery, "datetime", Clock)
     before = await snapshot(db)
     claims = []
     if queued == "claimed":
@@ -104,6 +116,9 @@ async def test_unobserved_pause_return_never_revives_old_output(
     await return_case(api, handoff_id)
     # Same externally supplied clock; identity cannot depend on its resolution.
     await enqueue(db, conversation_id=conversation_id)
+    async with db() as session, session.begin():
+        for row in (await session.scalars(select(Outbox))).all():
+            row.created_at = at
     sender = Sender()
     with respx.mock:
         for item in claims:
@@ -113,6 +128,7 @@ async def test_unobserved_pause_return_never_revives_old_output(
     evidence(request, before=before, after=after, sends=sender.sends, clock=at)
     assert [row["status"] for row in after["outbox"]] == ["SUPPRESSED", "SENT"]
     assert len(sender.sends) == 1
+    assert len({row["created_at"] for row in after["outbox"]}) == 1
     assert after["conversation"][0]["state"] == "BOT_ACTIVE"
     assert before["conversation"][0]["automation_epoch"] != (
         after["conversation"][0]["automation_epoch"])
@@ -190,12 +206,19 @@ async def test_payload_cannot_grant_human_origin(
     assert sender.sends == [] and after["outbox"][0]["status"] == "SUPPRESSED"
 
 
-@pytest.mark.parametrize("tamper", ["unknown_origin", "human_without_proof", "wrong_case"])
+@pytest.mark.parametrize("tamper", [
+    "unknown_origin", "human_without_proof", "wrong_case", "unrelated_case", "wrong_purpose",
+])
 async def test_unproven_context_never_creates_exception(
     db: Any, request: pytest.FixtureRequest, tamper: str,
 ) -> None:
     conversation_id, outbox_id = await enqueue(db)
     await pause(db, conversation_id, "waiting")
+    case_id = (await snapshot(db))["handoff"][0]["id"]
+    if tamper == "unrelated_case":
+        from tests.remediation.r8.helpers import seed_case
+
+        _, case_id = await seed_case(db, pending=True)
     async with db() as session, session.begin():
         row = await session.get(Outbox, outbox_id)
         conversation = await session.get(Conversation, conversation_id)
@@ -204,6 +227,10 @@ async def test_unproven_context_never_creates_exception(
             "human_without_proof": {"origin": "HUMAN_REPLY", "agent_id": 1},
             "wrong_case": {"origin": "HANDOFF_NOTICE", "purpose": "TRANSFER",
                            "epoch": str(conversation.automation_epoch), "case_id": 999999},
+            "unrelated_case": {"origin": "HANDOFF_NOTICE", "purpose": "TRANSFER",
+                               "epoch": str(conversation.automation_epoch), "case_id": case_id},
+            "wrong_purpose": {"origin": "HANDOFF_NOTICE", "purpose": "SYSTEM",
+                              "epoch": str(conversation.automation_epoch), "case_id": case_id},
         }[tamper]
         row.payload = {**row.payload, "agent": True}
     sender = Sender()
@@ -211,6 +238,29 @@ async def test_unproven_context_never_creates_exception(
     after = await snapshot(db)
     evidence(request, after=after, sends=sender.sends)
     assert sender.sends == [] and after["outbox"][0]["status"] == "REVIEW"
+
+
+async def test_handoff_response_code_without_producer_case_grants_no_exception(
+    db: Any, request: pytest.FixtureRequest,
+) -> None:
+    from app.channel.models import Message
+    from app.orchestrator.service import enqueue_template
+
+    conversation_id, _ = await enqueue(db)
+    await pause(db, conversation_id, "waiting")
+    async with db() as session, session.begin():
+        conversation = await session.get(Conversation, conversation_id, with_for_update=True)
+        customer = await session.get(Customer, conversation.customer_id)
+        message = await session.scalar(select(Message).where(
+            Message.conversation_id == conversation_id))
+        await enqueue_template(session, db, conversation, customer, message, "RESP-HANDOFF-001", {})
+    sender = Sender()
+    await process_outbox_once(db, sender)
+    after = await snapshot(db)
+    evidence(request, after=after, sends=sender.sends)
+    assert sender.sends == []
+    assert all(row["status"] == "SUPPRESSED" for row in after["outbox"])
+    assert all(row["delivery_context"]["origin"] == "AUTO" for row in after["outbox"])
 
 
 async def test_terminal_suppression_resists_reaper_and_old_callbacks(
@@ -237,7 +287,9 @@ async def test_terminal_suppression_resists_reaper_and_old_callbacks(
     assert before == after and sender.sends == []
 
 
-async def test_claiming_batch_is_not_send_admission(db: Any, api: Any) -> None:
+async def test_claiming_batch_is_not_send_admission(
+    db: Any, api: Any, request: pytest.FixtureRequest,
+) -> None:
     first, _ = await enqueue(db)
     await enqueue(db)
     claims = await claim_due_outbox_batch(db, datetime.now(UTC), 10)
@@ -249,9 +301,12 @@ async def test_claiming_batch_is_not_send_admission(db: Any, api: Any) -> None:
         await run_claim(db, item, sender)
     assert len(sender.sends) == 1
     assert [r["status"] for r in (await snapshot(db))["outbox"]] == ["SUPPRESSED", "SENT"]
+    evidence(request, after=await snapshot(db), sends=sender.sends)
 
 
-async def test_admission_is_persisted_and_cannot_be_reused(db: Any) -> None:
+async def test_admission_is_persisted_and_cannot_be_reused(
+    db: Any, request: pytest.FixtureRequest,
+) -> None:
     await enqueue(db)
     item = (await claim_due_outbox_batch(db, datetime.now(UTC), 1))[0]
     assert await admit_outbox(db, item.id, item.claim_token) == "ADMITTED"
@@ -262,6 +317,7 @@ async def test_admission_is_persisted_and_cannot_be_reused(db: Any) -> None:
     sender = Sender()
     await run_claim(db, item, sender)
     assert sender.sends == []
+    evidence(request, admission=row, after=await snapshot(db), sends=sender.sends)
 
 
 async def test_redelivery_does_not_recreate_suppressed_notice(
@@ -324,7 +380,9 @@ async def test_transfer_producer_is_narrow_for_approved_override_purpose(
     assert len(sender.sends) == int(is_notice)
 
 
-async def test_catalog_unavailable_notice_keeps_its_pending_case(db: Any) -> None:
+async def test_catalog_unavailable_notice_keeps_its_pending_case(
+    db: Any, request: pytest.FixtureRequest,
+) -> None:
     from app.catalog.service import enqueue_catalog_unavailable_response
     from app.channel.models import Message
 
@@ -343,10 +401,11 @@ async def test_catalog_unavailable_notice_keeps_its_pending_case(db: Any) -> Non
     after = await snapshot(db)
     assert [r["status"] for r in after["outbox"]] == ["SUPPRESSED", "SENT"]
     assert len(sender.sends) == 1
+    evidence(request, before=before, after=after, sends=sender.sends)
 
 
 async def test_ordinary_output_created_during_wait_cannot_revive_on_return(
-    db: Any, api: Any,
+    db: Any, api: Any, request: pytest.FixtureRequest,
 ) -> None:
     conversation_id, _ = await enqueue(db)
     await pause(db, conversation_id, "waiting")
@@ -363,18 +422,28 @@ async def test_ordinary_output_created_during_wait_cannot_revive_on_return(
     assert [r["status"] for r in (await snapshot(db))["outbox"]] == [
         "SUPPRESSED", "SUPPRESSED", "SENT"]
     assert len(sender.sends) == 1
+    evidence(request, waiting=waiting, after=await snapshot(db), sends=sender.sends)
 
 
 @pytest.mark.parametrize("decision", ["accept", "reject"])
+@pytest.mark.parametrize("approved", [True, False])
 async def test_admin_payment_decision_notification_survives_pause(
-    db: Any, api: Any, request: pytest.FixtureRequest, decision: str,
+    db: Any, api: Any, request: pytest.FixtureRequest, decision: str, approved: bool,
 ) -> None:
+    from app.conversation.models import KnowledgeEntry
     from app.payment.models import PaymentEvidence
 
     conversation_id, _ = await enqueue(db)
     handoff_id = await take(api, conversation_id)
     before = await snapshot(db)
     async with db() as session, session.begin():
+        code = "RESP-PAYMENT-004" if decision == "accept" else "RESP-PAYMENT-005"
+        template = await session.scalar(select(KnowledgeEntry).where(
+            KnowledgeEntry.code == code).order_by(KnowledgeEntry.version.desc()).limit(1))
+        assert template is not None and template.status == "DRAFT"
+        if approved:
+            # Approved only in this synthetic fixture, never in product/knowledge sources.
+            template.status = "APPROVED"
         row = PaymentEvidence(conversation_id=conversation_id,
             customer_id=before["conversation"][0]["customer_id"],
             message_id=before["message"][0]["id"], media_id="r9-synthetic-evidence",
@@ -386,13 +455,16 @@ async def test_admin_payment_decision_notification_survives_pause(
     client._transport.app.state.settings = get_settings()
     response = await client.post(f"/admin/payment-evidence/{evidence_id}/{decision}",
                                  headers=actors["ADMIN"]["headers"], json={"note": "Revisión R9"})
-    assert response.status_code == 200 and response.json()["customer_notification"] == "ENQUEUED"
+    assert response.status_code == 200
+    assert response.json()["customer_notification"] == ("ENQUEUED" if approved else "DEFERRED")
     await return_case(api, handoff_id)
     await take(api, conversation_id, "B")
     sender = Sender()
     await process_outbox_once(db, sender)
     after = await snapshot(db)
     evidence(request, response=response.json(), after=after, sends=sender.sends)
-    assert [r["status"] for r in after["outbox"]] == ["SUPPRESSED", "SENT"]
-    assert len(sender.sends) == 1
-    assert after["outbox"][1]["delivery_context"]["origin"] == "PAYMENT_REVIEW_RESULT"
+    assert [r["status"] for r in after["outbox"]] == (
+        ["SUPPRESSED", "SENT"] if approved else ["SUPPRESSED"])
+    assert len(sender.sends) == int(approved)
+    if approved:
+        assert after["outbox"][1]["delivery_context"]["origin"] == "PAYMENT_REVIEW_RESULT"

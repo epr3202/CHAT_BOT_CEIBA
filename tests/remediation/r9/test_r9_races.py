@@ -282,7 +282,9 @@ async def test_reaper_does_not_retry_revoked_inflight_attempt(
     assert len(after["message"]) == 1  # Discarded external success remains explicitly uncertain.
 
 
-async def test_two_consumers_cannot_admit_same_claim_twice(db: Any) -> None:
+async def test_two_consumers_cannot_admit_same_claim_twice(
+    db: Any, request: pytest.FixtureRequest,
+) -> None:
     await enqueue(db)
     item = await claim_one(db)
     sender = SlowSender()
@@ -295,6 +297,7 @@ async def test_two_consumers_cannot_admit_same_claim_twice(db: Any) -> None:
     finally:
         sender.release.set()
         await asyncio.wait_for(task, 10)
+    evidence(request, after=await snapshot(db), sends=sender.sends)
 
 
 @pytest.mark.parametrize("operation", ["pause", "admission"])
@@ -331,6 +334,9 @@ async def test_killed_owned_process_keeps_committed_boundary(
         await asyncio.wait_for(asyncio.to_thread(process.join, 10), 12)
         assert not process.is_alive() and process.exitcode == -9
         after_kill = await snapshot(db)
+        if operation == "pause" and boundary == "after_commit":
+            assert after_kill["conversation"][0]["state"] == "WAITING_FOR_HUMAN"
+            assert len(after_kill["handoff"]) == 1
         sender = Sender()
         if operation == "admission" and boundary == "after_commit":
             # A restarted consumer cannot reuse the persisted admission; external result unknown.
@@ -349,3 +355,93 @@ async def test_killed_owned_process_keeps_committed_boundary(
         await asyncio.to_thread(process.join, 10)
         parent.close()
         child.close()
+
+
+async def wait_for_any_database_lock(db: Any) -> list[dict[str, Any]]:
+    async with asyncio.timeout(10):
+        while True:
+            async with db() as session:
+                rows = (await session.execute(text(
+                    "SELECT pid, pg_blocking_pids(pid) AS blockers, wait_event "
+                    "FROM pg_stat_activity WHERE datname=current_database() "
+                    "AND pid != pg_backend_pid() AND wait_event_type='Lock' "
+                    "AND cardinality(pg_blocking_pids(pid)) > 0",
+                ))).mappings().all()
+            if rows:
+                return [dict(row) for row in rows]
+            await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize("contender", ["r8_denial", "r5_capture"])
+async def test_delivery_locks_preserve_r8_authorization_and_r5_passive_capture(
+    db: Any, api: Any, request: pytest.FixtureRequest, contender: str,
+) -> None:
+    import respx
+
+    from app.channel import inbound
+    from app.config.settings import get_settings
+    from app.conversation.models import Conversation
+    from app.customer.models import Customer
+    from app.handoff.service import create_handoff
+    from tests.remediation.r5.helpers import media_payload
+    from tests.remediation.r8.helpers import seed_case
+
+    conversation_id, _ = await seed_case(db, pending=False)
+    async with db() as session, session.begin():
+        conversation = await session.get(Conversation, conversation_id, with_for_update=True)
+        customer = await session.get(Customer, conversation.customer_id)
+        case, _ = await create_handoff(session, conversation, customer, "PAYMENT_REVIEW", "NORMAL",
+                                       "r9", get_settings())
+        await session.flush()
+        case_id, phone = case.id, customer.phone_number
+    client, actors = api
+    response = await client.post(f"/admin/handoffs/{case_id}/take", headers=actors["A"]["headers"])
+    assert response.status_code == 200
+    path = f"/admin/conversations/{conversation_id}/messages"
+    response = await client.post(path, headers=actors["A"]["headers"], json={"text": "R9 humano"})
+    assert response.status_code == 200
+    event_id = None
+    if contender == "r5_capture":
+        data = media_payload("image")
+        message = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        message["from"], message["id"] = phone.lstrip("+"), "r9.contended.media"
+        event_id = await inbound.store_webhook_event(data, db, None)
+    item = await claim_one(db)
+    before = await snapshot(db)
+    tasks, sender = [], Sender()
+    try:
+        with respx.mock:
+            async with pause_after_sql(db, lambda s: s.startswith("update outbox")) as barrier:
+                entered, release = barrier
+                tasks.append(asyncio.create_task(run_claim(db, item, sender)))
+                await asyncio.wait_for(entered.wait(), 10)
+                if contender == "r8_denial":
+                    action = client.post(path, headers=actors["B"]["headers"],
+                                         json={"text": "R9 no autorizado"})
+                else:
+                    action = inbound.process_webhook_event(event_id, db)
+                tasks.append(asyncio.create_task(action))
+                waits = await wait_for_any_database_lock(db)
+                release.set()
+                results = await asyncio.wait_for(asyncio.gather(*tasks), 15)
+    finally:
+        await finish_tasks(tasks)
+    after = await snapshot(db)
+    evidence(request, before=before, after=after, database_waits=waits, sends=sender.sends,
+             contender=contender,
+             status=results[1].status_code if contender == "r8_denial" else None)
+    assert len(sender.sends) == 1
+    assert len(after["outbox"]) == 1 and after["outbox"][0]["status"] == "SENT"
+    assert after["conversation"][0]["automation_epoch"] == (
+        before["conversation"][0]["automation_epoch"])
+    if contender == "r8_denial":
+        assert results[1].status_code == 403
+        assert after["conversation"] == before["conversation"]
+        assert after["audit_event"] == before["audit_event"]
+    else:
+        assert len(after["payment_evidence"]) == 1
+        assert after["payment_evidence"][0]["download_status"] == "PENDING"
+        assert after["inbox_job"][0]["status"] == "COMPLETED"
+        assert after["conversation"][0]["state"] == "HUMAN_ACTIVE"
+        async with db() as session:
+            assert await session.scalar(text("SELECT count(*) FROM ai_execution")) == 0

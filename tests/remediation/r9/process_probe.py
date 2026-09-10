@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.channel.delivery import admit_outbox
+from app.config.settings import get_settings
 from app.conversation.models import Conversation
-from app.conversation.service import transition_conversation
+from app.customer.models import Customer
+from app.handoff.service import create_handoff
 
 
 def checkpoint_process(url: str, connection: Any, operation: str, boundary: str,
@@ -39,8 +41,9 @@ def checkpoint_process(url: str, connection: Any, operation: str, boundary: str,
                 async with db() as session, session.begin():
                     conversation = await session.get(Conversation, conversation_id,
                                                      with_for_update=True)
-                    await transition_conversation(session, conversation, "WAITING_FOR_HUMAN",
-                                                  "SYSTEM", "R9 synthetic process checkpoint")
+                    customer = await session.get(Customer, conversation.customer_id)
+                    await create_handoff(session, conversation, customer, "CUSTOMER_REQUEST",
+                                         "NORMAL", "r9-process", get_settings())
             else:
                 assert await admit_outbox(db, outbox_id, token) == "ADMITTED"
             connection.send("COMMITTED")

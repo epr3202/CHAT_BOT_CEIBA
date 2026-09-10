@@ -168,3 +168,27 @@ FALLBACK-001 de inbound desconocido. No se crea otra plantilla.
 RED d8f72cc8af547954ad091558cec0bec00f0b26a4, run 34504123258 intento 1: suite 1339 PASS + 2 FAIL; focal 704 PASS + 2 FAIL. Solo fallan los envíos TEXT/DOCUMENT tras toma. Ruff PASS, fases completas, sin red inesperada; dos ZIP originales verificados. Tests/helpers RED congelados. Candidato y nueva migración pendientes de CI.
 
 Detalle implementado: también se rota identidad al salir de un estado pausado o reactivar bot_enabled. Así, una salida ordinaria creada durante la espera tampoco revive al volver al bot. La admisión repetida de un claim ya admitido se descarta sin retirar su identidad mientras otro consumidor puede estar en vuelo.
+
+
+## Ajuste del candidato tras focal C1
+
+C1 6af641f2df85e61bdb276ba79cc20ab5ef4cfafa, run 34515315064: focal 766 PASS y dos fallos de fixture de pago. El seed mantiene RESP-PAYMENT-004/005 en DRAFT y el endpoint devuelve DEFERRED correctamente. Se prepara explícitamente APPROVED solo en la DB sintética para la rama positiva y se conserva control DRAFT/DEFERRED. Esto no modifica plantillas ni datos de producto. Ruff identificó orden de imports en dos fuentes (más la copia generada build/lib); se corrige ese orden.
+
+Se añaden contención de admisión con denegación R8 y captura de comprobante R5, caso ajeno/propósito inválido/código sin caso, defaults SQL y ORM, reloj fijo y evidencia detallada por caso. Las pruebas añadidas después de RED no tienen RED retroactivo. La muerte de proceso usa ahora create_handoff real en el hijo propio, conserva guard R0 heredado y crea engine nuevo.
+
+Inventario complementario: scripts/reset_local_conversation.py también escribe CLOSED, bot_enabled y asignación mediante ORM bajo Customer → Conversation → Handoff → Outbox. El validador central cubre su cambio de período. Su cancelación administrativa explícita de cola tiene contrato de reinicio local separado; no se ejecuta ni modifica en R9, que excluye reparaciones operativas. No se extiende la garantía del worker a binarios antiguos ni a alteraciones administrativas directas de filas.
+
+
+# Adaptación adicional demostrada por suite C1, antes de editar la fixture
+
+Suite C1 `6af641f2df85e61bdb276ba79cc20ab5ef4cfafa`, run `34515315064`: 1403 nodos,
+1400 PASS y tres fallos. Dos son la preparación de aprobación de pago ya declarada.
+El tercero es `tests/unit/test_slot_presentation_boundary.py::test_unregistered_variable_uses_controlled_render_failure_path`.
+
+Ese test usa una Conversation simulada con SimpleNamespace, sin la nueva columna
+automation_epoch. Falla por AttributeError antes de verificar el fallback, no por
+cambio de plantilla ni de las reglas de variables. Se amplía la allowlist con ese
+archivo y se completa exclusivamente su fixture con un UUID de período actual.
+Se retienen el nodo y todas las aserciones del fallback; no se vuelve permisivo el
+producto para aceptar objetos de dominio incompletos. No cambia ninguna fuente
+aprobada de respuestas. Esta adaptación queda declarada antes del siguiente CI.

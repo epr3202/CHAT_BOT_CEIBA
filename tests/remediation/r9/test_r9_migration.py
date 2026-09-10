@@ -103,10 +103,25 @@ async def test_0027_preserves_history_and_quarantines_unproven_outputs(
                     expected = model.__table__.c[column["name"]]
                     assert column["nullable"] == expected.nullable
                     assert column["type"]._type_affinity == expected.type._type_affinity
+                    if column["name"] == "automation_epoch":
+                        assert "gen_random_uuid()" in column["default"]
+                        assert expected.server_default is not None
+                    if column["name"] in NEW_OUTBOX_COLUMNS:
+                        assert column["default"] is None and expected.server_default is None
             epochs = (await connection.execute(text(
                 "SELECT automation_epoch FROM conversation",
             ))).scalars().all()
             assert len(epochs) == 1 and epochs[0] is not None
+        async with db() as session, session.begin():
+            server_epoch = await session.scalar(text(
+                "INSERT INTO conversation (customer_id,channel,state,pending_fields,"
+                "failed_understanding_count,bot_enabled) VALUES (1,'WHATSAPP','BOT_ACTIVE',"
+                "'[]'::jsonb,0,true) RETURNING automation_epoch",
+            ))
+            model = Conversation(customer_id=1, channel="WHATSAPP", state="BOT_ACTIVE")
+            session.add(model)
+            await session.flush()
+            assert len({epochs[0], server_epoch, model.automation_epoch}) == 3
         # Restart the consumer with a fresh engine; legacy origin cannot come from process memory.
         await engine.dispose()
         sender = Sender()

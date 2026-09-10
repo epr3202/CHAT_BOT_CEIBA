@@ -48,8 +48,8 @@ from app.agent.models import Agent, AgentSession
 from app.appointment.models import Appointment, BlockedDate, Holiday
 from app.audit.models import AuditEvent
 from app.catalog.models import CATALOG_SEND_MODES, CatalogAsset, CatalogEventTypeMap
-from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.delivery import human_context
+from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.conversation.models import Conversation, KnowledgeEntry
