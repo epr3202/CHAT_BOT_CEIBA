@@ -20,6 +20,7 @@ from app.channel.media import (
     download_inbound_media,
     normalize_sha256,
 )
+from app.config.release_scope import payment_automation_enabled
 from app.config.settings import Settings
 from app.payment.models import PaymentEvidence
 
@@ -57,6 +58,8 @@ async def process_payment_evidence_once(
     http_client: httpx.AsyncClient | None = None,
     now: datetime | None = None,
 ) -> int:
+    if not settings.payment_evidence_automation_enabled or not payment_automation_enabled():
+        return 0
     claimed_at = now or datetime.now(UTC)
     claim = await _claim_one_evidence(
         sessionmaker,

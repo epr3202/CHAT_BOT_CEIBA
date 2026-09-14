@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import argparse
 import random
+import sys
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.config.release_scope import require_simulation_environment
+
 
 def create_app(fail_rate: float = 0.0) -> FastAPI:
+    require_simulation_environment()
     app = FastAPI(title="Fake Meta WhatsApp API")
     sent_messages: list[dict[str, Any]] = []
 

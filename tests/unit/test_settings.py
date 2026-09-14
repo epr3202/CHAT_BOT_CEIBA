@@ -40,5 +40,7 @@ def test_production_rejects_blank_required_secrets() -> None:
             META_ACCESS_TOKEN="",
             OPENROUTER_API_KEY="",
             ENVIRONMENT="production",
+            PAYMENT_EVIDENCE_AUTOMATION_ENABLED=False,
+            CALENDAR_WRITES_ENABLED=False,
             _env_file=None,
         )

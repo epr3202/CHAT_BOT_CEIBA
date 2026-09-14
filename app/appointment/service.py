@@ -24,6 +24,7 @@ from app.calendar.adapter import (
     CalendarUnavailableError,
     EventNotFoundError,
 )
+from app.config.release_scope import ReleaseScope
 from app.conversation.presentation import format_date_natural
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
@@ -392,6 +393,11 @@ class VisitSchedulingService:
         request_id: str | None = None,
         simulate_confirmation_message_failure: bool = False,
     ) -> VisitServiceResult:
+        if not ReleaseScope().calendar_writes_enabled:
+            return VisitServiceResult(
+                response_code="RESP-CALENDAR-ERROR-001",
+                state=ConversationState.WAITING_FOR_HUMAN, needs_handoff=True,
+            )
         if not customer_confirmation:
             return VisitServiceResult(
                 response_code="RESP-VISIT-CONFIRM-001",
@@ -532,6 +538,11 @@ class VisitSchedulingService:
         actor: str,
         now: datetime,
     ) -> VisitServiceResult:
+        if not ReleaseScope().calendar_writes_enabled:
+            return VisitServiceResult(
+                response_code="RESP-CALENDAR-ERROR-001",
+                state=ConversationState.WAITING_FOR_HUMAN, needs_handoff=True,
+            )
         async with self.sessionmaker() as session:
             appointment = await session.get(Appointment, appointment_id)
             if appointment is None:
@@ -632,6 +643,11 @@ class VisitSchedulingService:
         reason: str,
         now: datetime,
     ) -> VisitServiceResult:
+        if not ReleaseScope().calendar_writes_enabled:
+            return VisitServiceResult(
+                response_code="RESP-CALENDAR-ERROR-001",
+                state=ConversationState.WAITING_FOR_HUMAN, needs_handoff=True,
+            )
         if not customer_confirmation:
             return VisitServiceResult(response_code="RESP-CANCEL-VISIT-003")
 

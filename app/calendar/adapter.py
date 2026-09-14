@@ -6,11 +6,21 @@ from datetime import date, datetime, time
 from functools import lru_cache
 from typing import Protocol
 
+from app.config.release_scope import ReleaseScope, require_simulation_environment
 from app.config.settings import Settings
 
 
 class CalendarUnavailableError(RuntimeError):
     """Calendar provider could not complete the requested operation."""
+
+
+class CalendarWritesDisabled(CalendarUnavailableError):
+    """Local release policy rejected an operation before any provider request."""
+
+
+def require_calendar_writes() -> None:
+    if not ReleaseScope().calendar_writes_enabled:
+        raise CalendarWritesDisabled("Calendar writes are disabled by release policy")
 
 
 class AlreadyExistsError(RuntimeError):
@@ -82,6 +92,7 @@ class FakeCalendarAdapter:
         timeout_after_create: bool = False,
         fail_update_once: bool = False,
     ) -> None:
+        require_simulation_environment()
         self.busy_by_calendar = busy_by_calendar or {}
         self.raise_on = raise_on or set()
         self.timeout_after_create = timeout_after_create
@@ -127,6 +138,7 @@ class FakeCalendarAdapter:
         end: datetime,
         description: str | None = None,
     ) -> ExternalEventRef:
+        require_calendar_writes()
         self.create_call_count += 1
         if event_id in self._events:
             raise AlreadyExistsError(f"calendar event already exists: {event_id}")
@@ -155,6 +167,7 @@ class FakeCalendarAdapter:
         end: datetime,
         description: str | None = None,
     ) -> ExternalEventRef:
+        require_calendar_writes()
         self.update_call_count += 1
         if self.fail_update_once:
             self.fail_update_once = False
@@ -176,6 +189,7 @@ class FakeCalendarAdapter:
         return event
 
     async def delete_event(self, event_id: str) -> None:
+        require_calendar_writes()
         self.delete_call_count += 1
         if "delete" in self.raise_on:
             raise CalendarUnavailableError("fake calendar delete failed")

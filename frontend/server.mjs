@@ -9,6 +9,12 @@ const port = Number.parseInt(process.env.FRONTEND_PORT || "5173", 10);
 const host = process.env.FRONTEND_HOST || "127.0.0.1";
 const backendBaseUrl = (process.env.API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const metaAppSecret = process.env.META_APP_SECRET || "";
+const environment = process.env.ENVIRONMENT || "production";
+if (!["development", "testing", "production", "staging"].includes(environment)) {
+  throw new Error("Invalid ENVIRONMENT");
+}
+const simulationAllowed = ["development", "testing"].includes(environment)
+  && !["production", "staging"].includes(process.env.NODE_ENV);
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -167,6 +173,10 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (path === "/api/webhook/simulate" && request.method === "POST") {
+      if (!simulationAllowed) {
+        sendJson(response, 403, { detail: "Simulation disabled" });
+        return;
+      }
       await simulateWebhook(request, response);
       return;
     }

@@ -5,10 +5,16 @@ import hashlib
 import hmac
 import json
 import os
+import sys
 import uuid
+from pathlib import Path
 from typing import Any
 
 import httpx
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.config.release_scope import require_simulation_environment
 
 
 def build_payload(phone: str, text: str, message_id: str) -> dict[str, Any]:
@@ -75,6 +81,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    require_simulation_environment()
     args = parse_args()
     app_secret = os.environ["META_APP_SECRET"]
     payload = build_payload(args.phone, args.text, args.message_id)

@@ -80,3 +80,13 @@ y U12c siguen abiertos. Sin migraciones ni activacion.
 Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
 
 R9 candidato implementa procedencia de servidor, período durable y admisión por intento; migración aditiva 20260910_0027. La validación remota y el informe final post-CI siguen separados; sin activación ni cierre de H03/H11 agregados.
+
+## R10 — Release scope enforcement (2026-09-14)
+
+BASE R9 a9ce7f34342f19022ae608ab48bad4b0654b52d2. Candidato incremental: PaymentEvidence
+automation OFF, Calendar writes OFF, Reminders OFF; simuladores y fake adapters
+prohibidos en production/staging. Captura pasiva multimedia e Inbox/Outbox siguen ON.
+Flags seguros y validación temprana; guards antes de DB/HTTP. Revisión humana conservada.
+Sin migración: head 20260910_0027. Pruebas R10 y regresión remota pendientes de CI.
+No cerrar H05 ni declarar pagos, agenda o recordatorios completos; se restringen para
+este release. [Contrato, tests y límites](remediation/r10-release-scope-2026-09-14/README.md).

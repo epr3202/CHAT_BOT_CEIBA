@@ -4,20 +4,18 @@ from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
+
+from app.config.release_scope import ReleaseScope
 
 
-class Settings(BaseSettings):
+class Settings(ReleaseScope):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = Field(alias="DATABASE_URL")
     db_pool_size: int = Field(default=5, alias="DB_POOL_SIZE")
     db_max_overflow: int = Field(default=5, alias="DB_MAX_OVERFLOW")
 
-    environment: Literal["development", "testing", "production"] = Field(
-        default="development",
-        alias="ENVIRONMENT",
-    )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     # TODO Slice 3: move human-hours and holiday rules to the Configuration table.
     human_hours_days: str = Field(default="1,2,3,4,5", alias="HUMAN_HOURS_DAYS")
@@ -90,7 +88,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_required_secrets(self) -> Settings:
-        if self.environment != "production":
+        if self.environment not in {"production", "staging"}:
             return self
 
         missing = [
@@ -105,6 +103,12 @@ class Settings(BaseSettings):
         ]
         if missing:
             raise ValueError("Missing required production settings: " + ", ".join(sorted(missing)))
+        if self.calendar_adapter == "fake":
+            raise ValueError("CALENDAR_ADAPTER=fake is forbidden in production/staging")
+        if self.whatsapp_api_base_url.rstrip("/") != "https://graph.facebook.com":
+            raise ValueError("Production WHATSAPP_API_BASE_URL must use the real Meta endpoint")
+        if self.openrouter_base_url.rstrip("/") != "https://openrouter.ai/api/v1":
+            raise ValueError("Production OPENROUTER_BASE_URL must use the real provider endpoint")
         return self
 
 

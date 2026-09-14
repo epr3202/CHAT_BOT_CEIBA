@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
 from app.channel.models import Message
+from app.config.release_scope import payment_automation_enabled
 from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.handoff.models import Handoff
@@ -40,6 +41,8 @@ async def create_payment_evidence_for_open_handoff(
     *,
     request_id: uuid.UUID | str | None,
 ) -> PaymentEvidence | None:
+    if not payment_automation_enabled():
+        return None
     handoff = await open_payment_handoff(session, conversation.id)
     if handoff is None:
         return None
@@ -62,6 +65,8 @@ async def create_payment_evidence(
     *,
     request_id: uuid.UUID | str | None,
 ) -> PaymentEvidence | None:
+    if not payment_automation_enabled():
+        return None
     media = payment_media_fields(message)
     if media is None:
         return None

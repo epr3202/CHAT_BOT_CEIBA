@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app.models_registry  # noqa: F401
 from app.channel.models import Message
 from app.config.database import create_engine, create_sessionmaker
+from app.config.release_scope import require_simulation_environment
 from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation
 from app.customer.models import Customer
@@ -292,6 +293,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    require_simulation_environment()
     asyncio.run(run_repl(parse_args()))
 
 

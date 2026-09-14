@@ -21,6 +21,7 @@ from app.calendar.adapter import (
     CalendarUnavailableError,
     EventNotFoundError,
     ExternalEventRef,
+    require_calendar_writes,
 )
 
 BOGOTA = ZoneInfo("America/Bogota")
@@ -98,6 +99,7 @@ class GoogleCalendarAdapter:
         end: datetime,
         description: str | None = None,
     ) -> ExternalEventRef:
+        require_calendar_writes()
         _validate_event_id(event_id)
         response = await self._request(
             "POST",
@@ -121,6 +123,7 @@ class GoogleCalendarAdapter:
         end: datetime,
         description: str | None = None,
     ) -> ExternalEventRef:
+        require_calendar_writes()
         _validate_event_id(event_id)
         response = await self._request(
             "PATCH",
@@ -136,6 +139,7 @@ class GoogleCalendarAdapter:
         return _event_ref_from_response(response.json())
 
     async def delete_event(self, event_id: str) -> None:
+        require_calendar_writes()
         _validate_event_id(event_id)
         await self._request("DELETE", self._event_url(event_id), operation="delete")
 

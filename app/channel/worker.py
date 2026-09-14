@@ -556,7 +556,8 @@ async def run_worker() -> None:
             await asyncio.gather(
                 _run_outbox_loop(sessionmaker, sender, settings),
                 _run_inbox_loop(sessionmaker, settings),
-                _run_payment_evidence_loop(sessionmaker, settings),
+                *([_run_payment_evidence_loop(sessionmaker, settings)]
+                  if settings.payment_evidence_automation_enabled else []),
             )
         finally:
             await engine.dispose()

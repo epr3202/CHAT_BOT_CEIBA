@@ -457,7 +457,7 @@ async def route_non_text_in_session(
                             session, conversation, customer, message, request_id=request_id
                         )
                         capture_result = (
-                            "EVIDENCE_REGISTERED" if evidence else "NO_OPEN_PAYMENT_CASE"
+                            "EVIDENCE_REGISTERED" if evidence else "AUTOMATION_DISABLED"
                         )
         session.add(
             AuditEvent(
