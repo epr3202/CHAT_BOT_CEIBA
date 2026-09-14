@@ -1,0 +1,84 @@
+# Standalone protected profile; never merge with the local docker-compose.yml.
+x-backend-environment: &backend-environment
+  ENVIRONMENT: ${ENVIRONMENT:?explicit staging or production required}
+  DEPLOYED_RUNTIME: "true"
+  DATABASE_URL: ${DATABASE_URL:?required}
+  META_APP_SECRET: ${META_APP_SECRET:?required}
+  META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:?required}
+  META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:?required}
+  META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:?required}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?required}
+  META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:?account preflight required}
+  CALENDAR_ADAPTER: google
+  PAYMENT_EVIDENCE_AUTOMATION_ENABLED: "false"
+  CALENDAR_WRITES_ENABLED: "false"
+  CATALOG_STORAGE_DIR: /data/catalogs
+  PAYMENT_EVIDENCE_DIR: /data/payment-evidence
+services:
+  db:
+    image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  app:
+    image: ${API_IMAGE:?immutable sha256 image ID required}
+    restart: unless-stopped
+    stop_grace_period: 180s
+    environment: &app-environment
+      <<: *backend-environment
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:8000:8000"]
+    volumes:
+      - ${CATALOG_HOST_DIR:?required}:/data/catalogs
+      - ${EVIDENCE_HOST_DIR:?required}:/data/payment-evidence:ro
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=12)"]
+      interval: 15s
+      timeout: 15s
+      retries: 4
+  worker:
+    image: ${API_IMAGE:?immutable sha256 image ID required}
+    restart: unless-stopped
+    stop_grace_period: 180s
+    environment:
+      <<: *backend-environment
+      RUNTIME_ROLE: worker
+    command: [python, -m, app.channel.worker]
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ${CATALOG_HOST_DIR:?required}:/data/catalogs:ro
+      - ${EVIDENCE_HOST_DIR:?required}:/data/payment-evidence:ro
+    healthcheck:
+      test: [CMD, python, -m, app.config.readiness, worker]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+  frontend:
+    image: ${FRONTEND_IMAGE:?immutable sha256 image ID required}
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:?required}
+      DEPLOYED_RUNTIME: "true"
+      API_BASE_URL: http://app:8000
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:5173:5173"]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5173/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+volumes:
+  postgres_data:

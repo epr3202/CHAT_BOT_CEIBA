@@ -109,6 +109,8 @@ class Settings(ReleaseScope):
             raise ValueError("Production WHATSAPP_API_BASE_URL must use the real Meta endpoint")
         if self.openrouter_base_url.rstrip("/") != "https://openrouter.ai/api/v1":
             raise ValueError("Production OPENROUTER_BASE_URL must use the real provider endpoint")
+        if not self.meta_verify_token.strip() or not self.meta_phone_number_id.strip():
+            raise ValueError("META_VERIFY_TOKEN and META_PHONE_NUMBER_ID are required")
         return self
 
 

@@ -16,9 +16,15 @@ class ReleaseScope(BaseSettings):
         default=False, alias="PAYMENT_EVIDENCE_AUTOMATION_ENABLED",
     )
     calendar_writes_enabled: bool = Field(default=False, alias="CALENDAR_WRITES_ENABLED")
+    deployed_runtime: bool = Field(default=False, alias="DEPLOYED_RUNTIME")
 
     @model_validator(mode="after")
     def validate_release_scope(self) -> "ReleaseScope":
+        if self.deployed_runtime and (
+            "environment" not in self.model_fields_set
+            or self.environment not in {"staging", "production"}
+        ):
+            raise ValueError("Deployed runtime requires explicit staging/production ENVIRONMENT")
         if self.environment in {"production", "staging"} and (
             self.payment_evidence_automation_enabled or self.calendar_writes_enabled
         ):

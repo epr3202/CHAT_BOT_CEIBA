@@ -4,6 +4,7 @@ from typing import Any
 
 import structlog
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -12,12 +13,14 @@ from app.admin.routes import router as admin_router
 from app.channel.webhook import router as whatsapp_webhook_router
 from app.config.database import create_engine, create_sessionmaker
 from app.config.logging import configure_logging
+from app.config.readiness import check_database, validate_storage
 from app.config.settings import Settings, get_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    validate_storage(settings)
     configure_logging(settings.environment, settings.log_level)
     app.state.settings = settings
     app.state.db_engine = create_engine(
@@ -26,6 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         max_overflow=settings.db_max_overflow,
     )
     app.state.db_sessionmaker = create_sessionmaker(app.state.db_engine)
+    if settings.environment in {"staging", "production"}:
+        await check_database(app.state.db_engine)
     yield
     await app.state.db_engine.dispose()
 
@@ -34,6 +39,21 @@ app = FastAPI(title="La Ceiba Club House API", lifespan=lifespan)
 app.include_router(admin_router)
 app.include_router(whatsapp_webhook_router)
 logger = structlog.get_logger(__name__)
+
+
+@app.get("/live")
+async def live() -> dict[str, str]:
+    return {"status": "alive"}
+
+
+@app.get("/ready")
+async def ready() -> JSONResponse:
+    try:
+        validate_storage(app.state.settings)
+        await check_database(app.state.db_engine)
+    except Exception:
+        return JSONResponse({"status": "not_ready"}, status_code=503)
+    return JSONResponse({"status": "ready"})
 
 
 @app.get("/health")

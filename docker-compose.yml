@@ -16,6 +16,8 @@ services:
       retries: 5
 
   app:
+    # Explicitly local profile; protected deployments use compose.protected.yml.
+    entrypoint: []
     build: .
     env_file:
       - path: .env
@@ -26,6 +28,7 @@ services:
       - /opt/ceiba/payment-evidence:/data/payment-evidence
       - /opt/ceiba/secrets:/data/secrets:ro
     environment:
+      DEPLOYED_RUNTIME: "false"
       # Compose environment overrides env_file so containers use the db service host.
       DATABASE_URL: postgresql+asyncpg://ceiba:${POSTGRES_PASSWORD:-ceiba}@db:5432/ceiba
     ports:
@@ -36,6 +39,7 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   worker:
+    entrypoint: []
     build: .
     env_file:
       - path: .env
@@ -46,6 +50,7 @@ services:
       - /opt/ceiba/payment-evidence:/data/payment-evidence
       - /opt/ceiba/secrets:/data/secrets:ro
     environment:
+      DEPLOYED_RUNTIME: "false"
       # Compose environment overrides env_file so containers use the db service host.
       DATABASE_URL: postgresql+asyncpg://ceiba:${POSTGRES_PASSWORD:-ceiba}@db:5432/ceiba
     depends_on:

@@ -105,3 +105,14 @@ el detalle está implementado desde 36efa72 y probado en
 `test_date_parser_resolves_yearless_exact_dates_to_next_future_occurrence` y
 `test_date_parser_never_resolves_yearless_date_to_past`. R10.1 fija el reloj de
 una regresión histórica, sin alterar esa semántica ni las barreras R10.
+
+## R11 ? explicit deployed environment and immutable operational identity
+
+A deployed image must declare ENVIRONMENT=staging/production; only the explicitly local
+Compose profile or local Python may retain development ergonomics. Protected entrypoints
+force DEPLOYED_RUNTIME=true. Deployment requires full SHA/tree and image IDs, builds once
+from Git archive, and promotes unchanged images. No mutable branch selection or automatic
+SSH deployment. Consumers stop before encrypted/verifiable backup and exact0027 migration.
+Rollback requires a reviewed safe artifact descended from R10.1 and compatible0027; no R9
+fallback or schema downgrade. Payment automation, Calendar writes and reminders remain OFF;
+fake adapters and simulation remain forbidden. See deployment.md for target and restore gates.

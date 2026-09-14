@@ -105,3 +105,23 @@ con fechas de 2026. Riesgo de futuros fallos del gate al envejecer esas fechas;
 hallazgo estático, sin afirmar que hoy fallen. Quedan pendientes de una tarea
 separada; R10.1 modifica exclusivamente la regresión de septiembre. H05 y las
 funcionalidades OFF de R10 permanecen fuera del alcance de esta corrección.
+
+## R11 operational follow-up
+
+### PREPROD BLOCKERS
+- PREPROD_TARGET=NOT_PROVISIONED: confirm host/daemon/project, DB system identity, TLS and
+  restricted admin ingress; provision secret names from deployment.md without exposing values.
+- Preserve the certified images/manifest and encrypted checkpoint; demonstrate restore into
+  a disposable DB with revision/count/integrity checks; review ingress/smoke hooks.
+- Verify Meta account Graph version and real provider credentials in the authorized next pass;
+  execute frozen PRE-01..18 certification before reopening traffic.
+
+### PRODUCTION HARDENING
+- Distributed login throttling and public admin exposure review; staging requires restricted
+  VPN/IP ingress. Separate DB roles/least privilege, alerting for unhealthy live workers,
+  retention/PII operational controls and immutable Node base input on future dependency refresh.
+- Compose detects unhealthy processes but restarts only exits; operations owns investigation.
+
+### LATER FEATURES
+H05, Calendar writes, PaymentEvidence automation and reminders remain outside this release.
+Do not make their activation a prerequisite for readiness.

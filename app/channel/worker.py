@@ -542,7 +542,9 @@ def document_catalog_asset_id(outbox_item: OutboxClaim) -> UUID:
 
 
 async def run_worker() -> None:
+    from app.config.readiness import check_database, validate_storage
     settings = get_settings()
+    validate_storage(settings, worker=True)
     configure_logging(settings.environment, settings.log_level)
     engine = create_engine(
         settings.database_url,
@@ -550,6 +552,8 @@ async def run_worker() -> None:
         max_overflow=settings.db_max_overflow,
     )
     sessionmaker = create_sessionmaker(engine)
+    if settings.environment in {"staging", "production"}:
+        await check_database(engine)
 
     async with WhatsAppOutboundClient(settings) as sender:
         try:
@@ -572,6 +576,9 @@ async def _run_inbox_loop(
     while True:
         try:
             counts = await process_inbox_once(sessionmaker, settings=settings)
+            if settings.environment in {"staging", "production"}:
+                from app.config.readiness import heartbeat
+                heartbeat("inbox")
             logger.info("inbox_poll_completed", **counts)
         except Exception as error:
             logger.error("inbox_poll_failed", error_type=type(error).__name__)
@@ -596,6 +603,9 @@ async def _run_outbox_loop(
                 max_attempts=settings.outbox_max_attempts,
                 max_backoff_seconds=settings.outbox_max_backoff_seconds,
             )
+            if settings.environment in {"staging", "production"}:
+                from app.config.readiness import heartbeat
+                heartbeat("outbox")
             logger.info("outbox_poll_completed", processed=processed)
         except Exception:
             logger.exception("outbox_poll_failed")

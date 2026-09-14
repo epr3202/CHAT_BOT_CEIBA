@@ -86,3 +86,13 @@ Flags seguros y validación temprana; guards antes de DB/HTTP. Revisión humana 
 Sin migración: head 20260910_0027. Pruebas R10 y regresión remota pendientes de CI.
 No cerrar H05 ni declarar pagos, agenda o recordatorios completos; se restringen para
 este release. [Contrato, tests y límites](remediation/r10-release-scope-2026-09-14/README.md).
+
+## R11 ? protected operational boundary
+
+Protected images force an explicit staging/production environment across API, worker,
+frontend and one-shot entrypoints. Compose provides three supervised application processes
+and a private Postgres16 service. Startup validates critical config/storage and schema;
+/live is independent of providers, /ready validates DB0027, and worker heartbeat observes
+completed Inbox/Outbox polls without changing domain/claim semantics. Deployment consumes
+immutable images, stops old consumers before checkpoint/migration and never downgrades.
+See [deployment contract](deployment.md). Business scope and all R10 OFF guards remain frozen.

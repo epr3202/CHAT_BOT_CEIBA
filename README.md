@@ -63,56 +63,43 @@ Los helpers de test se niegan a resetear una base cuyo nombre no incluya `test`.
 No usar la base operativa `ceiba` para `pytest`; ahí viven las conversaciones,
 handoffs, agentes, mensajes y auditoría del entorno local.
 
-## Despliegue continuo
+## Despliegue protegido por identidad (R11)
 
-Cada push a `main` dispara GitHub Actions:
+No hay despliegue autom?tico desde main. El procedimiento est? en
+[docs/deployment.md](docs/deployment.md). Compose protegido ejecuta API, worker,
+frontend Node y PostgreSQL 16, con reinicio y healthchecks. Es un perfil independiente
+(`compose.protected.yml`); no se combina con el Compose local.
 
-1. CI levanta PostgreSQL 16, crea `ceiba_test`, instala `pip install -e ".[dev]"`,
-   ejecuta `ruff check .` y luego `pytest -x -q`.
-2. Si CI pasa y el evento no es un pull request, el job de deploy entra por SSH al VPS.
-3. El servidor ejecuta `./deploy.sh`: actualiza el checkout a `origin/main`, construye
-   `app` y `worker`, corre `alembic upgrade head` en un contenedor efímero, recarga la
-   base de conocimiento, reinicia `app` y `worker`, y valida `GET /health`.
-
-Secrets requeridos en GitHub:
-
-| Secret | Contenido |
-| --- | --- |
-| `DEPLOY_SSH_KEY` | Llave privada SSH con permiso para entrar al VPS y leer el repo. |
-| `DEPLOY_HOST` | Host o IP del VPS. |
-| `DEPLOY_USER` | Usuario SSH que ejecuta el despliegue. |
-| `DEPLOY_PATH` | Ruta absoluta del checkout productivo en el servidor. |
-
-El `.env` de producción vive solo en el servidor y lo consume Docker Compose; no se
-sube al repositorio ni a GitHub Actions.
-
-Antes del primer despliegue de W2-b, crear el directorio persistente. La imagen actual no
-declara `USER`, por lo que `app` y `worker` se ejecutan como `root` dentro del contenedor:
+Construir una vez desde un checkout limpio del SHA aprobado:
 
 ```bash
-sudo install -d -m 0750 -o root -g root /opt/ceiba/payment-evidence
+git checkout --detach <SHA_COMPLETO>
+python3 -m scripts.build_release <SHA_COMPLETO> --output /ruta/externa/artefacto
 ```
 
-El volumen se monta read-write en ambos servicios como `/data/payment-evidence`. Configurar
-`PAYMENT_EVIDENCE_DIR=/data/payment-evidence` y
-`PAYMENT_EVIDENCE_RETENTION_DAYS=365` en el `.env` productivo. La retención queda declarada,
-pero W2-b no borra archivos automáticamente.
-
-Rollback operativo:
+Conservar `images.tar`, su checksum y `manifest.json` en almacenamiento de releases
+protegido; promover exactamente esas im?genes por su ID sha256. No reconstruir entre
+staging y production. Tras provisionar y verificar el destino, el siguiente pass usa:
 
 ```bash
-ssh <DEPLOY_USER>@<DEPLOY_HOST>
-cd <DEPLOY_PATH>
-git reset --hard <tag-o-sha>
-./deploy.sh
+./deploy.sh <SHA_COMPLETO> --manifest /ruta/artefacto/manifest.json --target /ruta/target.json
+# Solo tras autorizaci?n del deployment pass: a?adir --execute.
 ```
 
-Las migraciones no se revierten automáticamente. Un rollback que cruce una migración
-destructiva requiere un `alembic downgrade` manual, revisado caso por caso antes de
-volver a levantar la versión anterior.
+El orden es cerrar ingreso, detener consumidores, revisar env?os inciertos, backup
+cifrado/verificado, preflight de DB, migraci?n exacta `20260910_0027`, readiness,
+arranque API/worker/frontend, smoke y reapertura. Cualquier fallo aborta con ingreso
+cerrado. No se modifica conocimiento, usuarios ni reglas durante este procedimiento.
 
-Un downtime de aproximadamente 10-30 segundos por deploy es tolerable: Meta reintenta
-webhooks y el dedup por `external_message_id` evita duplicados.
+Rollback: checkout detached del SHA seguro aprobado y
+`./rollback.sh <SHA_COMPLETO> --manifest <manifest> --target <target> --execute`.
+Verifica ancestry R10.1, im?genes y schema; nunca hace downgrade. R9 no es destino
+seguro. Sin artefacto seguro conservado: detener servicios y mantener cerrado el ingreso.
+
+Staging y production requieren `ENVIRONMENT` expl?cito y los nombres de configuraci?n
+listados en el runbook. Cat?logos usan `/data/catalogs` (UID/GID 10001, API RW, worker RO).
+Evidencia hist?rica usa `/data/payment-evidence` RO; automation permanece OFF.
+La certificaci?n real de destino, secretos, TLS, backup/restore y PRE-01..18 sigue pendiente.
 
 ## Simular webhook local
 

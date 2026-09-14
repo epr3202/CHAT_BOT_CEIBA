@@ -13,6 +13,9 @@ const environment = process.env.ENVIRONMENT || "production";
 if (!["development", "testing", "production", "staging"].includes(environment)) {
   throw new Error("Invalid ENVIRONMENT");
 }
+if (process.env.DEPLOYED_RUNTIME === "true" && (!process.env.ENVIRONMENT || !["staging", "production"].includes(environment))) {
+  throw new Error("Deployed runtime requires explicit staging/production ENVIRONMENT");
+}
 const simulationAllowed = ["development", "testing"].includes(environment)
   && !["production", "staging"].includes(process.env.NODE_ENV);
 
@@ -31,7 +34,14 @@ function sendJson(response, status, payload) {
 
 async function readRawBody(request) {
   const chunks = [];
+  let size = 0;
   for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 20 * 1024 * 1024) {
+      const error = new Error("Body too large");
+      error.statusCode = 413;
+      throw error;
+    }
     chunks.push(chunk);
   }
   return chunks.length === 0 ? Buffer.alloc(0) : Buffer.concat(chunks);
@@ -92,6 +102,7 @@ async function proxy(request, response, targetPath) {
   }
 
   const upstream = await fetch(`${backendBaseUrl}${targetPath}`, {
+    signal: AbortSignal.timeout(20000),
     method: request.method,
     headers,
     body,
@@ -125,6 +136,7 @@ async function simulateWebhook(request, response) {
   const body = JSON.stringify(payload);
   const signature = createHmac("sha256", String(signingSecret)).update(body).digest("hex");
   const upstream = await fetch(`${backendBaseUrl}/webhook`, {
+    signal: AbortSignal.timeout(20000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -153,6 +165,9 @@ async function serveStatic(request, response) {
     return;
   }
 
+  if (!Object.hasOwn(contentTypes, extname(filePath)) || filePath.includes("server.mjs")) {
+    response.writeHead(404); response.end("Not found"); return;
+  }
   try {
     const content = await readFile(filePath);
     response.writeHead(200, {"Content-Type": contentTypes[extname(filePath)] || "application/octet-stream"});
@@ -164,10 +179,14 @@ async function serveStatic(request, response) {
 }
 
 const server = createServer(async (request, response) => {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "no-referrer");
   try {
     const requestUrl = new URL(request.url || "/", "http://localhost");
     const path = requestUrl.pathname;
 
+    if (path === "/live") { sendJson(response, 200, {status: "alive"}); return; }
     if (path === "/api/health") {
       await proxy(request, response, "/health");
       return;
@@ -235,10 +254,12 @@ const server = createServer(async (request, response) => {
 
     await serveStatic(request, response);
   } catch (error) {
-    sendJson(response, 502, { detail: error instanceof Error ? error.message : "Error del proxy" });
+    sendJson(response, error.statusCode === 413 ? 413 : 502, { detail: "Solicitud no disponible" });
   }
 });
 
+server.requestTimeout = 30000;
+server.headersTimeout = 10000;
 server.listen(port, host, () => {
   console.log(`Frontend La Ceiba: http://${host}:${port}`);
   console.log(`Backend API: ${backendBaseUrl}`);

@@ -274,11 +274,11 @@ def print_summary(summary: ResetSummary) -> None:
 async def async_main() -> None:
     args = parse_args()
     settings = get_settings()
-    if settings.environment == "production" and not args.allow_production_phone:
+    if settings.environment in {"production", "staging"} and not args.allow_production_phone:
         raise SystemExit(
             "Refusing to reset a production conversation without --allow-production-phone."
         )
-    if settings.environment == "production" and args.phone is None:
+    if settings.environment in {"production", "staging"} and args.phone is None:
         raise SystemExit("Production resets require an explicit --phone.")
     phone_number = args.phone or DEFAULT_PHONE
 
