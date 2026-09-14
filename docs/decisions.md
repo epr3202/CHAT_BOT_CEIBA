@@ -93,3 +93,15 @@ Flags seguros y validación temprana; guards antes de DB/HTTP. Revisión humana 
 Sin migración: head 20260910_0027. Pruebas R10 y regresión remota pendientes de CI.
 No cerrar H05 ni declarar pagos, agenda o recordatorios completos; se restringen para
 este release. [Contrato, tests y límites](remediation/r10-release-scope-2026-09-14/README.md).
+
+## R10.1 — Contrato temporal existente explicitado (2026-09-14)
+
+Para una fecha de evento con día/mes sin año, la interpretación existente usa la
+próxima ocurrencia no pasada respecto de la fecha de America/Bogota. Por ejemplo,
+el 13 de septiembre se resuelve a 2027-09-13 si hoy es 2026-09-14. El año pasado
+propuesto por el LLM no reemplaza el texto sin año del cliente. No es una nueva
+regla de producto: entities.md §8.1 exige validar el pasado e inferir con contexto;
+el detalle está implementado desde 36efa72 y probado en
+`test_date_parser_resolves_yearless_exact_dates_to_next_future_occurrence` y
+`test_date_parser_never_resolves_yearless_date_to_past`. R10.1 fija el reloj de
+una regresión histórica, sin alterar esa semántica ni las barreras R10.

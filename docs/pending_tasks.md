@@ -94,3 +94,14 @@ Flags seguros y validación temprana; guards antes de DB/HTTP. Revisión humana 
 Sin migración: head 20260910_0027. Pruebas R10 y regresión remota pendientes de CI.
 No cerrar H05 ni declarar pagos, agenda o recordatorios completos; se restringen para
 este release. [Contrato, tests y límites](remediation/r10-release-scope-2026-09-14/README.md).
+
+### R10.1 — Riesgo temporal vecino no corregido (2026-09-14)
+
+En tests/conversational/test_slice3_quote_capture.py, los casos
+`test_tc_collect_001_multiple_fields_persist_in_one_turn` y
+`test_tc_collect_002_approximate_date_triplet` esperan diciembre de 2026 con
+expresiones sin año y sin ancla explícita. Otros casos reutilizan complete_entities
+con fechas de 2026. Riesgo de futuros fallos del gate al envejecer esas fechas;
+hallazgo estático, sin afirmar que hoy fallen. Quedan pendientes de una tarea
+separada; R10.1 modifica exclusivamente la regresión de septiembre. H05 y las
+funcionalidades OFF de R10 permanecen fuera del alcance de esta corrección.

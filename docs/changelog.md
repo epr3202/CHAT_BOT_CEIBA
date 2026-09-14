@@ -90,3 +90,21 @@ Flags seguros y validación temprana; guards antes de DB/HTTP. Revisión humana 
 Sin migración: head 20260910_0027. Pruebas R10 y regresión remota pendientes de CI.
 No cerrar H05 ni declarar pagos, agenda o recordatorios completos; se restringen para
 este release. [Contrato, tests y límites](remediation/r10-release-scope-2026-09-14/README.md).
+
+## R10.1 — Temporal determinism remediation (2026-09-14)
+
+La prueba `test_p0b_llm_past_year_for_yearless_raw_date_is_reanchored_to_future`
+dependía de `entity_today()` real pese a esperar 2026-09-13. El caso nació el
+2026-08-13 (commit 36efa72); el 2026-09-14 la siguiente ocurrencia es 2027-09-13.
+R10 no modificó la prueba, orquestador ni validadores implicados. Reproducción
+aislada sin cambios: run 34869714301, 1 FAIL, reloj Bogotá 2026-09-14 11:37:33.
+Se inyecta únicamente en ese test la fecha Bogotá 2026-08-13 mediante monkeypatch
+de `entity_today`, conservando entrada, aserciones y colección. Sin cambios de
+producto, dependencias ni schema; head 20260910_0027. El arnés R10 incorpora gates
+aislado y módulo sin reducir los gates focal/suite existentes. Validación previa
+al commit final: run 34870022133 sobre bd196371ef30f8afacc95771f15b5ad483bcfc58,
+aislado 1/1, módulo 32/32, focal 804/804 (R1–R9 775 y R10 29), suite 1439/1439,
+Node 5/5 y Ruff PASS. Colección completa idéntica a R10 C2; cero skip/xfail.
+El commit final solo registra documentación; su CI debe confirmar esos gates
+sobre el SHA entregado. La autorización del usuario sustituyó validación local
+por remota aislada; los commits preparatorios no se presentaron como aceptación.
