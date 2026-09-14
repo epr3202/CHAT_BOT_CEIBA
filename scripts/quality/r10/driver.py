@@ -11,8 +11,10 @@ import subprocess
 import sys
 import traceback
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -204,6 +206,18 @@ def main() -> None:
             command.upgrade(Config("alembic.ini"), "head")
             summary["migration_commands"] = ["alembic upgrade head (in-process, guarded)"]
         nodes = ["tests/remediation"] if summary["stage"] == "regressions" else ["tests"]
+        temporal_module = "tests/conversational/test_slice3_quote_capture.py"
+        temporal_node = temporal_module + (
+            "::test_p0b_llm_past_year_for_yearless_raw_date_is_reanchored_to_future"
+        )
+        if summary["stage"] in {"isolated", "module"}:
+            nodes = [temporal_node if summary["stage"] == "isolated" else temporal_module]
+        now = datetime.now(UTC)
+        summary["effective_clock"] = {
+            "utc": now.isoformat(),
+            "bogota": now.astimezone(ZoneInfo("America/Bogota")).isoformat(),
+            "runner_timezone": str(datetime.now().astimezone().tzinfo),
+        }
         args = [
             *nodes,
             "-q",
@@ -256,6 +270,26 @@ def main() -> None:
             collected=result["collected"], outcomes=result["outcomes"], phases=result["phases"]
         )
         required = set(json.loads(Path("scripts/quality/r10/r9_nodes.json").read_text()))
+        if summary["stage"] in {"isolated", "module"}:
+            expected = {temporal_node} if summary["stage"] == "isolated" else {
+                n for n in required if n.startswith(temporal_module + "::")
+            }
+            actual_nodes = set(result["nodes"])
+            summary["missing_nodes"] = sorted(expected - actual_nodes)
+            summary["unexpected_nodes"] = sorted(actual_nodes - expected)
+            incomplete = any(
+                {r["phase"] for r in result["results"] if r["nodeid"] == node}
+                != {"setup", "call", "teardown"} for node in actual_nodes
+            )
+            summary["exit_code"] = int(bool(
+                code or lint.returncode or isolation.blocked or incomplete
+                or actual_nodes != expected or not expected
+                or any(r["outcome"] != "passed" or r["wasxfail"]
+                       for r in result["results"])
+            ))
+            write("stage_summary.json", summary)
+            print(json.dumps(summary))
+            raise SystemExit(summary["exit_code"])
         missing = sorted(required - set(result["nodes"])) if summary["stage"] == "suite" else []
         summary["missing_base_suite_nodes"] = missing
         incomplete = [

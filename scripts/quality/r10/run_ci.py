@@ -25,7 +25,7 @@ def main() -> None:
     ).startswith("refs/heads/fix/r10-release-scope-"):
         raise SystemExit("Only the authorized GitHub Actions quality branch may run this launcher")
     stage = sys.argv[1]
-    if stage not in {"regressions", "suite"}:
+    if stage not in {"regressions", "suite", "isolated", "module"}:
         raise SystemExit("Unknown stage")
     repo = Path.cwd()
     audit = Path(__file__).resolve().parent
