@@ -91,3 +91,13 @@ H05.agotamiento_fallback sigue abierto, sin modificación. No se asegura entrega
 externa exactamente una vez ni se reescribe evidencia R1–R9.
 Resultados y SHA final pertenecen al informe posterior al CI, separado de este
 contrato previo. Solo se marcarán resueltos los gates demostrados.
+
+## C1 — fallo de preparación corregido antes de C2
+
+C1 e1ffbca4673b0ac19ea80cae52abf28037704339, run 34865399627: el focal recoge
+804 nodos, 256 PASS y 548 FAIL. Los 548 errores son FileNotFoundError del seed por
+omisión de docs/conversation/approved-responses.md en el manifiesto R10. Ruff,
+aislamiento, colección y los cinco tests Node pasan. No es una reproducción RED
+del requisito ni un defecto de producto demostrado. C2 restaura las 26 fuentes
+Markdown que copiaba R9, comprobando sus blobs contra BASE R9. Las auditorías Python
+bajo docs siguen excluidas. No cambia producto, fixtures ni aserciones.
