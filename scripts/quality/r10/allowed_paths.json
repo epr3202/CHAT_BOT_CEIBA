@@ -27,5 +27,6 @@
   "scripts/simulate_webhook.py",
   "tests/remediation/r10/simulator.test.mjs",
   "tests/remediation/r10/test_scope.py",
-  "tests/unit/test_settings.py"
+  "tests/unit/test_settings.py",
+  "tests/conversational/test_slice3_quote_capture.py"
 ]
