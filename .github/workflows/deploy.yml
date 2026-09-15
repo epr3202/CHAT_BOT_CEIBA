@@ -97,6 +97,8 @@ jobs:
         run: make migrate-cycle PYTHON=python
 
       - name: Test
+        env:
+          QUALITY_STAGE: suite
         run: python -m pytest -q
 
       - name: Node regression tests
