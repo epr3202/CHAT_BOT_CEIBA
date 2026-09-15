@@ -338,9 +338,10 @@ def main() -> None:
         required_r10 = set(json.loads(Path("scripts/quality/r10/new_nodes.json").read_text()))
         expected_nodes |= required_r10
         r11_nodes = {n for n in result["nodes"] if n.startswith("tests/remediation/r11/")}
-        if len(r11_nodes) < 35:
+        required_r11 = set(json.loads(Path("scripts/quality/r11/new_nodes.json").read_text()))
+        if r11_nodes != required_r11:
             raise RuntimeError("R11 coverage missing")
-        expected_nodes |= r11_nodes
+        expected_nodes |= required_r11
         summary["r11_nodes"] = sorted(r11_nodes)
         node_test = subprocess.run(
             [

@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -78,7 +78,7 @@ def test_m02_unknown_revision(revisions):
 @pytest.mark.asyncio
 async def test_h01_database_unreachable():
     engine = AsyncMock()
-    engine.connect.side_effect = OSError("unreachable")
+    engine.connect = Mock(side_effect=OSError("unreachable"))
     with pytest.raises(OSError):
         await check_database(engine)
 
@@ -107,9 +107,30 @@ async def test_h04_liveness_does_not_call_providers():
     assert await live() == {"status": "alive"}
 
 
-def test_storage_must_be_explicit_and_existing(tmp_path):
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [None, OSError("unreachable"), ValueError("wrong revision")],
+    ids=["ready", "db-unreachable", "wrong-revision"],
+)
+async def test_readiness_http_status(monkeypatch, failure):
+    from app import main
+
+    monkeypatch.setattr(main, "validate_storage", lambda settings: None)
+    monkeypatch.setattr(main.app.state, "settings", object(), raising=False)
+    monkeypatch.setattr(main.app.state, "db_engine", object(), raising=False)
+    monkeypatch.setattr(main, "check_database", AsyncMock(side_effect=failure))
+    result = await main.ready()
+    assert result.status_code == (503 if failure else 200)
+    assert b"unreachable" not in result.body
+    assert b"wrong revision" not in result.body
+
+
+def test_storage_must_be_explicit_and_existing(tmp_path, monkeypatch):
     from app.config.readiness import validate_storage
 
+    monkeypatch.delenv("CATALOG_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("PAYMENT_EVIDENCE_DIR", raising=False)
     with pytest.raises(ValueError):
         validate_storage(protected())
     validate_storage(

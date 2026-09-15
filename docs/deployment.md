@@ -139,7 +139,7 @@ gpg --batch --decrypt <verified.dump.gpg> | \
 ```
 
 Compare source/checkpoint and restored table counts for message, audit_event, customer,
-conversation, inbox/outbox and lead; validate foreign keys/unique constraints and exact
+conversation, inbox_job/outbox and lead; validate foreign keys/unique constraints and exact
 alembic_version. Capture checksums, counts, timestamps and owner approval without PII.
 Archive-list validation is necessary but does not replace this restore test. Never
 drop/recreate or restore over an operational database in this task.
@@ -193,3 +193,31 @@ each (worker polling and all OFF guards included); reopen only after all gates p
 Rollback triggers: wrong identity, unsafe config, incompatible DB, missing worker polls,
 scope breach, failed smoke or uncertain external effects. Stop and preserve evidence;
 select only a reviewed safe artifact at 0027 or remain stopped.
+
+### Frozen PRE sequence (next pass only)
+
+| Gate | Required evidence |
+| --- | --- |
+| PRE-01 | Startup with correct identity/config and all OFF guards |
+| PRE-02 | API readiness, DB0027, both worker polls, frontend reachability |
+| PRE-03 | Controlled Meta inbound ? webhook ? durable Inbox trace |
+| PRE-04 | Orchestrator state transition and response |
+| PRE-05 | Controlled AI output and safe fallback |
+| PRE-06 | Outbox enqueue, claim, send and acknowledgement |
+| PRE-07 | Approved catalog delivered as document |
+| PRE-08 | Handoff pauses conversation; human visibility and ownership |
+| PRE-09 | Authorized human operation |
+| PRE-10 | Passive multimedia preserved without automatic PaymentEvidence |
+| PRE-11 | Historical automatic payment path remains blocked |
+| PRE-12 | Calendar create/update/cancel blocked; zero provider writes |
+| PRE-13 | Simulator endpoint rejects protected environment |
+| PRE-14 | Fake adapter startup rejected in a separate isolated validation |
+| PRE-15 | Controlled restart: Inbox/Outbox recover without corrupting durable jobs |
+| PRE-16 | Duplicate inbound remains idempotent |
+| PRE-17 | Controlled provider failure degrades safely |
+| PRE-18 | End-to-end operational trace without secrets/PII in evidence |
+
+Ingress remains closed to general traffic; the operator-approved controlled certification
+channel is enabled only for test accounts after identity/backup/health gates. The smoke
+hook must fail if any required PRE evidence is absent. R11 does not execute these cases
+against real accounts or claim their results from mocked CI.

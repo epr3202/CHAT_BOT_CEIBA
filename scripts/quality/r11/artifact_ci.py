@@ -26,6 +26,44 @@ def main() -> None:
         )
         if result.returncode == 0:
             raise RuntimeError("Image accepted missing environment")
+        if b"explicit" not in (result.stdout + result.stderr).lower():
+            raise RuntimeError("Image failed for a reason other than the environment guard")
+    # Positive protected one-shot validates config/storage without contacting providers.
+    with tempfile.TemporaryDirectory(prefix="ceiba-storage-") as storage:
+        Path(storage).chmod(0o777)
+        env = {
+            "ENVIRONMENT": "staging",
+            "DEPLOYED_RUNTIME": "false",
+            "DATABASE_URL": "postgresql+asyncpg://synthetic:synthetic@db/test",
+            "META_APP_SECRET": "synthetic",
+            "META_VERIFY_TOKEN": "synthetic",
+            "META_ACCESS_TOKEN": "synthetic",
+            "META_PHONE_NUMBER_ID": "123",
+            "OPENROUTER_API_KEY": "synthetic",
+            "CALENDAR_ADAPTER": "google",
+            "CATALOG_STORAGE_DIR": "/data/catalogs",
+            "PAYMENT_EVIDENCE_DIR": "/data/payment-evidence",
+        }
+        env_args = [value for key, value in env.items() for value in ("-e", key + "=" + value)]
+        run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                *env_args,
+                "-v",
+                storage + ":/data/catalogs",
+                "-v",
+                storage + ":/data/payment-evidence:ro",
+                artifact["api_image"],
+                "python",
+                "-c",
+                "from app.config.settings import get_settings; "
+                "assert get_settings().deployed_runtime",
+            ]
+        )
     # Test Docker's real context filtering, not a custom approximation of ignore syntax.
     with tempfile.TemporaryDirectory(prefix="ceiba-context-") as temp:
         root = Path(temp)
@@ -73,6 +111,7 @@ def main() -> None:
             indent=2,
         )
     )
+    print("R11_ARTIFACT:" + json.dumps(artifact), flush=True)
 
 
 if __name__ == "__main__":

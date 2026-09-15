@@ -28,6 +28,7 @@
   "scripts/quality/r11/artifact_ci.py",
   "scripts/quality/r11/baseline_manifest.json",
   "scripts/quality/r11/driver.py",
+  "scripts/quality/r11/new_nodes.json",
   "scripts/quality/r11/run_ci.py",
   "scripts/quality/r11/source_manifest.json",
   "scripts/release.py",
