@@ -96,3 +96,11 @@ and a private Postgres16 service. Startup validates critical config/storage and 
 completed Inbox/Outbox polls without changing domain/claim semantics. Deployment consumes
 immutable images, stops old consumers before checkpoint/migration and never downgrades.
 See [deployment contract](deployment.md). Business scope and all R10 OFF guards remain frozen.
+
+
+## A1 ? topolog?a staging
+
+Perfil infra Compose ceiba-staging: PostgreSQL16 heredado del perfil protegido,
+volumen persistente postgres_data, red database interna sin puerto p?blico; nginx TLS
+en red edge separada con binding loopback8443. Certificados/secretos externos, admin
+por SSH. No inicia aplicaci?n. Destino real pendiente. Ver [runbook](staging.md).

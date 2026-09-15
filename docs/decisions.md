@@ -116,3 +116,11 @@ SSH deployment. Consumers stop before encrypted/verifiable backup and exact0027 
 Rollback requires a reviewed safe artifact descended from R10.1 and compatible0027; no R9
 fallback or schema downgrade. Payment automation, Calendar writes and reminders remain OFF;
 fake adapters and simulation remain forbidden. See deployment.md for target and restore gates.
+
+
+## A1 ? aislamiento y terminaci?n TLS privada
+
+Reutilizar db mediante Compose extends sin modificar el perfil protegido. Proyecto
+fijo ceiba-staging y volumen propio; nginx con certificado externo y loopback evita
+exponer administraci?n. A1 genera inventario observado tras verificar el destino;
+no inventa host, hooks ni certificados. No autoriza despliegue de aplicaci?n.

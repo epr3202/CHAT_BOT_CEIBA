@@ -126,3 +126,11 @@ retains the migration-cycle check only on the isolated job-owned database. Final
 requires a successful R11 CI associated with that closing SHA; never substitute C2 evidence.
 No operational deployment/provider validation is claimed. PREPROD_TARGET remains
 NOT_PROVISIONED; see deployment.md for concrete external prerequisites.
+
+
+## A1 ? provisionamiento staging (2026-09-15)
+
+A?ade perfil infra que reutiliza PostgreSQL16, TLS privado, validaci?n y generaci?n
+de target observado, inventario de variables, gitignore y job en CI existente.
+Prueba persistencia por recreaci?n solo en runner ef?mero. Candidato pendiente de
+CI; servidor real sin acreditar. Sin cambios de producto, producci?n o migraci?n.

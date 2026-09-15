@@ -125,3 +125,13 @@ funcionalidades OFF de R10 permanecen fuera del alcance de esta corrección.
 ### LATER FEATURES
 H05, Calendar writes, PaymentEvidence automation and reminders remain outside this release.
 Do not make their activation a prerequisite for readiness.
+
+
+## A1 ? dependencias de infraestructura
+
+Implementados perfil Compose, TLS loopback, validaci?n e inventario generable;
+validaci?n remota pendiente en candidato. Falta host/SSH staging, DNS/certificados
+externos y custodia de variables; ejecutar staging.md y conservar target observado,
+evidencia de persistencia y rechazo de acceso externo. No cerrar A1 sin ello.
+PRE-01..18, despliegue app, bootstrap de schema, restore funcional y proveedores
+permanecen separados. No se modifica producci?n ni barreras R10.
