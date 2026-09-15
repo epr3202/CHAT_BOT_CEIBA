@@ -53,6 +53,50 @@ def main() -> None:
         )
         staging.validate_inputs()
         staging.config()
+        # Prove extracting the shared DB preserves the complete protected model.
+        original = root / "compose.before.yml"
+        original.write_text(
+            staging.run(
+                ["git", "show", "cc18f66f297b09b6232588ae5d66b1ecfa205a5e:compose.protected.yml"]
+            )
+        )
+        render_env = dict(os.environ)
+        for name in (
+            "DATABASE_URL",
+            "META_APP_SECRET",
+            "META_VERIFY_TOKEN",
+            "META_ACCESS_TOKEN",
+            "META_PHONE_NUMBER_ID",
+            "OPENROUTER_API_KEY",
+            "META_GRAPH_API_VERSION",
+            "CATALOG_HOST_DIR",
+            "EVIDENCE_HOST_DIR",
+            "API_IMAGE",
+            "FRONTEND_IMAGE",
+        ):
+            render_env[name] = str(root) if name.endswith("_DIR") else secrets.token_hex(32)
+
+        def render(path: str) -> dict:
+            result = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "--project-name",
+                    "a1-equivalence",
+                    "-f",
+                    path,
+                    "config",
+                    "--format",
+                    "json",
+                ],
+                env=render_env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return json.loads(result.stdout)
+
+        assert render(str(original)) == render("compose.protected.yml")
         try:
             staging.run([*staging.COMPOSE, "up", "-d", "--wait", "--wait-timeout", "120"])
             before = staging.verify()

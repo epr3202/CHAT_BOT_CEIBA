@@ -3,7 +3,7 @@ name: ceiba-staging
 services:
   db:
     extends:
-      file: compose.protected.yml
+      file: compose.postgres.yml
       service: db
     networks: [database]
   tls:
