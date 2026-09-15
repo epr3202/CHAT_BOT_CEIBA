@@ -135,3 +135,8 @@ externos y custodia de variables; ejecutar staging.md y conservar target observa
 evidencia de persistencia y rechazo de acceso externo. No cerrar A1 sin ello.
 PRE-01..18, despliegue app, bootstrap de schema, restore funcional y proveedores
 permanecen separados. No se modifica producci?n ni barreras R10.
+
+Destino informado por el operador: srv1899908.hstgr.cloud (2.25.104.213),
+Ubuntu24.04 x86_64, Docker29.7.2/Compose5.4.0, cuatro contenedores activos.
+No equivale a staging certificado: falta inventario/aislamiento, SSH accesible
+(desde Codex puerto22 agota el tiempo), DNS TLS y rutas de certificado/clave.

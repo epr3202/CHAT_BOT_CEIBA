@@ -93,3 +93,8 @@ de `db`; no ejecutar pruebas destructivas ni crear tablas de prueba operativas.
 Pendiente externo: host/SSH, DNS/certificado y custodia de secretos, ejecuciÃ³n de los
 comandos, evidencia de persistencia del destino y prueba de inaccesibilidad desde fuera.
 PRE-01..18, restauraciÃ³n funcional, providers y aplicaciÃ³n no forman parte de A1.
+
+Destino informado por el operador: srv1899908.hstgr.cloud (2.25.104.213),
+Ubuntu24.04 x86_64, Docker29.7.2/Compose5.4.0, cuatro contenedores activos.
+No equivale a staging certificado: falta inventario/aislamiento, SSH accesible
+(desde Codex puerto22 agota el tiempo), DNS TLS y rutas de certificado/clave.
