@@ -1,17 +1,17 @@
 # Decisiones y propuestas
 
-## Propuestas de auditorÃ­a â€” 2026-09-07
+## Propuestas de auditoría — 2026-09-07
 
 **Estado: PROPUESTAS, no aceptadas ni implementadas.** Base HEAD 8935687. [Plan completo](audits/2026-09-07-8935687/remediation_plan.md).
 
 - Ratificar alcance candidato y calendario de SLA (H18/H26).
-- Separar identidad del mensaje y finalizaciÃ³n durable, con claims verificables (H01/H02).
-- Unificar pausa humana y autorizaciÃ³n de acciones sobre casos (H03/H11).
-- Definir operaciÃ³n durable y reconciliaciÃ³n de agenda (H07/H08).
-- Promover artefacto/SHA probado y contenido versionado explÃ­citamente (H13/H16).
-- Acordar retenciÃ³n/minimizaciÃ³n efectiva y evidencia de recuperaciÃ³n (H19/H20).
+- Separar identidad del mensaje y finalización durable, con claims verificables (H01/H02).
+- Unificar pausa humana y autorización de acciones sobre casos (H03/H11).
+- Definir operación durable y reconciliación de agenda (H07/H08).
+- Promover artefacto/SHA probado y contenido versionado explícitamente (H13/H16).
+- Acordar retención/minimización efectiva y evidencia de recuperación (H19/H20).
 
-Las decisiones aceptadas anteriores continÃºan en sus documentos canÃ³nicos, especialmente D1 y otras decisiones de [observabilidad IA](product/ai-execution-observability.md). No se acepta una reducciÃ³n del MVP, una nueva infraestructura ni excepciones a append-only por crear este Ã­ndice. AGENTS.md permanece sin modificaciones.
+Las decisiones aceptadas anteriores continúan en sus documentos canónicos, especialmente D1 y otras decisiones de [observabilidad IA](product/ai-execution-observability.md). No se acepta una reducción del MVP, una nueva infraestructura ni excepciones a append-only por crear este índice. AGENTS.md permanece sin modificaciones.
 
 
 ## 2026-09-08 ? R1 H02.Outbox
@@ -35,11 +35,11 @@ R3 conserva AIUnavailable y HTTP_ERROR para llamada fallida con subtipo sanitiza
 [Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).
 
 
-## 2026-09-08 â€” R4 solicitud explÃ­cita de asesor
+## 2026-09-08 — R4 solicitud explícita de asesor
 
-R4 separa H05.solicitud_explicita de H05.agotamiento_fallback. Coincidencia completa de catÃ¡logo estrecho; ambiguos/mezclas mantienen ruta anterior. Procedencia determinista explÃ­cita, sin probabilidad calibrada ni cambios de umbrales IA.
+R4 separa H05.solicitud_explicita de H05.agotamiento_fallback. Coincidencia completa de catálogo estrecho; ambiguos/mezclas mantienen ruta anterior. Procedencia determinista explícita, sin probabilidad calibrada ni cambios de umbrales IA.
 
-[Contrato y validaciÃ³n R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).
+[Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).
 
 
 ## R5 en validacion: H03.entrada_multimedia / U12a
@@ -48,26 +48,26 @@ Guard de medios pausados y captura pasiva en inbox R2; candidato pendiente de CI
 Sin cambios al worker de comprobantes ni invalidacion de Outbox previo (U12c).
 Contrato y evidencia: [R5](remediation/r5-h03-media-2026-09-09/README.md).
 
-## R6 en validaciÃ³n â€” H17.contrato_y_consumo_de_pendientes / U03
+## R6 en validación — H17.contrato_y_consumo_de_pendientes / U03
 
-BASE R5 aprobada d237ad7/run 34364403706. R6 distingue propuestas de clasificaciÃ³n y
+BASE R5 aprobada d237ad7/run 34364403706. R6 distingue propuestas de clasificación y
 nombre de resoluciones inertes, valida contexto legacy y retira autoridad al negar o
-reemplazar. Consumo y descarte permanecen bajo R2; sin migraciÃ³n ni activaciÃ³n.
-[Contrato, RED y lÃ­mites R6](remediation/r6-h17-confirmations-2026-09-09/README.md).
+reemplazar. Consumo y descarte permanecen bajo R2; sin migración ni activación.
+[Contrato, RED y límites R6](remediation/r6-h17-confirmations-2026-09-09/README.md).
 
-## R7 en validacion â€” H29 / U04
+## R7 en validacion — H29 / U04
 
 BASE R6 aprobada cfdc09b/run 34381466698. Contrato semantico de nueve entidades antes
 de aplicarlas, sin migraciones ni activacion. RED sobre producto BASE intacto.
 [Contrato y evidencia R7](remediation/r7-h29-entities-2026-09-09/README.md).
 
-R7 candidato: frontera pura para las nueve entidades, revalidaciÃ³n en consumidores,
-correcciones rechazadas con aclaraciÃ³n y conservaciÃ³n del valor previo. RED3:
+R7 candidato: frontera pura para las nueve entidades, revalidación en consumidores,
+correcciones rechazadas con aclaración y conservación del valor previo. RED3:
 962957346a93ce0fc177bee377af7ac9332983d8 / run 34397740618.
 Seis expectativas R6 de propuesta de nombre se adaptan conforme al contrato documentado;
-se conservan sus nodos. ValidaciÃ³n remota pendiente. Cero migraciones; H29 agregado abierto.
+se conservan sus nodos. Validación remota pendiente. Cero migraciones; H29 agregado abierto.
 
-## R8 â€” H11.propiedad_mutaciones_humanas / U12b (2026-09-10)
+## R8 — H11.propiedad_mutaciones_humanas / U12b (2026-09-10)
 
 Contrato previo y reproduccion de propiedad en respuesta/retorno. BASE R7 `9af02027672049c1d73f998e9be1fe8c070e791f`; producto BASE intacto durante RED. ADMIN sin override automatico; reasignacion explicita pendiente. [Contrato R8](remediation/r8-h11-ownership-2026-09-10/README.md). H11 agregado permanece abierto; no activacion.
 
@@ -78,33 +78,33 @@ Resultado definitivo, SHA y evidencias quedan en el informe local post-CI; H11 a
 y U12c siguen abiertos. Sin migraciones ni activacion.
 
 
-## R9 â€” H03.outbox_previo / U12c (2026-09-10)
+## R9 — H03.outbox_previo / U12c (2026-09-10)
 
-Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidaciÃ³n durable y admisiÃ³n local del Outbox ante pausa. [DiseÃ±o R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). ValidaciÃ³n remota pendiente; H03/H11 agregados permanecen abiertos. Sin activaciÃ³n.
+Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
 
-R9 candidato implementa procedencia de servidor, perÃ­odo durable y admisiÃ³n por intento; migraciÃ³n aditiva 20260910_0027. La validaciÃ³n remota y el informe final post-CI siguen separados; sin activaciÃ³n ni cierre de H03/H11 agregados.
+R9 candidato implementa procedencia de servidor, período durable y admisión por intento; migración aditiva 20260910_0027. La validación remota y el informe final post-CI siguen separados; sin activación ni cierre de H03/H11 agregados.
 
-## R10 â€” Release scope enforcement (2026-09-14)
+## R10 — Release scope enforcement (2026-09-14)
 
 BASE R9 a9ce7f34342f19022ae608ab48bad4b0654b52d2. Candidato incremental: PaymentEvidence
 automation OFF, Calendar writes OFF, Reminders OFF; simuladores y fake adapters
 prohibidos en production/staging. Captura pasiva multimedia e Inbox/Outbox siguen ON.
-Flags seguros y validaciÃ³n temprana; guards antes de DB/HTTP. RevisiÃ³n humana conservada.
-Sin migraciÃ³n: head 20260910_0027. Pruebas R10 y regresiÃ³n remota pendientes de CI.
+Flags seguros y validación temprana; guards antes de DB/HTTP. Revisión humana conservada.
+Sin migración: head 20260910_0027. Pruebas R10 y regresión remota pendientes de CI.
 No cerrar H05 ni declarar pagos, agenda o recordatorios completos; se restringen para
-este release. [Contrato, tests y lÃ­mites](remediation/r10-release-scope-2026-09-14/README.md).
+este release. [Contrato, tests y límites](remediation/r10-release-scope-2026-09-14/README.md).
 
-## R10.1 â€” Contrato temporal existente explicitado (2026-09-14)
+## R10.1 — Contrato temporal existente explicitado (2026-09-14)
 
-Para una fecha de evento con dÃ­a/mes sin aÃ±o, la interpretaciÃ³n existente usa la
-prÃ³xima ocurrencia no pasada respecto de la fecha de America/Bogota. Por ejemplo,
-el 13 de septiembre se resuelve a 2027-09-13 si hoy es 2026-09-14. El aÃ±o pasado
-propuesto por el LLM no reemplaza el texto sin aÃ±o del cliente. No es una nueva
-regla de producto: entities.md Â§8.1 exige validar el pasado e inferir con contexto;
-el detalle estÃ¡ implementado desde 36efa72 y probado en
+Para una fecha de evento con día/mes sin año, la interpretación existente usa la
+próxima ocurrencia no pasada respecto de la fecha de America/Bogota. Por ejemplo,
+el 13 de septiembre se resuelve a 2027-09-13 si hoy es 2026-09-14. El año pasado
+propuesto por el LLM no reemplaza el texto sin año del cliente. No es una nueva
+regla de producto: entities.md §8.1 exige validar el pasado e inferir con contexto;
+el detalle está implementado desde 36efa72 y probado en
 `test_date_parser_resolves_yearless_exact_dates_to_next_future_occurrence` y
 `test_date_parser_never_resolves_yearless_date_to_past`. R10.1 fija el reloj de
-una regresiÃ³n histÃ³rica, sin alterar esa semÃ¡ntica ni las barreras R10.
+una regresión histórica, sin alterar esa semántica ni las barreras R10.
 
 ## R11 ? explicit deployed environment and immutable operational identity
 

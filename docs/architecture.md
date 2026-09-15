@@ -1,10 +1,10 @@
 # Arquitectura implementada
 
-La descripciÃ³n con transacciones, lÃ­mites de confianza y seis recorridos estÃ¡ en la [auditorÃ­a de HEAD 8935687](audits/2026-09-07-8935687/report.md#arquitectura-efectiva-y-lÃ­mites-de-confianza).
+La descripción con transacciones, límites de confianza y seis recorridos está en la [auditoría de HEAD 8935687](audits/2026-09-07-8935687/report.md#arquitectura-efectiva-y-límites-de-confianza).
 
-El webhook persiste inbox antes de aceptar; BackgroundTasks guarda mensajes, invoca clasificaciÃ³n fuera de transacciÃ³n y llama al orquestador. Los mensajes salientes usan outbox con claim/send/settle. Las operaciones de agenda tienen transacciones propias e integraciÃ³n Google. No existe consumidor continuo de inbox ni envÃ­o operativo de recordatorios; H01/H07/H09 describen los lÃ­mites comprobados.
+El webhook persiste inbox antes de aceptar; BackgroundTasks guarda mensajes, invoca clasificación fuera de transacción y llama al orquestador. Los mensajes salientes usan outbox con claim/send/settle. Las operaciones de agenda tienen transacciones propias e integración Google. No existe consumidor continuo de inbox ni envío operativo de recordatorios; H01/H07/H09 describen los límites comprobados.
 
-La coordinaciÃ³n de IA desde canal estÃ¡ aceptada por D1 de [observabilidad IA](product/ai-execution-observability.md). Las propuestas de remediaciÃ³n no se consideran arquitectura implementada. Este archivo es un Ã­ndice nuevo, no reemplaza documentaciÃ³n canÃ³nica.
+La coordinación de IA desde canal está aceptada por D1 de [observabilidad IA](product/ai-execution-observability.md). Las propuestas de remediación no se consideran arquitectura implementada. Este archivo es un índice nuevo, no reemplaza documentación canónica.
 
 
 ## 2026-09-08 ? R1 H02.Outbox
@@ -28,11 +28,11 @@ R3 candidato acota H04 en el cliente IA: transporte esperado normalizado, retrie
 [Contrato y evidencia R3](remediation/r3-h04-ai-2026-09-08/README.md).
 
 
-## 2026-09-08 â€” R4 solicitud explÃ­cita de asesor
+## 2026-09-08 — R4 solicitud explícita de asesor
 
-Reconocimiento textual puro al inicio de classify_message; decisiÃ³n DETERMINISTIC aplicada por HUMAN_REQUEST dentro del settlement R2, despuÃ©s de guards. Sin llamadas IA en el turno reconocido ni escritura paralela.
+Reconocimiento textual puro al inicio de classify_message; decisión DETERMINISTIC aplicada por HUMAN_REQUEST dentro del settlement R2, después de guards. Sin llamadas IA en el turno reconocido ni escritura paralela.
 
-[Contrato y validaciÃ³n R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).
+[Contrato y validación R4](remediation/r4-h05-explicit-human-2026-09-08/README.md).
 
 
 ## R5 en validacion: H03.entrada_multimedia / U12a
@@ -41,26 +41,26 @@ Guard de medios pausados y captura pasiva en inbox R2; candidato pendiente de CI
 Sin cambios al worker de comprobantes ni invalidacion de Outbox previo (U12c).
 Contrato y evidencia: [R5](remediation/r5-h03-media-2026-09-09/README.md).
 
-## R6 en validaciÃ³n â€” H17.contrato_y_consumo_de_pendientes / U03
+## R6 en validación — H17.contrato_y_consumo_de_pendientes / U03
 
-BASE R5 aprobada d237ad7/run 34364403706. R6 distingue propuestas de clasificaciÃ³n y
+BASE R5 aprobada d237ad7/run 34364403706. R6 distingue propuestas de clasificación y
 nombre de resoluciones inertes, valida contexto legacy y retira autoridad al negar o
-reemplazar. Consumo y descarte permanecen bajo R2; sin migraciÃ³n ni activaciÃ³n.
-[Contrato, RED y lÃ­mites R6](remediation/r6-h17-confirmations-2026-09-09/README.md).
+reemplazar. Consumo y descarte permanecen bajo R2; sin migración ni activación.
+[Contrato, RED y límites R6](remediation/r6-h17-confirmations-2026-09-09/README.md).
 
-## R7 en validacion â€” H29 / U04
+## R7 en validacion — H29 / U04
 
 BASE R6 aprobada cfdc09b/run 34381466698. Contrato semantico de nueve entidades antes
 de aplicarlas, sin migraciones ni activacion. RED sobre producto BASE intacto.
 [Contrato y evidencia R7](remediation/r7-h29-entities-2026-09-09/README.md).
 
-R7 candidato: frontera pura para las nueve entidades, revalidaciÃ³n en consumidores,
-correcciones rechazadas con aclaraciÃ³n y conservaciÃ³n del valor previo. RED3:
+R7 candidato: frontera pura para las nueve entidades, revalidación en consumidores,
+correcciones rechazadas con aclaración y conservación del valor previo. RED3:
 962957346a93ce0fc177bee377af7ac9332983d8 / run 34397740618.
 Seis expectativas R6 de propuesta de nombre se adaptan conforme al contrato documentado;
-se conservan sus nodos. ValidaciÃ³n remota pendiente. Cero migraciones; H29 agregado abierto.
+se conservan sus nodos. Validación remota pendiente. Cero migraciones; H29 agregado abierto.
 
-## R8 â€” H11.propiedad_mutaciones_humanas / U12b (2026-09-10)
+## R8 — H11.propiedad_mutaciones_humanas / U12b (2026-09-10)
 
 Contrato previo y reproduccion de propiedad en respuesta/retorno. BASE R7 `9af02027672049c1d73f998e9be1fe8c070e791f`; producto BASE intacto durante RED. ADMIN sin override automatico; reasignacion explicita pendiente. [Contrato R8](remediation/r8-h11-ownership-2026-09-10/README.md). H11 agregado permanece abierto; no activacion.
 
@@ -71,21 +71,21 @@ Resultado definitivo, SHA y evidencias quedan en el informe local post-CI; H11 a
 y U12c siguen abiertos. Sin migraciones ni activacion.
 
 
-## R9 â€” H03.outbox_previo / U12c (2026-09-10)
+## R9 — H03.outbox_previo / U12c (2026-09-10)
 
-Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidaciÃ³n durable y admisiÃ³n local del Outbox ante pausa. [DiseÃ±o R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). ValidaciÃ³n remota pendiente; H03/H11 agregados permanecen abiertos. Sin activaciÃ³n.
+Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
 
-R9 candidato implementa procedencia de servidor, perÃ­odo durable y admisiÃ³n por intento; migraciÃ³n aditiva 20260910_0027. La validaciÃ³n remota y el informe final post-CI siguen separados; sin activaciÃ³n ni cierre de H03/H11 agregados.
+R9 candidato implementa procedencia de servidor, período durable y admisión por intento; migración aditiva 20260910_0027. La validación remota y el informe final post-CI siguen separados; sin activación ni cierre de H03/H11 agregados.
 
-## R10 â€” Release scope enforcement (2026-09-14)
+## R10 — Release scope enforcement (2026-09-14)
 
 BASE R9 a9ce7f34342f19022ae608ab48bad4b0654b52d2. Candidato incremental: PaymentEvidence
 automation OFF, Calendar writes OFF, Reminders OFF; simuladores y fake adapters
 prohibidos en production/staging. Captura pasiva multimedia e Inbox/Outbox siguen ON.
-Flags seguros y validaciÃ³n temprana; guards antes de DB/HTTP. RevisiÃ³n humana conservada.
-Sin migraciÃ³n: head 20260910_0027. Pruebas R10 y regresiÃ³n remota pendientes de CI.
+Flags seguros y validación temprana; guards antes de DB/HTTP. Revisión humana conservada.
+Sin migración: head 20260910_0027. Pruebas R10 y regresión remota pendientes de CI.
 No cerrar H05 ni declarar pagos, agenda o recordatorios completos; se restringen para
-este release. [Contrato, tests y lÃ­mites](remediation/r10-release-scope-2026-09-14/README.md).
+este release. [Contrato, tests y límites](remediation/r10-release-scope-2026-09-14/README.md).
 
 ## R11 ? protected operational boundary
 
