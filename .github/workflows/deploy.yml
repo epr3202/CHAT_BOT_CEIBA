@@ -1,12 +1,87 @@
-name: Deployment requires an authorized operational pass
+name: CI (deployment is a separate authorized pass)
+
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
 permissions:
   contents: read
+
 jobs:
-  contract:
+  test:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ceiba
+          POSTGRES_USER: ceiba
+          POSTGRES_PASSWORD: ceiba
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ceiba -d ceiba"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test
+      TEST_DATABASE_URL: postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      META_APP_SECRET: test
+      META_VERIFY_TOKEN: test
+      META_ACCESS_TOKEN: test
+      META_PHONE_NUMBER_ID: test
+      META_GRAPH_API_VERSION: v20.0
+      WEBHOOK_MAX_BODY_BYTES: "1048576"
+      OUTBOX_POLL_INTERVAL_SECONDS: "0.01"
+      OUTBOX_BATCH_SIZE: "10"
+      OUTBOX_SENDING_TIMEOUT_SECONDS: "120"
+      OUTBOX_MAX_ATTEMPTS: "5"
+      OUTBOX_MAX_BACKOFF_SECONDS: "300"
+      OPENROUTER_API_KEY: test
+      OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      OPENROUTER_TIMEOUT_SECONDS: "15"
+      OPENROUTER_MAX_RETRIES: "1"
+      AI_CONFIDENCE_SAFE: "0.85"
+      AI_CONFIDENCE_PROBABLE: "0.70"
+      AI_CONFIDENCE_UNCERTAIN: "0.50"
+      ENVIRONMENT: testing
+      DEPLOYED_RUNTIME: "false"
+      PAYMENT_EVIDENCE_AUTOMATION_ENABLED: "true"
+      CALENDAR_WRITES_ENABLED: "true"
+      CALENDAR_ADAPTER: fake
+      LOG_LEVEL: INFO
+
     steps:
-      - run: |
-          echo 'No automatic deployment. Follow docs/deployment.md with exact SHA/artifact.'
-          echo 'Verified target, encrypted backup, ingress hooks and PRE certification required.'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Create test database
+        run: |
+          PGPASSWORD=ceiba psql -h localhost -U ceiba -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'ceiba_test'" | grep -q 1 \
+            || PGPASSWORD=ceiba psql -h localhost -U ceiba -d postgres -c "CREATE DATABASE ceiba_test"
+
+      - name: Install dependencies
+        run: pip install --require-hashes --only-binary=:all: -r requirements-ci.lock
+
+      - name: Lint
+        run: ruff check app tests scripts
+
+      - name: Migration cycle
+        run: make migrate-cycle PYTHON=python
+
+      - name: Test
+        run: python -m pytest -q
+
+      - name: Node regression tests
+        run: node --test tests/remediation/r10/simulator.test.mjs tests/remediation/r11/frontend.test.mjs

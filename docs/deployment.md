@@ -1,6 +1,7 @@
 # R11 — protected deployment and certification contract
 
-Status: candidate under CI validation. No deployment has been performed.
+Status: implementation validated by C2 CI 34967068465 (1482 Python, 11 Node, Ruff, images).
+The final freeze additionally requires green CI on its exact closing SHA. No deployment occurred.
 `PREPROD_TARGET=NOT_PROVISIONED`: repository evidence describes a Compose VPS and
 historical `/opt/ceiba` paths, but identifies no confirmed staging host, database,
 domain, TLS terminator, backup custodian or secret provisioning. Do not infer them
@@ -60,7 +61,10 @@ requirements-ci.lock, derived from R10.1 CI 34871963604, CPython 3.12/Linux amd6
 Install with pip `--require-hashes --only-binary=:all:`. No manager migration. Python
 and Postgres bases use verified R10.1 image digests. Node 22 base is a mutable build
 input; record its built image ID and promote that image unchanged. Never rebuild during
-promotion. Dependency/base refresh requires a new candidate and CI.
+promotion. Dependency/base refresh requires a new candidate and CI. Normal main/PR CI is retained;
+only automatic SSH deployment is removed. The release gate exercises the existing
+upgrade/downgrade/upgrade migration check solely on its job-owned disposable database;
+operational deployment and rollback never perform a downgrade.
 `.dockerignore` filters secrets, keys, worktrees and evidence; CI tests Docker's actual
 context filtering using synthetic secret sentinels. Runtime Dockerfile copies explicit paths.
 

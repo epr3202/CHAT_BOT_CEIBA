@@ -65,7 +65,7 @@ handoffs, agentes, mensajes y auditoría del entorno local.
 
 ## Despliegue protegido por identidad (R11)
 
-No hay despliegue autom?tico desde main. El procedimiento est? en
+El CI de main y PR se conserva; se elimina el despliegue SSH autom?tico. El procedimiento est? en
 [docs/deployment.md](docs/deployment.md). Compose protegido ejecuta API, worker,
 frontend Node y PostgreSQL 16, con reinicio y healthchecks. Es un perfil independiente
 (`compose.protected.yml`); no se combina con el Compose local.

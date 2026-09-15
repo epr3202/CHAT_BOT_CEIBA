@@ -109,13 +109,20 @@ El commit final solo registra documentación; su CI debe confirmar esos gates
 sobre el SHA entregado. La autorización del usuario sustituyó validación local
 por remota aislada; los commits preparatorios no se presentaron como aceptación.
 
-## R11 ? preproduction readiness remediation (2026-09-14)
+## R11 ? preproduction readiness remediation (2026-09-15)
 
 Candidate based exactly on R10.1 4c767e029709354864c36767dfb25cbe1c95931d.
 Adds protected environment/startup contracts, exact-SHA artifact build/promotion, ordered
 stop/checkpoint/migration/rollback, pinned dependency hashes, Docker context filtering,
 supervised frontend/API/worker, readiness and poll heartbeat. Extends the explicit reset
 CLI production guard to staging. No domain behavior/schema change; head remains0027.
-R11 CI includes full historic collection, all R1?R10 gates, Node, Ruff and actual image
-context checks. Certification results are pending candidate CI; no deployed/real-provider
-validation is claimed. See deployment.md for external prerequisites.
+Validation C2: CI 34967068465 on 10486baccacfdc7e16e1cf505044a045df1cd8bc passed
+1482/1482 Python (1439 historical +43 R11), 847/847 focal (775 R1?R9 +29 R10 +43 R11),
+Node11/11 (R10=5, R11=6), Ruff and actual artifact/context/startup checks. No skips or
+missing historical node IDs. C1 was rejected for an R11 mock error and an incomplete
+runner projection; both were corrected without changing historical tests or production.
+The closing commit preserves normal main/PR CI without automatic SSH deployment and
+retains the migration-cycle check only on the isolated job-owned database. Final freeze
+requires a successful R11 CI associated with that closing SHA; never substitute C2 evidence.
+No operational deployment/provider validation is claimed. PREPROD_TARGET remains
+NOT_PROVISIONED; see deployment.md for concrete external prerequisites.

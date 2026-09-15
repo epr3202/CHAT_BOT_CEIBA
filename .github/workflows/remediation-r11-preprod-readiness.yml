@@ -1,4 +1,4 @@
-name: Remediation R11 release-scope candidate regression
+name: R11 preproduction readiness certification
 on:
   push:
     branches: ['fix/r11-preprod-readiness-*']

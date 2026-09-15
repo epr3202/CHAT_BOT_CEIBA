@@ -203,8 +203,15 @@ def main() -> None:
 
             from alembic import command
 
-            command.upgrade(Config("alembic.ini"), "head")
-            summary["migration_commands"] = ["alembic upgrade head (in-process, guarded)"]
+            # Preserve the existing migrate-cycle check on this job-owned disposable database.
+            config = Config("alembic.ini")
+            command.upgrade(config, "20260910_0027")
+            command.downgrade(config, "base")
+            command.upgrade(config, "20260910_0027")
+            summary["migration_commands"] = [
+                "upgrade 20260910_0027", "downgrade base", "upgrade 20260910_0027",
+            ]
+            summary["migration_cycle_target"] = "job-owned disposable database only"
         nodes = ["tests/remediation"] if summary["stage"] == "regressions" else ["tests"]
         temporal_module = "tests/conversational/test_slice3_quote_capture.py"
         temporal_node = temporal_module + (
