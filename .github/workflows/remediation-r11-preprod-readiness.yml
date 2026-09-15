@@ -6,7 +6,7 @@ permissions:
   contents: read
 concurrency:
   group: remediation-r11-preprod-readiness-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   validate:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/fix/r11-preprod-readiness-')
