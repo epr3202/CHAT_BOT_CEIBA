@@ -349,6 +349,8 @@ def main() -> None:
         if r11_nodes != required_r11:
             raise RuntimeError("R11 coverage missing")
         expected_nodes |= required_r11
+        if summary["stage"] == "suite" and Path("scripts/quality/a1_nodes.json").exists():
+            expected_nodes |= set(json.loads(Path("scripts/quality/a1_nodes.json").read_text()))
         summary["r11_nodes"] = sorted(r11_nodes)
         node_test = subprocess.run(
             [

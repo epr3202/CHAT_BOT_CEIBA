@@ -22,7 +22,9 @@ PARENT_BASE = "4c767e029709354864c36767dfb25cbe1c95931d"
 def main() -> None:
     if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get(
         "GITHUB_REF", ""
-    ).startswith("refs/heads/fix/r11-preprod-readiness-"):
+    ).startswith((
+        "refs/heads/fix/r11-preprod-readiness-", "refs/heads/fix/a1-staging-provisioning-",
+    )):
         raise SystemExit("Only the authorized GitHub Actions quality branch may run this launcher")
     stage = sys.argv[1]
     if stage not in {"regressions", "suite", "isolated", "module"}:
@@ -110,7 +112,7 @@ def main() -> None:
         copied = {}
         source_entries = dict(expected["files"])
         for rel in changed:
-            if not rel.startswith(".github/"):
+            if not rel.startswith((".github/", ".env")):
                 source_entries.setdefault(rel, {"mode": "100644"})
         for rel, item in source_entries.items():
             path = Path(rel)

@@ -1,0 +1,9 @@
+[
+  "tests/unit/test_staging_inputs.py::test_staging_rejects_placeholder[]",
+  "tests/unit/test_staging_inputs.py::test_staging_rejects_placeholder[ ]",
+  "tests/unit/test_staging_inputs.py::test_staging_rejects_placeholder[TODO]",
+  "tests/unit/test_staging_inputs.py::test_staging_rejects_placeholder[changeme]",
+  "tests/unit/test_staging_inputs.py::test_staging_rejects_placeholder[example.com]",
+  "tests/unit/test_staging_inputs.py::test_staging_rejects_placeholder[<host>]",
+  "tests/unit/test_staging_inputs.py::test_staging_accepts_observed_identity"
+]
