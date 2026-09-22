@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   staging-regressions:
-    if: startsWith(github.ref, 'refs/heads/fix/a1-staging-provisioning-')
+    if: startsWith(github.ref, 'refs/heads/fix/a1-staging-provisioning-') || startsWith(github.head_ref, 'fix/a1-staging-provisioning-')
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     strategy:
@@ -53,7 +53,7 @@ jobs:
       - name: Verify disposable staging infrastructure
         run: python -m scripts.quality.staging_ci
   test:
-    if: ${{ !startsWith(github.ref, 'refs/heads/fix/a1-staging-provisioning-') }}
+    if: ${{ !startsWith(github.ref, 'refs/heads/fix/a1-staging-provisioning-') && !startsWith(github.head_ref, 'fix/a1-staging-provisioning-') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 

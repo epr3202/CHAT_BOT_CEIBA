@@ -1,5 +1,20 @@
 # Registro de cambios
 
+## A1 — preparación de operador (2026-09-22)
+
+Validación de NOT_PROVISIONED/REQUIRED_EXTERNAL, campos contractuales, aislamiento
+Compose, healthchecks activos, montajes TLS RO y errores sanitizados ante timeout.
+Se amplían pruebas A1 conservando las siete originales; inventario y guía DNS/TLS,
+secretos, persistencia y target completo reconciliados con SCOPE externo.
+Archivos: scripts/staging.py, tests/unit/test_staging_inputs.py,
+scripts/quality/a1_nodes.json, scripts/quality/staging_ci.py, .gitignore,
+.env.staging.example y documentación A1. Sin app/, migraciones ni valores operativos.
+CI histórico 60805c1: 1489 Python, 847 regresiones, 11 Node, Ruff e infraestructura PASS.
+Los cambios actuales requieren CI propio. A1 sigue ABIERTO por evidencia externa.
+Los PR A1 también usan el runner aislado existente (deploy.yml y r11/run_ci.py),
+conservando guards de identidad/allowlist; se evita volver al runner general que
+no prepara AUDIT_NONCE para los hijos R2. No se excluyen pruebas.
+
 ## 2026-09-07 — Auditoría técnica documental
 
 Se auditó main / 89356876a04bc836ea9b2c223ff8aba2b424ffde. [Informe](audits/2026-09-07-8935687/report.md), matrices de 19 dimensiones/24 escenarios, 28 hallazgos y plan incremental sin implementación.

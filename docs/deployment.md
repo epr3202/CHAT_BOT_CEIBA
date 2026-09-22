@@ -1,5 +1,21 @@
 # R11 — protected deployment and certification contract
 
+## A1 clarification — 2026-09-22
+
+The historical NOT_PROVISIONED paragraph below records the R11 baseline, not a new
+host observation. The operator identified srv1899908.hstgr.cloud / 2.25.104.213,
+checkout /home/deploy/ceiba-staging and DNS staging.ceibaclubhouse.com (Cloudflare).
+Operational provisioning remains unverified. A1 is OPEN.
+
+The user-supplied external SCOPE requires all ten target fields, provisioned
+deployment secrets and a successful protected Compose render **within A1**. The old
+staging runbook deferred hooks/GPG and deployment secrets; that contradicted SCOPE.
+Provision and review them in A1 without executing hooks, deployment, PRE or restores.
+The generated target.staging.json is only partial infrastructure inventory. See the
+[A1 operator handoff](staging.md#a1--operator-handoff) for inventory, reconciliation
+and commands to assemble a complete target from real external inputs. Never fabricate
+values to close A1. The private TLS endpoint is not a deployed admin UI.
+
 Status: implementation validated by C2 CI 34967068465 (1482 Python, 11 Node, Ruff, images).
 The final freeze additionally requires green CI on its exact closing SHA. No deployment occurred.
 `PREPROD_TARGET=NOT_PROVISIONED`: repository evidence describes a Compose VPS and
