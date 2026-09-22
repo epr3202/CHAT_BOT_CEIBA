@@ -111,11 +111,26 @@ def main() -> None:
             target = root / "target.staging.json"
             target.write_text(json.dumps(after), encoding="utf-8")
             assert json.loads(target.read_text()) == after
-            for path in (".env", ".env.staging", "target.staging.json", "private.key", "cert.pem"):
+            for path in (
+                ".env",
+                ".env.staging",
+                "staging.env",
+                "operations.json",
+                "target.json",
+                "target.staging.json",
+                "private.key",
+                "cert.pem",
+            ):
                 staging.run(["git", "check-ignore", path])
+            # This inventory is intentionally excluded from the isolated suite's source image.
+            assert all(
+                not line.strip() or line.lstrip().startswith("#")
+                for line in Path(".env.staging.example").read_text().splitlines()
+            )
             tracked = staging.run(["git", "ls-files"]).splitlines()
             assert not any(
-                p.endswith((".key", ".pem")) or p in {".env", ".env.staging"} for p in tracked
+                p.endswith((".key", ".pem", ".env")) or p in {".env", ".env.staging"}
+                for p in tracked
             )
             for path in tracked:
                 content = Path(path).read_bytes()

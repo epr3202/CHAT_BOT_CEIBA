@@ -1,5 +1,15 @@
 # Seguimiento pendiente
 
+## A1 — pendientes operativos vigentes (2026-09-22)
+
+A1 ABIERTO. Host/IP y DNS ya fueron identificados por el operador, no certificados.
+Faltan SSH/daemon y Compose v2 observados, aislamiento de proyectos, Cloudflare DNS,
+TLS de CA real, PG16/system_identifier/persistencia, binding/VPN/IP, secretos de
+deployment por nombre, directorios, artefacto para render protegido, custodia GPG,
+hooks reales y target contractual completo. Las afirmaciones históricas que aplazan
+hooks/secretos no gobiernan el cierre; prevalece SCOPE externo sección A1.
+[Matriz, inventario y comandos](staging.md). No ejecutar A2/A3/PRE ni restores.
+
 ## Auditoría 2026-09-07 — HEAD 8935687
 
 [Informe y 28 hallazgos](audits/2026-09-07-8935687/report.md) · [Registro CSV](audits/2026-09-07-8935687/findings.csv) · [Plan de PR propuestos](audits/2026-09-07-8935687/remediation_plan.md).

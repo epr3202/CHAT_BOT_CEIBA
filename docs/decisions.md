@@ -1,5 +1,14 @@
 # Decisiones y propuestas
 
+## A1 — reconciliación con SCOPE externo (2026-09-22)
+
+Se respeta SCOPE A1: target completo, hooks/GPG provisionados y secretos de deployment
+pertenecen a A1, aunque no se consuman al arrancar infraestructura. Se corrige la
+postergación del runbook anterior. Ejecutar hooks/PRE/restores sigue fuera de A1.
+Validar estructura no certifica valores reales; no se inventan ni se rellena un target
+final en desarrollo. Compose v2 es criterio explícito: el dato histórico 5.4.0 no lo
+cumple por inferencia. [Discrepancias y procedimiento](staging.md). A1 ABIERTO.
+
 ## Propuestas de auditoría — 2026-09-07
 
 **Estado: PROPUESTAS, no aceptadas ni implementadas.** Base HEAD 8935687. [Plan completo](audits/2026-09-07-8935687/remediation_plan.md).

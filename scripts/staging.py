@@ -8,21 +8,59 @@ import os
 import re
 import socket
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 PROJECT = "ceiba-staging"
 COMPOSE = ["docker", "compose", "--project-name", PROJECT, "-f", "compose.staging.yml"]
 
 
 def run(args: list[str]) -> str:
-    result = subprocess.run(args, capture_output=True, text=True, timeout=180)
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=180)
+    except (subprocess.TimeoutExpired, OSError):
+        raise RuntimeError("Infrastructure command unavailable or timed out") from None
     if result.returncode:
         raise RuntimeError("Infrastructure command failed: " + args[0])
     return result.stdout.strip()
 
 
 def clean_value(value: str) -> bool:
-    return bool(value.strip()) and not re.search(r"todo|changeme|example\.com|<[^>]+>", value, re.I)
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and not re.search(
+            r"todo|changeme|example\.com|[<>]|not_provisioned|required_external|placeholder",
+            value,
+            re.I,
+        )
+    )
+
+
+def validate_target(target: dict) -> None:
+    """Validate SCOPE A1 structure only; operator evidence remains mandatory."""
+    for name in (
+        "environment",
+        "hostname",
+        "checkout_path",
+        "project",
+        "database_system_identifier",
+        "backup_dir",
+        "backup_gpg_recipient",
+        "close_hook",
+        "smoke_hook",
+        "reopen_hook",
+    ):
+        if not clean_value(target.get(name)):
+            raise ValueError("Missing or placeholder target field: " + name)
+    if target["environment"] != "staging" or target["project"] != PROJECT:
+        raise ValueError("A1 requires the staging environment and project")
+    if not re.fullmatch(r"[0-9]+", target["database_system_identifier"]):
+        raise ValueError("Observed PostgreSQL system identifier required")
+    for name in ("checkout_path", "backup_dir", "close_hook", "smoke_hook", "reopen_hook"):
+        if not PurePosixPath(target[name]).is_absolute():
+            raise ValueError("Absolute host path required: " + name)
+    if not re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", target["backup_gpg_recipient"]):
+        raise ValueError("Approved full GPG fingerprint required")
 
 
 def validate_inputs() -> None:
@@ -50,16 +88,64 @@ def validate_inputs() -> None:
 
 def config() -> dict:
     value = json.loads(run([*COMPOSE, "config", "--format", "json"]))
-    assert value["name"] == PROJECT
-    assert set(value["services"]) == {"db", "tls"}
-    db = value["services"]["db"]
-    assert db["image"].startswith("postgres:16@sha256:")
-    assert not db.get("ports") and db["healthcheck"]["test"]
-    assert db["volumes"][0]["type"] == "volume"
-    assert db["volumes"][0]["source"] == "postgres_data"
-    assert set(db["networks"]) == {"database"}
-    assert value["networks"]["database"]["internal"] is True
-    assert value["services"]["tls"]["ports"][0]["host_ip"] == "127.0.0.1"
+
+    def require(condition: bool, label: str) -> None:
+        if not condition:
+            raise ValueError("Unsafe A1 Compose configuration: " + label)
+
+    require(value.get("name") == PROJECT, "project")
+    services = value.get("services", {})
+    require(set(services) == {"db", "tls"}, "services")
+    db, tls = services["db"], services["tls"]
+    require(bool(re.fullmatch(r"postgres:16@sha256:[0-9a-f]{64}", db.get("image", ""))), "PG16")
+    require(not db.get("ports"), "DB ports")
+    for service in (db, tls):
+        health = service.get("healthcheck", {})
+        require(
+            bool(health.get("test")) and not health.get("disable") and health["test"][0] != "NONE",
+            "healthcheck",
+        )
+    require(
+        any(
+            m.get("type") == "volume"
+            and m.get("source") == "postgres_data"
+            and m.get("target") == "/var/lib/postgresql/data"
+            for m in db.get("volumes", [])
+        ),
+        "persistent DB mount",
+    )
+    volume = value.get("volumes", {}).get("postgres_data", {})
+    require(
+        volume.get("name") == PROJECT + "_postgres_data" and not volume.get("external"),
+        "dedicated volume",
+    )
+    require(set(db.get("networks", {})) == {"database"}, "DB network")
+    require(set(tls.get("networks", {})) == {"edge"}, "TLS network")
+    networks = value.get("networks", {})
+    require(networks.get("database", {}).get("internal") is True, "internal DB network")
+    for name in ("database", "edge"):
+        network = networks.get(name, {})
+        require(
+            network.get("name") == PROJECT + "_" + name and not network.get("external"),
+            "dedicated network",
+        )
+    ports = tls.get("ports", [])
+    require(
+        len(ports) == 1
+        and ports[0].get("host_ip") == "127.0.0.1"
+        and str(ports[0].get("published")) == "8443"
+        and ports[0].get("target") == 8443,
+        "admin loopback",
+    )
+    for target in ("/run/tls/fullchain.pem", "/run/tls/privkey.pem"):
+        mounts = [m for m in tls.get("volumes", []) if m.get("target") == target]
+        require(
+            len(mounts) == 1
+            and mounts[0].get("type") == "bind"
+            and mounts[0].get("read_only") is True
+            and not mounts[0].get("bind", {}).get("create_host_path", False),
+            "TLS RO mount",
+        )
     return value
 
 
