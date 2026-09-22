@@ -11,6 +11,9 @@ scripts/quality/a1_nodes.json, scripts/quality/staging_ci.py, .gitignore,
 .env.staging.example y documentación A1. Sin app/, migraciones ni valores operativos.
 CI histórico 60805c1: 1489 Python, 847 regresiones, 11 Node, Ruff e infraestructura PASS.
 Los cambios actuales requieren CI propio. A1 sigue ABIERTO por evidencia externa.
+Los PR A1 también usan el runner aislado existente (deploy.yml y r11/run_ci.py),
+conservando guards de identidad/allowlist; se evita volver al runner general que
+no prepara AUDIT_NONCE para los hijos R2. No se excluyen pruebas.
 
 ## 2026-09-07 — Auditoría técnica documental
 

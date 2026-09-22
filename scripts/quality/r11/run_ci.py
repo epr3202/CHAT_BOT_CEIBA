@@ -20,11 +20,15 @@ PARENT_BASE = "4c767e029709354864c36767dfb25cbe1c95931d"
 
 
 def main() -> None:
-    if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get(
-        "GITHUB_REF", ""
-    ).startswith((
-        "refs/heads/fix/r11-preprod-readiness-", "refs/heads/fix/a1-staging-provisioning-",
-    )):
+    branch_run = os.environ.get("GITHUB_REF", "").startswith(
+        ("refs/heads/fix/r11-preprod-readiness-", "refs/heads/fix/a1-staging-provisioning-")
+    )
+    a1_pull_request = (
+        os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+        and os.environ.get("GITHUB_REF", "").startswith("refs/pull/")
+        and os.environ.get("GITHUB_HEAD_REF", "").startswith("fix/a1-staging-provisioning-")
+    )
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not (branch_run or a1_pull_request):
         raise SystemExit("Only the authorized GitHub Actions quality branch may run this launcher")
     stage = sys.argv[1]
     if stage not in {"regressions", "suite", "isolated", "module"}:
