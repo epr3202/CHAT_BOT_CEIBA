@@ -9,3 +9,8 @@ __pycache__/
 .worktrees/
 cloudflared-linux-amd64.deb
 review-*.txt
+docker-compose.override.yml
+docker-compose.override.yml.retired
+*.egg-info/
+catalogs/
+backups/
