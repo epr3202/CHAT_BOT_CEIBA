@@ -40,6 +40,9 @@ const state = {
   adminCases: [],
   catalogCategories: [],
   paymentEvidence: [],
+  agents: [],
+  resetPreview: null,
+  resetBusy: false,
   visibleConversationIds: new Set(),
   chatPollIntervalMs: 3000,
   lastWebhook: null,
@@ -124,6 +127,7 @@ function selectView(view) {
   applyAuthState();
   if (view === "catalogsModule") loadCatalogCategories();
   if (view === "paymentEvidence") loadPaymentEvidence();
+  if (view === "agents") loadAgents();
 }
 
 async function requestJson(path, options = {}) {
@@ -433,6 +437,13 @@ function clearSession() {
   state.adminCases = [];
   state.paymentEvidence = [];
   state.catalogCategories = [];
+  state.agents = [];
+  $("#agentRows").replaceChildren();
+  $("#agentEditForm").hidden = true;
+  $("#agentCredentialsForm").hidden = true;
+  $("#agentCredentialsForm").reset();
+  $("#resetExecuteForm").reset();
+  invalidateResetPreview();
   state.visibleConversationIds.clear();
   $("#pin").value = "";
   closeSummaryModal();
@@ -994,6 +1005,266 @@ async function refreshAll() {
   await loadHandoffs(state.currentStatus);
   if (state.agent?.role === "ADMIN") {
     await Promise.all([loadCatalogCategories(), loadPaymentEvidence()]);
+    if (state.currentView === "agents") await loadAgents();
+  }
+}
+
+function feedback(id, message, error = false) {
+  const node = document.getElementById(id);
+  node.textContent = message;
+  node.classList.toggle("formError", error);
+}
+
+async function loadAgents() {
+  if (state.agent?.role !== "ADMIN") return;
+  try {
+    state.agents = await requestJson("/api/admin/agents", { headers: sessionHeaders() });
+    renderAgents();
+  } catch (error) {
+    feedback("agentsFeedback", error.message, true);
+  }
+}
+
+function renderAgents() {
+  const body = $("#agentRows");
+  body.replaceChildren();
+  const filter = $("#agentStatusFilter").value;
+  const agents = state.agents.filter((agent) =>
+    filter === "all" || agent.active === (filter === "active")
+  );
+  for (const agent of agents) {
+    const row = document.createElement("tr");
+    row.dataset.agentId = agent.id;
+    for (const value of [agent.name, agent.role,
+      agent.has_credentials ? agent.document_id : "sin credenciales",
+      agent.active ? "Activo" : "Inactivo", new Date(agent.created_at).toLocaleString("es-CO")]) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    }
+    const cell = document.createElement("td");
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.append(
+      actionButton("Editar", () => editAgent(agent)),
+      actionButton("Credenciales", () => editAgentCredentials(agent)),
+      actionButton(agent.active ? "Desactivar" : "Activar", (event) =>
+        toggleAgentActive(agent, event.currentTarget), agent.active ? "danger" : ""),
+    );
+    cell.append(actions);
+    row.append(cell);
+    body.append(row);
+  }
+  if (!agents.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "No hay agentes con este filtro.";
+    row.append(cell);
+    body.append(row);
+  }
+}
+
+async function createAgent(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('[type="submit"]');
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const agent = await requestJson("/api/admin/agents", {
+      method: "POST", headers: sessionHeaders(),
+      body: JSON.stringify({ name: $("#agentCreateName").value.trim(), role: $("#agentCreateRole").value }),
+    });
+    form.reset();
+    $("#agentStatusFilter").value = "active";
+    await loadAgents();
+    feedback("agentsFeedback", `Agente ${agent.name} creado. Asigna sus credenciales para permitir el ingreso.`);
+  } catch (error) {
+    feedback("agentsFeedback", error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function editAgent(agent) {
+  const form = $("#agentEditForm");
+  form.dataset.agentId = agent.id;
+  $("#agentEditName").value = agent.name;
+  $("#agentEditRole").value = agent.role;
+  setText("agentEditTitle", `Editar: ${agent.name}`);
+  form.hidden = false;
+  $("#agentCredentialsForm").hidden = true;
+  form.scrollIntoView({ block: "center" });
+  $("#agentEditName").focus();
+}
+
+async function saveAgent(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('[type="submit"]');
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const agent = await requestJson(`/api/admin/agents/${form.dataset.agentId}`, {
+      method: "PATCH", headers: sessionHeaders(),
+      body: JSON.stringify({ name: $("#agentEditName").value.trim(), role: $("#agentEditRole").value }),
+    });
+    form.hidden = true;
+    await resolveAgentIdentity();
+    applyAuthState();
+    await loadAgents();
+    feedback("agentsFeedback", `Agente ${agent.name} actualizado.`);
+  } catch (error) {
+    feedback("agentsFeedback", error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function editAgentCredentials(agent) {
+  const form = $("#agentCredentialsForm");
+  form.reset();
+  form.dataset.agentId = agent.id;
+  $("#agentDocument").value = agent.document_id || "";
+  setText("agentCredentialsTitle", `Credenciales: ${agent.name}`);
+  form.hidden = false;
+  $("#agentEditForm").hidden = true;
+  form.scrollIntoView({ block: "center" });
+  $("#agentDocument").focus();
+}
+
+async function saveAgentCredentials(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('[type="submit"]');
+  if (button.disabled) return;
+  if (!confirm("¿Guardar las credenciales? Esto cierra las sesiones del agente.")) return;
+  button.disabled = true;
+  try {
+    await requestJson(`/api/admin/agents/${form.dataset.agentId}/credentials`, {
+      method: "POST", headers: sessionHeaders(),
+      body: JSON.stringify({ document_id: $("#agentDocument").value.trim(), pin: $("#agentPin").value }),
+    });
+    form.reset();
+    form.hidden = true;
+    await resolveAgentIdentity();
+    applyAuthState();
+    await loadAgents();
+    feedback("agentsFeedback", "Credenciales guardadas; las sesiones anteriores se cerraron.");
+  } catch (error) {
+    feedback("agentsFeedback", error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function toggleAgentActive(agent, button) {
+  if (button.disabled) return;
+  const action = agent.active ? "deactivate" : "activate";
+  if (!confirm(`¿${agent.active ? "Desactivar" : "Activar"} a ${agent.name}?`)) return;
+  button.disabled = true;
+  try {
+    await requestJson(`/api/admin/agents/${agent.id}/${action}`, { method: "POST", headers: sessionHeaders() });
+    await resolveAgentIdentity();
+    applyAuthState();
+    await loadAgents();
+    feedback("agentsFeedback", `${agent.name}: ${agent.active ? "desactivado" : "activado"}.`);
+  } catch (error) {
+    feedback("agentsFeedback", error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function updateResetAvailability() {
+  const preview = state.resetPreview;
+  $("#executeReset").disabled = state.resetBusy || !preview
+    || $("#resetPhone").value.trim() !== preview.input
+    || !$("#resetReason").value.trim()
+    || $("#resetConfirmPhone").value.trim() !== preview.phone_number;
+}
+
+function invalidateResetPreview() {
+  state.resetPreview = null;
+  $("#resetSummary").replaceChildren();
+  setText("resetRequestId", "");
+  setText("resetFeedback", "");
+  $("#resetConfirmPhone").value = "";
+  updateResetAvailability();
+}
+
+function renderResetSummary(summary) {
+  const container = $("#resetSummary");
+  container.replaceChildren();
+  const title = document.createElement("p");
+  title.textContent = `${summary.dry_run ? "Previsualización" : "Reinicio completado"}: ${summary.phone_number}`;
+  const list = document.createElement("dl");
+  list.className = "resetCounts";
+  const fields = {
+    conversations_found: "Conversaciones encontradas",
+    conversations_closed: summary.dry_run ? "Conversaciones por cerrar" : "Conversaciones cerradas",
+    handoffs_resolved: summary.dry_run ? "Casos por resolver" : "Casos resueltos",
+    inbox_jobs_completed: summary.dry_run ? "Tareas de entrada por retirar" : "Tareas de entrada retiradas",
+    pending_outbox_suppressed: "Salidas pendientes sujetas al bloqueo",
+    customer_name_cleared: summary.dry_run ? "Se limpiará el nombre" : "Nombre limpiado",
+  };
+  for (const [key, label] of Object.entries(fields)) {
+    const term = document.createElement("dt"); term.textContent = label;
+    const value = document.createElement("dd");
+    value.textContent = typeof summary[key] === "boolean" ? (summary[key] ? "Sí" : "No") : summary[key];
+    list.append(term, value);
+  }
+  container.append(title, list);
+  setText("resetRequestId", `request_id: ${summary.request_id}`);
+}
+
+async function previewReset(event) {
+  event.preventDefault();
+  if (state.resetBusy) return;
+  invalidateResetPreview();
+  state.resetBusy = true;
+  $("#previewReset").disabled = true;
+  const input = $("#resetPhone").value.trim();
+  try {
+    const summary = await requestJson("/api/admin/conversations/reset", {
+      method: "POST", headers: sessionHeaders(), body: JSON.stringify({ phone_number: input, dry_run: true }),
+    });
+    if ($("#resetPhone").value.trim() !== input || state.agent?.role !== "ADMIN") return;
+    state.resetPreview = { ...summary, input };
+    renderResetSummary(summary);
+    feedback("resetFeedback", summary.customer_id === null ? "No existe un cliente con ese teléfono." : "Revisa los conteos, escribe el motivo y confirma el teléfono.");
+  } catch (error) {
+    feedback("resetFeedback", error.message, true);
+  } finally {
+    state.resetBusy = false;
+    $("#previewReset").disabled = false;
+    updateResetAvailability();
+  }
+}
+
+async function executeReset(event) {
+  event.preventDefault();
+  updateResetAvailability();
+  if ($("#executeReset").disabled) return;
+  const phone = state.resetPreview.phone_number;
+  state.resetBusy = true;
+  $("#previewReset").disabled = true;
+  updateResetAvailability();
+  try {
+    const summary = await requestJson("/api/admin/conversations/reset", {
+      method: "POST", headers: sessionHeaders(),
+      body: JSON.stringify({ phone_number: phone, dry_run: false, reason: $("#resetReason").value.trim() }),
+    });
+    state.resetPreview = null;
+    renderResetSummary(summary);
+    feedback("resetFeedback", "Reinicio completado. El historial se conserva.");
+  } catch (error) {
+    feedback("resetFeedback", error.message, true);
+  } finally {
+    state.resetBusy = false;
+    $("#previewReset").disabled = false;
+    updateResetAvailability();
   }
 }
 
@@ -1025,6 +1296,21 @@ function bindUi() {
     event.preventDefault();
     login();
   });
+  $("#refreshAgents").addEventListener("click", loadAgents);
+  $("#agentStatusFilter").addEventListener("change", renderAgents);
+  $("#agentCreateForm").addEventListener("submit", createAgent);
+  $("#agentEditForm").addEventListener("submit", saveAgent);
+  $("#agentCredentialsForm").addEventListener("submit", saveAgentCredentials);
+  $("#cancelAgentEdit").addEventListener("click", () => { $("#agentEditForm").hidden = true; });
+  $("#cancelAgentCredentials").addEventListener("click", () => {
+    $("#agentCredentialsForm").hidden = true;
+    $("#agentCredentialsForm").reset();
+  });
+  $("#resetPreviewForm").addEventListener("submit", previewReset);
+  $("#resetExecuteForm").addEventListener("submit", executeReset);
+  $("#resetPhone").addEventListener("input", invalidateResetPreview);
+  $("#resetReason").addEventListener("input", updateResetAvailability);
+  $("#resetConfirmPhone").addEventListener("input", updateResetAvailability);
   $("#logout").addEventListener("click", logout);
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);

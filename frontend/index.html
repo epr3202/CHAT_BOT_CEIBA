@@ -34,6 +34,12 @@
         <button class="navItem" data-view="catalogsModule" title="Catálogos">
           <span class="icon">▤</span><span>Catálogos</span>
         </button>
+        <button class="navItem" data-view="agents" data-admin-only="true" title="Agentes" hidden>
+          <span class="icon">♙</span><span>Agentes</span>
+        </button>
+        <button class="navItem" data-view="tools" data-admin-only="true" title="Herramientas" hidden>
+          <span class="icon">⚙</span><span>Herramientas</span>
+        </button>
       </nav>
     </aside>
 
@@ -137,6 +143,81 @@
             </div>
             <div id="caseList"></div>
           </div>
+        </section>
+      </section>
+
+      <section class="view" id="agents" hidden>
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Agentes</h2>
+            <button id="refreshAgents" type="button">Actualizar</button>
+          </div>
+          <p id="agentsFeedback" role="status" aria-live="polite"></p>
+          <label>Mostrar
+            <select id="agentStatusFilter">
+              <option value="active">Activos</option>
+              <option value="inactive">Inactivos</option>
+              <option value="all">Todos</option>
+            </select>
+          </label>
+          <div class="tableScroll">
+            <table class="agentsTable">
+              <thead><tr><th>Nombre</th><th>Rol</th><th>Documento</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr></thead>
+              <tbody id="agentRows"></tbody>
+            </table>
+          </div>
+        </section>
+        <form id="agentCreateForm" class="panel managementForm">
+          <h3>Crear agente</h3>
+          <div class="formGrid">
+            <label>Nombre<input id="agentCreateName" required minlength="2" maxlength="128" autocomplete="off" /></label>
+            <label>Rol<select id="agentCreateRole"><option value="AGENT">AGENT</option><option value="ADMIN">ADMIN</option></select></label>
+          </div>
+          <div class="actions"><button type="submit" class="primary">Crear agente</button></div>
+        </form>
+        <form id="agentEditForm" class="panel managementForm" hidden>
+          <h3 id="agentEditTitle">Editar agente</h3>
+          <div class="formGrid">
+            <label>Nombre<input id="agentEditName" required minlength="2" maxlength="128" /></label>
+            <label>Rol<select id="agentEditRole"><option value="AGENT">AGENT</option><option value="ADMIN">ADMIN</option></select></label>
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary">Guardar cambios</button>
+            <button type="button" id="cancelAgentEdit">Cancelar</button>
+          </div>
+        </form>
+        <form id="agentCredentialsForm" class="panel managementForm" hidden>
+          <h3 id="agentCredentialsTitle">Credenciales del agente</h3>
+          <p>Asignar credenciales cierra las sesiones del agente.</p>
+          <div class="formGrid">
+            <label>Documento<input id="agentDocument" required minlength="4" maxlength="64" autocomplete="off" /></label>
+            <label>PIN nuevo<input id="agentPin" type="password" required minlength="6" maxlength="72" autocomplete="new-password" /></label>
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary">Guardar credenciales</button>
+            <button type="button" id="cancelAgentCredentials">Cancelar</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="view" id="tools" hidden>
+        <section class="panel">
+          <div class="panelHeader"><h2>Reiniciar conversación</h2></div>
+          <p>Previsualiza los cambios para un teléfono antes de confirmar el reinicio. El historial se conserva.</p>
+          <form id="resetPreviewForm" class="managementForm">
+            <label>Teléfono<input id="resetPhone" type="tel" placeholder="+573001112233" required autocomplete="off" /></label>
+            <div class="actions"><button type="submit" id="previewReset">Previsualizar</button></div>
+          </form>
+          <p id="resetFeedback" role="status" aria-live="polite"></p>
+          <div id="resetSummary" aria-live="polite"></div>
+          <form id="resetExecuteForm" class="managementForm">
+            <label>Motivo del reinicio<textarea id="resetReason" required maxlength="300" rows="2"></textarea></label>
+            <label>Escribe de nuevo el teléfono de la previsualización para confirmar
+              <input id="resetConfirmPhone" type="tel" required autocomplete="off" />
+            </label>
+            <div class="actions"><button type="submit" id="executeReset" class="danger" disabled>Reiniciar</button></div>
+          </form>
+          <p id="resetRequestId"></p>
         </section>
       </section>
 
