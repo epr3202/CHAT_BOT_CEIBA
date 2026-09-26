@@ -6,7 +6,7 @@
     <title>La Ceiba Club House | Operación del chat</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
+  <body class="loggedOut">
     <aside class="sidebar">
       <div class="brand">
         <div class="brandMark">LC</div>
@@ -15,7 +15,7 @@
           <span>Operación del chat</span>
         </div>
       </div>
-      <nav class="nav">
+      <nav class="nav" hidden>
         <button class="navItem active" data-view="admin" title="Conversaciones">
           <span class="icon">▦</span><span>Conversaciones</span>
         </button>
@@ -38,19 +38,38 @@
     </aside>
 
     <main class="shell">
-      <header class="topbar">
+      <header class="topbar" hidden>
         <div>
           <h1>Seguimiento administrativo</h1>
           <p>Clientes, estado, asignaciones y casos humanos con lo disponible hoy.</p>
         </div>
         <div class="statusStrip">
+          <span id="agentRoleState" class="pill neutral">Sesión requerida</span>
+          <button id="logout">Cerrar sesión</button>
+          <button id="checkHealth">Verificar API</button>
+          <button id="refreshCases">Actualizar casos</button>
           <span id="agentState" class="pill neutral">Sin asesor</span>
           <span id="apiState" class="pill neutral">API sin verificar</span>
           <button id="refreshAll" class="iconButton" title="Actualizar">↻</button>
         </div>
       </header>
 
-      <section class="view active" id="admin">
+      <section class="view active" id="loginView">
+        <form id="loginForm" class="panel loginPanel">
+          <div class="panelHeader"><h2>Ingresar al panel</h2></div>
+          <p>La Ceiba Club House</p>
+          <label>Documento
+            <input id="documentId" type="text" autocomplete="username" placeholder="Documento registrado" required />
+          </label>
+          <label>PIN
+            <input id="pin" type="password" autocomplete="current-password" placeholder="PIN" required />
+          </label>
+          <p id="loginError" class="formError" role="alert" aria-live="polite"></p>
+          <button id="login" class="primary" type="submit">Ingresar</button>
+        </form>
+      </section>
+
+      <section class="view" id="admin" hidden>
         <div class="metrics">
           <article>
             <span>API</span>
@@ -72,33 +91,6 @@
 
         <section class="panel">
           <div class="panelHeader">
-            <h2>Acceso</h2>
-            <span id="agentRoleState">Sesión requerida</span>
-          </div>
-          <div class="formGrid">
-            <label>
-              Cédula
-              <input id="documentId" type="text" autocomplete="username" placeholder="Cédula registrada" />
-            </label>
-            <label>
-              PIN
-              <input id="pin" type="password" autocomplete="current-password" placeholder="PIN" />
-            </label>
-            <label>
-              Filtro de clientes
-              <input id="caseSearch" type="search" autocomplete="off" placeholder="Nombre, teléfono, motivo o conversación" />
-            </label>
-          </div>
-          <div class="actions">
-            <button id="login" class="primary">Ingresar</button>
-            <button id="logout">Cerrar sesión</button>
-            <button id="checkHealth">Verificar API</button>
-            <button id="refreshCases">Actualizar casos</button>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panelHeader">
             <h2>Conversaciones</h2>
             <div class="segmented caseFilters">
               <button class="caseFilter active" data-case-status="ALL">Todos</button>
@@ -108,6 +100,10 @@
             </div>
           </div>
           <div class="caseToolbar">
+            <label>
+              Filtro de clientes
+              <input id="caseSearch" type="search" autocomplete="off" placeholder="Nombre, teléfono, motivo o conversación" />
+            </label>
             <label>
               Estado
               <select id="conversationStateFilter">

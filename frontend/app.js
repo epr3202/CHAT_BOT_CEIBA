@@ -30,6 +30,8 @@ const state = {
   sessionToken: sessionStorage.getItem(sessionTokenStorageKey) || "",
   documentId: "",
   agent: null,
+  currentView: localStorage.getItem("ceiba.currentView") || "admin",
+  environment: null,
   metaSecret: sessionStorage.getItem("ceiba.metaSecret") || "",
   currentStatus: localStorage.getItem(currentStatusStorageKey) || "PENDING",
   caseStatus: localStorage.getItem(caseStatusStorageKey) || "ALL",
@@ -85,6 +87,45 @@ function renderAdminTokenRequired() {
   setEmpty(container, "Ingresa con cédula y PIN para cargar conversaciones.");
 }
 
+function simulationVisible() {
+  if (state.environment) return ["development", "testing"].includes(state.environment);
+  return ["localhost", "127.0.0.1"].includes(location.hostname);
+}
+
+function applyAuthState() {
+  const authenticated = Boolean(state.sessionToken && state.agent);
+  document.body.classList.toggle("loggedOut", !authenticated);
+  $(".nav").hidden = !authenticated;
+  $(".topbar").hidden = !authenticated;
+  $$(".navItem").forEach((button) => {
+    button.hidden = !authenticated
+      || (button.dataset.adminOnly === "true" && state.agent?.role !== "ADMIN")
+      || (button.dataset.view === "simulator" && !simulationVisible());
+  });
+  const selected = $$(".navItem").find((button) =>
+    button.dataset.view === state.currentView && !button.hidden
+  );
+  if (authenticated && !selected) state.currentView = "admin";
+  $$(".view").forEach((view) => {
+    const visible = authenticated ? view.id === state.currentView : view.id === "loginView";
+    view.hidden = !visible;
+    view.classList.toggle("active", visible);
+  });
+  $$(".navItem").forEach((button) =>
+    button.classList.toggle("active", authenticated && button.dataset.view === state.currentView)
+  );
+}
+
+function selectView(view) {
+  const button = $$(".navItem").find((item) => item.dataset.view === view);
+  if (!state.agent || !state.sessionToken || !button || button.hidden) return;
+  state.currentView = view;
+  localStorage.setItem("ceiba.currentView", view);
+  applyAuthState();
+  if (view === "catalogsModule") loadCatalogCategories();
+  if (view === "paymentEvidence") loadPaymentEvidence();
+}
+
 async function requestJson(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
@@ -97,11 +138,16 @@ async function requestJson(path, options = {}) {
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
-    const detail = typeof payload === "object" && payload !== null ? payload.detail || JSON.stringify(payload) : payload;
-    if (response.status === 401 && path !== "/api/admin/login") {
+    let detail = typeof payload === "object" && payload !== null ? payload.detail || JSON.stringify(payload) : payload;
+    if (Array.isArray(detail)) detail = detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
+    if (response.status === 401) {
       clearSession();
+      applyAuthState();
     }
-    throw new Error(detail || `HTTP ${response.status}`);
+    const error = new Error(detail || `HTTP ${response.status}`);
+    error.status = response.status;
+    error.retryAfter = response.headers.get("Retry-After");
+    throw error;
   }
   return payload;
 }
@@ -338,9 +384,10 @@ async function resolveAgentIdentity() {
     setText("agentState", `${state.agent.name}`);
     setText("agentRoleState", state.agent.role);
   } catch (error) {
-    state.agent = null;
+    clearSession();
     setText("agentState", "Sesión inválida");
     setText("agentRoleState", "Sesión requerida");
+    applyAuthState();
     logEvent(`Sesión falló: ${error.message}`);
   }
 }
@@ -349,9 +396,11 @@ async function login() {
   saveLocalConfig();
   const pin = $("#pin").value;
   if (!state.documentId || !pin) {
-    logEvent("Cédula y PIN son obligatorios.");
+    setText("loginError", "Documento y PIN son obligatorios.");
     return;
   }
+  $("#login").disabled = true;
+  setText("loginError", "");
   try {
     const payload = await requestJson("/api/admin/login", {
       method: "POST",
@@ -363,10 +412,17 @@ async function login() {
     $("#pin").value = "";
     setText("agentState", state.agent.name);
     setText("agentRoleState", state.agent.role);
+    applyAuthState();
     logEvent(`Sesión iniciada para ${state.agent.name}.`);
     await refreshAll();
   } catch (error) {
-    logEvent(`Login falló: ${error.message}`);
+    const seconds = Number(error.retryAfter);
+    const retry = error.status === 429
+      ? (seconds > 0 ? ` Reintenta en ${Math.ceil(seconds / 60)} min.` : " Reintenta más tarde.")
+      : "";
+    setText("loginError", `${error.message}${retry}`);
+  } finally {
+    $("#login").disabled = false;
   }
 }
 
@@ -374,6 +430,15 @@ function clearSession() {
   state.sessionToken = "";
   state.agent = null;
   sessionStorage.removeItem(sessionTokenStorageKey);
+  state.adminCases = [];
+  state.paymentEvidence = [];
+  state.catalogCategories = [];
+  state.visibleConversationIds.clear();
+  $("#pin").value = "";
+  closeSummaryModal();
+  for (const id of ["caseList", "handoffList", "paymentEvidenceList", "catalogCategoryList"]) {
+    document.getElementById(id)?.replaceChildren();
+  }
   setText("agentState", "Sin asesor");
   setText("agentRoleState", "Sesión requerida");
 }
@@ -387,6 +452,7 @@ async function logout() {
     logEvent(`Logout falló: ${error.message}`);
   } finally {
     clearSession();
+    applyAuthState();
     renderAdminTokenRequired();
   }
 }
@@ -408,6 +474,8 @@ function setApiState(kind, text) {
 async function checkHealth() {
   try {
     const data = await requestJson("/api/health");
+    state.environment = data.environment || null;
+    applyAuthState();
     setApiState("ok", data.status === "ok" ? "API ok" : "API responde");
   } catch (error) {
     setApiState("bad", "API caída");
@@ -917,6 +985,7 @@ async function returnHandoff(handoffId) {
 async function refreshAll() {
   await checkHealth();
   await resolveAgentIdentity();
+  applyAuthState();
   if (!hasOperationToken()) {
     renderAdminTokenRequired();
     return;
@@ -930,14 +999,7 @@ async function refreshAll() {
 
 function bindUi() {
   $$(".navItem").forEach((button) => {
-    button.addEventListener("click", () => {
-      $$(".navItem").forEach((item) => item.classList.remove("active"));
-      $$(".view").forEach((view) => view.classList.remove("active"));
-      button.classList.add("active");
-      $(`#${button.dataset.view}`).classList.add("active");
-      if (button.dataset.view === "catalogsModule") loadCatalogCategories();
-      if (button.dataset.view === "paymentEvidence") loadPaymentEvidence();
-    });
+    button.addEventListener("click", () => selectView(button.dataset.view));
   });
 
   $$(".quickMessages button").forEach((button) => {
@@ -959,7 +1021,10 @@ function bindUi() {
     });
   });
 
-  $("#login").addEventListener("click", login);
+  $("#loginForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    login();
+  });
   $("#logout").addEventListener("click", logout);
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);
@@ -998,5 +1063,6 @@ function bindUi() {
 
 applyConfigToForm();
 bindUi();
+applyAuthState();
 refreshAll();
 setInterval(refreshVisibleHandoffMessages, state.chatPollIntervalMs);

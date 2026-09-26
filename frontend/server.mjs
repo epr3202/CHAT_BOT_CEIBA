@@ -102,6 +102,8 @@ async function proxy(request, response, targetPath) {
   };
   const contentDisposition = upstream.headers.get("content-disposition");
   if (contentDisposition) responseHeaders["Content-Disposition"] = contentDisposition;
+  const retryAfter = upstream.headers.get("retry-after");
+  if (retryAfter) responseHeaders["Retry-After"] = retryAfter;
   response.writeHead(upstream.status, responseHeaders);
   response.end(payload);
 }
