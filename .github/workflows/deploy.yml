@@ -50,6 +50,7 @@ jobs:
       AI_CONFIDENCE_UNCERTAIN: "0.50"
       ENVIRONMENT: testing
       LOG_LEVEL: INFO
+      QUALITY_STAGE: suite
 
     steps:
       - uses: actions/checkout@v4

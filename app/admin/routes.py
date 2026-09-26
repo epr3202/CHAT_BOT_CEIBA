@@ -53,7 +53,7 @@ from app.channel.delivery import human_context
 from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
-from app.config.settings import Settings
+from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation, KnowledgeEntry
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
@@ -957,7 +957,7 @@ async def _verify_pin_off_loop(pin: str, password_hash: str) -> bool:
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, session: DbSession) -> LoginPayload:
     document_id = body.document_id.strip()
-    settings: Settings = request.app.state.settings
+    settings: Settings = getattr(request.app.state, "settings", None) or get_settings()
     recent_failures = await session.scalar(
         text(
             "SELECT count(*) FROM audit_event "
