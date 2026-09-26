@@ -331,12 +331,6 @@ async def test_slice1_direct_and_critical_handoffs_create_summary_audit_and_stat
         respx_mock,
         [
             classification_payload(
-                "HUMAN_REQUEST",
-                needs_human=True,
-                handoff_reason="CUSTOMER_REQUEST",
-                requested_action="CREATE_HANDOFF",
-            ),
-            classification_payload(
                 "EMERGENCY",
                 needs_human=True,
                 handoff_reason="URGENT_EVENT",
@@ -355,6 +349,7 @@ async def test_slice1_direct_and_critical_handoffs_create_summary_audit_and_stat
     )
     human_conversation = await latest_conversation(phone_human)
     human_handoffs = await handoffs_for_conversation(human_conversation.id)
+    assert respx_mock.calls.call_count == 0  # R4: no simulated AI response consumed.
     assert human_conversation.state == "WAITING_FOR_HUMAN"
     assert human_conversation.last_question_code == "RESP-HANDOFF-001"
     assert len(human_handoffs) == 1

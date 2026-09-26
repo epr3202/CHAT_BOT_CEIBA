@@ -2691,3 +2691,10 @@ Su aprobación implica que:
 * las operaciones críticas tienen controles;
 * los errores tienen rutas de recuperación;
 * el MVP puede pasar a requerimientos funcionales y arquitectura sin redefinir la experiencia conversacional.
+
+
+## 2026-09-08 — R4 solicitud explícita de asesor
+
+Implementación acotada de FL-015: el catálogo textual R4 se reconoce antes de IA y usa la transferencia vigente bajo R2. Casos ya humanos/deshabilitados permanecen silenciosos. Se conservan resumen existente y bandeja local; no se certifica notificación externa, atención efectiva ni todas las variantes de lenguaje del flujo funcional.
+
+[Contrato y validación R4](../remediation/r4-h05-explicit-human-2026-09-08/README.md).

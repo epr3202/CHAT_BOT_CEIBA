@@ -327,6 +327,7 @@ async def test_post_duplicate_payload_creates_one_message_and_one_outbox(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("unrecognized_event_type_http")
 async def test_second_message_same_customer_reuses_customer_and_conversation(
     client: AsyncClient,
 ) -> None:

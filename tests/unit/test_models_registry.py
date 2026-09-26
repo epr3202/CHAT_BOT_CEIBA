@@ -22,6 +22,7 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
         "event_service_request",
         "handoff",
         "holiday",
+        "inbox_job",
         "knowledge_entry",
         "lead",
         "message",

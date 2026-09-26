@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.audit.models import AuditEvent
+from app.channel.delivery import automatic_context
 from app.channel.models import Message, Outbox
 from app.channel.outbound import WhatsAppOutboundClient
 from app.channel.states import Channel
@@ -106,6 +107,7 @@ async def seed_pending_outbox(
             await session.flush()
 
             outbox = Outbox(
+                delivery_context=automatic_context(conversation, "TEMPLATE"),
                 conversation_id=conversation.id,
                 message_id=inbound_message.id,
                 channel=Channel.WHATSAPP,

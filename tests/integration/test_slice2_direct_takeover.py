@@ -385,6 +385,7 @@ async def test_tc_take_004_005_006_rejects_non_eligible_states(client: AsyncClie
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("unrecognized_event_type_http")
 async def test_tc_take_007_008_webhook_during_human_active_is_visible_and_idempotent(
     client: AsyncClient,
 ) -> None:
@@ -427,6 +428,7 @@ async def test_tc_take_007_008_webhook_during_human_active_is_visible_and_idempo
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("unrecognized_event_type_http")
 async def test_taken_conversation_survives_client_restart_and_new_customer_message() -> None:
     async for first_client in app_client():
         agent = await create_agent(first_client, "Persistente", document_id="11223344")

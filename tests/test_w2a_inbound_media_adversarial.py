@@ -21,12 +21,13 @@ from app.ai.schemas import IntentClassification
 from app.audit.models import AuditEvent
 from app.channel import media as media_module
 from app.channel.inbound import process_whatsapp_webhook
-from app.channel.models import Message, Outbox
+from app.channel.models import InboxJob, Message, Outbox
 from app.channel.schemas import InboundWhatsAppMessage, MediaContent, UnsupportedContent
 from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.handoff.models import Handoff
+from app.payment.models import PaymentEvidence
 from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries
 from tests.integration.helpers import (
@@ -637,8 +638,19 @@ async def test_tc_media_016_payment_image_uses_existing_payment_handoff(
     assert calls.general == []
     assert len(result.handoffs) == 1
     assert result.handoffs[0].reason == "PAYMENT_REVIEW"
-    assert result.conversation.last_question_code == "RESP-PAYMENT-002"
-    assert len(result.outbox) == 1
+    assert result.conversation.last_question_code is None
+    assert result.outbox == []
+    assert result.conversation.state == "WAITING_FOR_HUMAN"
+    assert result.conversation.bot_enabled is True
+    assert result.handoffs[0].status == "PENDING" and result.handoffs[0].priority == "URGENT"
+    assert result.ai_execution_count == 0
+    async with sessionmaker() as session:
+        items = list((await session.scalars(select(PaymentEvidence))).all())
+        assert len(items) == 1 and items[0].message_id == result.messages[0].id
+        assert items[0].download_status == "PENDING"
+        assert items[0].review_status == "PENDING_REVIEW"
+        job = await session.scalar(select(InboxJob))
+        assert job.status == "COMPLETED" and job.completion_reason.startswith("SILENT_")
     assert non_text_audits(result)[0].new_value["payment_context"] is True
 
 

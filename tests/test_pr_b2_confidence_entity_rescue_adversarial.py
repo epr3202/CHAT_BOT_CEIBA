@@ -334,6 +334,7 @@ async def test_tc_b2_004_probable_classification_uses_normal_trusted_path(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("unrecognized_event_type_http")
 async def test_tc_b2_005_rejects_non_normalizable_event_type(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,

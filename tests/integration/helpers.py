@@ -38,6 +38,17 @@ def current_test_database_url() -> str:
     return os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL") or DATABASE_URL
 
 
+def configure_test_database(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Select the explicit test destination before settings or engines are created."""
+    database_url = os.environ.get("TEST_DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("TEST_DATABASE_URL must be explicitly supplied for test preparation")
+    assert_safe_test_database_url(database_url)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    return database_url
+
+
 def assert_safe_test_database_url(database_url: str | None = None) -> None:
     database_url = database_url or current_test_database_url()
     database_name = make_url(database_url).database or ""
@@ -89,7 +100,7 @@ async def reset_test_database(database_url: str | None = None) -> async_sessionm
 
 
 async def configure_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
+    configure_test_database(monkeypatch)
     monkeypatch.setenv("DB_POOL_SIZE", "5")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "5")
     monkeypatch.setenv("ENVIRONMENT", "testing")

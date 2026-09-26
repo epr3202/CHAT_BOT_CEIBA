@@ -19,6 +19,7 @@ from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
 from app.catalog.models import CatalogAsset, CatalogEventTypeMap, CatalogSend
+from app.channel.delivery import automatic_context
 from app.channel.inbound import process_whatsapp_webhook
 from app.channel.media import sha256_file
 from app.channel.models import Message, Outbox
@@ -37,6 +38,7 @@ from tests.integration.helpers import (
     app_client,
     bootstrap_agent,
     cleanup_test_environment,
+    configure_test_database,
     database_sessionmaker,
     login_headers,
     reset_test_database,
@@ -94,7 +96,7 @@ class FakeWhatsAppAdapter:
 
 @pytest.fixture(autouse=True)
 async def test_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncIterator[None]:
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test")
+    configure_test_database(monkeypatch)
     monkeypatch.setenv("DB_POOL_SIZE", "5")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "5")
     monkeypatch.setenv("ENVIRONMENT", "testing")
@@ -123,10 +125,12 @@ async def test_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> A
     monkeypatch.setenv("HUMAN_HOURS_END", "23:59")
     monkeypatch.setenv("CATALOG_STORAGE_DIR", str(tmp_path))
     get_settings.cache_clear()
-    sessionmaker = await reset_test_database()
-    await approve_base_templates(sessionmaker)
-    yield
-    await cleanup_test_environment()
+    try:
+        sessionmaker = await reset_test_database()
+        await approve_base_templates(sessionmaker)
+        yield
+    finally:
+        await cleanup_test_environment()
 
 
 @pytest.fixture
@@ -460,6 +464,7 @@ async def seed_document_outbox(
             customer = await session.get(Customer, conversation.customer_id)
             assert customer is not None
             outbox = Outbox(
+                delivery_context=automatic_context(conversation, "CATALOG"),
                 conversation_id=conversation.id,
                 message_id=inbound_id,
                 channel=Channel.WHATSAPP,

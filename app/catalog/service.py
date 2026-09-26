@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
 from app.catalog.models import CatalogAsset, CatalogEventTypeMap, CatalogSend
+from app.channel.delivery import automatic_context, handoff_context
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.conversation.knowledge import KnowledgeRenderError, render_response
@@ -172,13 +173,14 @@ async def enqueue_catalog_unavailable_response(
         trigger="EXPLICIT_REQUEST",
     )
     if enqueued:
-        await create_catalog_not_available_handoff(
+        notice_case = await create_catalog_not_available_handoff(
             session,
             conversation,
             customer,
             event_type,
             request_id,
         )
+        enqueued.delivery_context = await handoff_context(session, conversation, notice_case)
     return CatalogRequestResult(
         CatalogRequestOutcome.UNAVAILABLE if enqueued else CatalogRequestOutcome.HANDOFF,
         event_type,
@@ -191,7 +193,7 @@ async def create_catalog_not_available_handoff(
     customer: Customer,
     event_type: str,
     request_id: str | None,
-) -> None:
+) -> Handoff:
     existing = await session.scalar(
         select(Handoff)
         .where(
@@ -212,15 +214,14 @@ async def create_catalog_not_available_handoff(
             detail=detail,
             last_messages_limit=5,
         )
-        session.add(
-            Handoff(
-                conversation_id=conversation.id,
-                reason="CATALOG_NOT_AVAILABLE",
-                priority="NORMAL",
-                summary=summary,
-                status="PENDING",
-            )
+        existing = Handoff(
+            conversation_id=conversation.id,
+            reason="CATALOG_NOT_AVAILABLE",
+            priority="NORMAL",
+            summary=summary,
+            status="PENDING",
         )
+        session.add(existing)
     conversation.pending_action = "WAIT_FOR_HUMAN"
     conversation.bot_enabled = False
     if conversation.state != ConversationState.WAITING_FOR_HUMAN.value:
@@ -242,6 +243,7 @@ async def create_catalog_not_available_handoff(
             "event_type": event_type,
         },
     )
+    return existing
 
 
 async def enqueue_catalogs_for_event_type(
@@ -309,6 +311,7 @@ async def enqueue_catalogs_for_event_type(
         try:
             async with session.begin_nested():
                 outbox = Outbox(
+                    delivery_context=automatic_context(conversation, "CATALOG"),
                     conversation_id=conversation.id,
                     message_id=inbound_message.id,
                     channel=Channel.WHATSAPP,
@@ -385,7 +388,7 @@ async def enqueue_template_text(
     *,
     fallback_response_codes: tuple[str, ...] = (),
     trigger: str | None = None,
-) -> bool:
+) -> Outbox | None:
     attempted_codes = tuple(dict.fromkeys((response_code, *fallback_response_codes)))
     for current_response_code in attempted_codes:
         try:
@@ -407,17 +410,17 @@ async def enqueue_template_text(
             )
             continue
         conversation.last_question_code = current_response_code
-        session.add(
-            Outbox(
-                conversation_id=conversation.id,
-                message_id=inbound_message.id,
-                channel=Channel.WHATSAPP,
-                recipient_phone_number=customer.phone_number,
-                payload={"type": "text", "text": {"body": body}},
-                status="PENDING",
-            )
+        outbox = Outbox(
+            delivery_context=automatic_context(conversation, "TEMPLATE"),
+            conversation_id=conversation.id,
+            message_id=inbound_message.id,
+            channel=Channel.WHATSAPP,
+            recipient_phone_number=customer.phone_number,
+            payload={"type": "text", "text": {"body": body}},
+            status="PENDING",
         )
-        return True
+        session.add(outbox)
+        return outbox
 
     await create_template_unavailable_handoff(
         session,
@@ -428,7 +431,7 @@ async def enqueue_template_text(
         request_id,
         trigger,
     )
-    return False
+    return None
 
 
 async def create_template_unavailable_handoff(

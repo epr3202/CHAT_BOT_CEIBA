@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 import structlog.testing
@@ -260,7 +261,7 @@ async def test_unregistered_variable_uses_controlled_render_failure_path(
 
     monkeypatch.setattr(knowledge, "get_latest_response", fake_get_latest_response)
     session = Mock()
-    conversation = SimpleNamespace(id=101, last_question_code=None)
+    conversation = SimpleNamespace(id=101, last_question_code=None, automation_epoch=uuid4())
     customer = SimpleNamespace(phone_number="+573001112233")
     inbound_message = SimpleNamespace(id=202)
 
