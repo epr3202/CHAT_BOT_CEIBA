@@ -22,9 +22,10 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import cast, func, or_, select, text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.ownership import (
@@ -95,6 +96,17 @@ class CreateAgentRequest(BaseModel):
     role: Literal["ADMIN", "AGENT"] = "AGENT"
 
 
+class UpdateAgentRequest(BaseModel):
+    name: str | None = Field(None, min_length=2, max_length=128)
+    role: Literal["ADMIN", "AGENT"] | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> UpdateAgentRequest:
+        if self.name is None and self.role is None:
+            raise ValueError("Provide name or role")
+        return self
+
+
 class AgentCredentialsRequest(BaseModel):
     document_id: str = Field(min_length=4, max_length=64)
     pin: str = Field(min_length=PIN_MIN_LENGTH, max_length=256)
@@ -110,6 +122,8 @@ class AgentPayload(BaseModel):
     name: str
     role: Literal["ADMIN", "AGENT"]
     active: bool
+    document_id: str | None
+    has_credentials: bool
     created_at: datetime
 
 
@@ -1087,7 +1101,10 @@ async def create_agent(
     async with session.begin():
         agent = Agent(name=body.name, role=body.role, active=True)
         session.add(agent)
-        await session.flush()
+        try:
+            await session.flush()
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="Agent name already exists") from exc
         session.add(
             AuditEvent(
                 actor=admin_name,
@@ -1104,11 +1121,14 @@ async def create_agent(
                 request_id=None,
             )
         )
+    return agent_payload(agent)
+
+
+def agent_payload(agent: Agent) -> AgentPayload:
     return AgentPayload(
-        id=agent.id,
-        name=agent.name,
-        role=agent.role,
-        active=agent.active,
+        id=agent.id, name=agent.name, role=agent.role, active=agent.active,
+        document_id=agent.document_id,
+        has_credentials=bool(agent.document_id and agent.password_hash),
         created_at=agent.created_at,
     )
 
@@ -1120,16 +1140,92 @@ async def list_agents(
 ) -> list[AgentPayload]:
     await authenticated_admin(session, authorization)
     agents = await session.scalars(select(Agent).order_by(Agent.name.asc()))
-    return [
-        AgentPayload(
-            id=agent.id,
-            name=agent.name,
-            role=agent.role,
-            active=agent.active,
-            created_at=agent.created_at,
+    return [agent_payload(agent) for agent in agents.all()]
+
+
+async def _count_other_active_admins(session: AsyncSession, agent_id: int) -> int:
+    # Lock in the same order before locking the target in PATCH/deactivate. Recount
+    # after waiting so concurrent demotions/deactivations cannot remove every admin.
+    await session.execute(
+        select(Agent.id).where(Agent.role == "ADMIN", Agent.active.is_(True))
+        .order_by(Agent.id).with_for_update()
+    )
+    return await session.scalar(
+        select(func.count()).select_from(Agent).where(
+            Agent.role == "ADMIN", Agent.active.is_(True), Agent.id != agent_id,
         )
-        for agent in agents.all()
-    ]
+    ) or 0
+
+
+@router.get("/agents/{agent_id}")
+async def get_agent(
+    agent_id: int,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> AgentPayload:
+    await authenticated_admin(session, authorization)
+    agent = await session.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent_payload(agent)
+
+
+@router.patch("/agents/{agent_id}")
+async def update_agent(
+    agent_id: int,
+    body: UpdateAgentRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> AgentPayload:
+    admin = await authenticated_admin(session, authorization)
+    admin_name = admin.name
+    await session.rollback()
+    async with session.begin():
+        other_admins = await _count_other_active_admins(session, agent_id)
+        agent = await session.get(Agent, agent_id, with_for_update=True)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if agent.active and agent.role == "ADMIN" and body.role == "AGENT" and not other_admins:
+            raise HTTPException(status_code=409, detail="Cannot demote the last active admin")
+        changes = body.model_dump(exclude_none=True)
+        old_value = {field: getattr(agent, field) for field in changes}
+        for field, value in changes.items():
+            setattr(agent, field, value)
+        try:
+            await session.flush()
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="Agent name already exists") from exc
+        session.add(AuditEvent(
+            actor=admin_name, action="AGENT_UPDATED", entity="agent",
+            old_value={"agent_id": agent.id, **old_value},
+            new_value={"agent_id": agent.id, **changes},
+            reason="Admin updated agent", request_id=None,
+        ))
+    return agent_payload(agent)
+
+
+@router.post("/agents/{agent_id}/activate")
+async def activate_agent(
+    agent_id: int,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> AgentPayload:
+    admin = await authenticated_admin(session, authorization)
+    admin_name = admin.name
+    await session.rollback()
+    async with session.begin():
+        agent = await session.get(Agent, agent_id, with_for_update=True)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if not agent.active:
+            agent.active = True
+            session.add(AuditEvent(
+                actor=admin_name, action="AGENT_ACTIVATED", entity="agent",
+                old_value={"agent_id": agent.id, "active": False},
+                new_value={"agent_id": agent.id, "active": True},
+                reason="Admin activated agent", request_id=None,
+            ))
+    return agent_payload(agent)
 
 
 @router.post("/agents/{agent_id}/credentials")
@@ -1174,10 +1270,13 @@ async def deactivate_agent(
     admin_name = admin.name
     await session.rollback()
     async with session.begin():
+        other_admins = await _count_other_active_admins(session, agent_id)
         agent = await session.get(Agent, agent_id, with_for_update=True)
         if agent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
         was_active = agent.active
+        if was_active and agent.role == "ADMIN" and not other_admins:
+            raise HTTPException(status_code=409, detail="Cannot deactivate the last active admin")
         agent.active = False
         await revoke_sessions_for_agent(session, agent.id)
         active_conversation_count = await session.scalar(
