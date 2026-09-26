@@ -168,7 +168,7 @@ async def test_execute_resets_phone_for_new_conversation_without_deleting_histor
     assert summary.conversations_closed == 1
     assert summary.active_lead_links_cleared == 2
     assert summary.handoffs_resolved == 1
-    assert summary.pending_outbox_failed == 1
+    assert summary.pending_outbox_suppressed == 1
     assert summary.customer_name_cleared is True
     assert summary.audit_events_added == 1
 
@@ -203,10 +203,12 @@ async def test_execute_resets_phone_for_new_conversation_without_deleting_histor
         assert reset_audit is not None
         assert handoff.status == "RESOLVED"
         assert handoff.assigned_to is None
-        assert outbox.status == "FAILED"
-        assert outbox.last_error == "Cancelled by local conversation reset"
+        assert outbox.status == "PENDING"
+        assert outbox.last_error is None
+        assert handoff.resolved_at is not None
         assert reset_audit.request_id == "test-reset"
-        assert reset_audit.new_value["allow_production_phone"] is True
+        assert reset_audit.actor == "LOCAL_SCRIPT"
+        assert reset_audit.new_value["reason"] == reset_script.RESET_REASON
 
 
 async def test_unknown_phone_is_noop(
@@ -309,7 +311,7 @@ async def test_production_with_allow_flag_phone_and_execute_proceeds(
             conversations_closed=0,
             active_lead_links_cleared=0,
             handoffs_resolved=0,
-            pending_outbox_failed=0,
+            pending_outbox_suppressed=0,
             customer_name_cleared=False,
             audit_events_added=0,
             dry_run=dry_run,

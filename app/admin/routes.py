@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import secrets
 from collections.abc import AsyncIterator
+from dataclasses import asdict
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
@@ -28,6 +29,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.admin.conversation_reset import reset_conversation_by_phone
 from app.admin.ownership import (
     lock_human_case,
     require_case_owner,
@@ -85,6 +87,18 @@ class ReturnHandoffRequest(BaseModel):
 
 class ReassignRequest(BaseModel):
     agent_id: int
+
+
+class ResetConversationRequest(BaseModel):
+    phone_number: str
+    dry_run: bool = True
+    reason: str | None = Field(None, max_length=300)
+
+    @model_validator(mode="after")
+    def require_reason_for_execution(self) -> ResetConversationRequest:
+        if not self.dry_run and not (self.reason and self.reason.strip()):
+            raise ValueError("Reason is required for a reset")
+        return self
 
 
 class AgentMessageRequest(BaseModel):
@@ -1334,6 +1348,24 @@ async def list_handoffs(
         .order_by(Handoff.created_at.asc())
     )
     return [handoff_payload(handoff, customer) for handoff, customer in result.all()]
+
+
+@router.post("/conversations/reset")
+async def reset_conversation(
+    body: ResetConversationRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    admin = await authenticated_admin(session, authorization)
+    admin_name = admin.name
+    request_id = f"admin-reset-{uuid4()}"
+    await session.rollback()
+    async with session.begin():
+        summary = await reset_conversation_by_phone(
+            session, raw_phone_number=body.phone_number, dry_run=body.dry_run,
+            actor=admin_name, reason=body.reason, request_id=request_id,
+        )
+    return {**asdict(summary), "request_id": request_id}
 
 
 @router.get("/conversations")
