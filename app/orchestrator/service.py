@@ -3081,7 +3081,7 @@ def triplet_from_entity(entity: ExtractedEntity) -> EventDateTriplet:
     if not raw_value_has_explicit_year(entity.raw_value):
         return parse_customer_date_expression(
             entity.raw_value,
-            datetime.now(ZoneInfo("America/Bogota")).date(),
+            entity_today(),
         )
     if isinstance(value, dict):
         parsed_date = value.get("event_date")
@@ -3097,13 +3097,18 @@ def triplet_from_entity(entity: ExtractedEntity) -> EventDateTriplet:
         except ValueError:
             return parse_customer_date_expression(
                 entity.raw_value,
-                datetime.now(ZoneInfo("America/Bogota")).date(),
+                entity_today(),
             )
         return validate_event_date_triplet(parsed, None, "EXACT", entity.raw_value)
     return parse_customer_date_expression(
         entity.raw_value,
-        datetime.now(ZoneInfo("America/Bogota")).date(),
+        entity_today(),
     )
+
+
+def entity_today() -> date:
+    """Bogota calendar date used to anchor yearless customer dates; patched in tests."""
+    return datetime.now(ZoneInfo("America/Bogota")).date()
 
 
 def raw_value_has_explicit_year(raw_value: str) -> bool:

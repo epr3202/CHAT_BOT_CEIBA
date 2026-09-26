@@ -533,7 +533,10 @@ async def test_tc_collect_002_approximate_date_triplet(
 async def test_p0b_llm_past_year_for_yearless_raw_date_is_reanchored_to_future(
     sessionmaker_fixture: async_sessionmaker[AsyncSession],
     settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Explicit Bogota calendar date at the original regression's temporal anchor.
+    monkeypatch.setattr("app.orchestrator.service.entity_today", lambda: date(2026, 8, 13))
     async with sessionmaker_fixture() as session:
         async with session.begin():
             customer, conversation = await seed_conversation(session)
