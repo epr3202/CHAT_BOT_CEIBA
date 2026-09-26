@@ -41,9 +41,7 @@ async def lock_human_case(
     return conversation, cases
 
 
-def require_case_owner(
-    conversation: Conversation, cases: list[Handoff], agent_id: int,
-) -> Handoff:
+def require_owned_case(conversation: Conversation, cases: list[Handoff]) -> Handoff:
     if (
         conversation.state != "HUMAN_ACTIVE" or conversation.bot_enabled
         or len(cases) != 1 or cases[0].status != "TAKEN"
@@ -51,9 +49,16 @@ def require_case_owner(
         or conversation.assigned_agent_id != cases[0].assigned_agent_id
     ):
         raise assignment_conflict()
+    return cases[0]
+
+
+def require_case_owner(
+    conversation: Conversation, cases: list[Handoff], agent_id: int,
+) -> Handoff:
+    handoff = require_owned_case(conversation, cases)
     if conversation.assigned_agent_id != agent_id:
         raise HTTPException(status_code=403, detail="Case mutation is not permitted")
-    return cases[0]
+    return handoff
 
 
 def require_pending_case(conversation: Conversation, cases: list[Handoff]) -> Handoff:

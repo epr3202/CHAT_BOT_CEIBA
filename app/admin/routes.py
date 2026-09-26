@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.admin.ownership import (
     lock_human_case,
     require_case_owner,
+    require_owned_case,
     require_pending_case,
     require_unassigned_conversation,
 )
@@ -79,6 +80,10 @@ DIRECT_TAKE_ELIGIBLE_STATES = {
 
 class ReturnHandoffRequest(BaseModel):
     resolution: str = Field(min_length=1, max_length=500)
+
+
+class ReassignRequest(BaseModel):
+    agent_id: int
 
 
 class AgentMessageRequest(BaseModel):
@@ -1503,6 +1508,60 @@ async def take_conversation(
                 request_id=None,
             )
         )
+
+    return handoff_payload(handoff, customer)
+
+
+@router.post("/conversations/{conversation_id}/reassign")
+async def reassign_conversation(
+    conversation_id: int,
+    body: ReassignRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    agent = await authenticated_agent(session, authorization)
+    require_admin(agent)
+    actor = agent.name
+    await session.rollback()
+
+    async with session.begin():
+        conversation, cases = await lock_human_case(session, conversation_id=conversation_id)
+        handoff = require_owned_case(conversation, cases)
+        target = await session.get(Agent, body.agent_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if not target.active:
+            raise HTTPException(status_code=409, detail="Target agent is not active")
+        if target.id == conversation.assigned_agent_id:
+            raise HTTPException(status_code=409, detail="Agent already owns this case")
+
+        previous = {
+            "assigned_agent_id": handoff.assigned_agent_id,
+            "assigned_to": handoff.assigned_to,
+        }
+        handoff.assigned_agent_id = target.id
+        handoff.assigned_to = target.name
+        conversation.assigned_agent_id = target.id
+        session.add(
+            AuditEvent(
+                actor=actor,
+                action="HANDOFF_REASSIGNED",
+                entity="handoff",
+                old_value=previous | {
+                    "handoff_id": handoff.id,
+                    "conversation_id": conversation.id,
+                },
+                new_value={
+                    "handoff_id": handoff.id,
+                    "conversation_id": conversation.id,
+                    "assigned_agent_id": target.id,
+                    "assigned_to": target.name,
+                },
+                reason="Admin reassigned human case",
+                request_id=None,
+            )
+        )
+        customer = await session.get(Customer, conversation.customer_id)
 
     return handoff_payload(handoff, customer)
 
