@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import secrets
 from collections.abc import AsyncIterator
@@ -22,7 +23,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import cast, func, or_, select
+from sqlalchemy import cast, func, or_, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +46,7 @@ from app.catalog.models import CATALOG_SEND_MODES, CatalogAsset, CatalogEventTyp
 from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
+from app.config.settings import Settings
 from app.conversation.models import Conversation, KnowledgeEntry
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
@@ -940,14 +942,46 @@ async def replace_catalog_event_types(
     return await catalog_payload(session, asset)
 
 
+async def _verify_pin_off_loop(pin: str, password_hash: str) -> bool:
+    return await asyncio.get_running_loop().run_in_executor(None, verify_pin, pin, password_hash)
+
+
 @router.post("/login")
-async def login(body: LoginRequest, session: DbSession) -> LoginPayload:
+async def login(body: LoginRequest, request: Request, session: DbSession) -> LoginPayload:
     document_id = body.document_id.strip()
+    settings: Settings = request.app.state.settings
+    recent_failures = await session.scalar(
+        text(
+            "SELECT count(*) FROM audit_event "
+            "WHERE action = 'ADMIN_LOGIN_FAILED' "
+            "AND new_value->>'document_id' = :document_id "
+            "AND created_at > now() - make_interval(mins => :window)"
+        ),
+        {"document_id": document_id, "window": settings.admin_login_window_minutes},
+    ) or 0
+    if recent_failures >= settings.admin_login_max_failures:
+        session.add(
+            AuditEvent(
+                actor="UNKNOWN",
+                action="ADMIN_LOGIN_THROTTLED",
+                entity="agent",
+                old_value=None,
+                new_value={"document_id": document_id, "recent_failures": recent_failures},
+                reason="Login throttled",
+                request_id=None,
+            )
+        )
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts",
+            headers={"Retry-After": str(settings.admin_login_window_minutes * 60)},
+        )
     agent = await session.scalar(select(Agent).where(Agent.document_id == document_id))
     password_hash = (
         agent.password_hash if agent is not None and agent.password_hash else DUMMY_PASSWORD_HASH
     )
-    pin_ok = verify_pin(body.pin, password_hash)
+    pin_ok = await _verify_pin_off_loop(body.pin, password_hash)
     if agent is None or not pin_ok:
         session.add(
             AuditEvent(

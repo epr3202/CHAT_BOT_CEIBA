@@ -19,6 +19,8 @@ class Settings(BaseSettings):
         alias="ENVIRONMENT",
     )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    admin_login_max_failures: int = Field(default=5, alias="ADMIN_LOGIN_MAX_FAILURES")
+    admin_login_window_minutes: int = Field(default=15, alias="ADMIN_LOGIN_WINDOW_MINUTES")
     # TODO Slice 3: move human-hours and holiday rules to the Configuration table.
     human_hours_days: str = Field(default="1,2,3,4,5", alias="HUMAN_HOURS_DAYS")
     human_hours_start: str = Field(default="08:00", alias="HUMAN_HOURS_START")
