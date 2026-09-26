@@ -23,9 +23,9 @@ if docker compose config --services | grep -qx admin; then
   docker compose up -d --no-deps --force-recreate admin
 fi
 deadline=$((SECONDS + 60))
-until curl -sf http://localhost:8000/health >/dev/null; do
+until curl -sf http://localhost:8000/ready >/dev/null; do
   if (( SECONDS >= deadline )); then
-    echo "Health check failed after 60 seconds; backup at $backup_file" >&2
+    echo "Health check /ready failed after 60 seconds; backup at $backup_file" >&2
     exit 1
   fi
   sleep 2
