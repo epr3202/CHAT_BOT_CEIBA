@@ -64,7 +64,7 @@ jobs:
             || PGPASSWORD=ceiba psql -h localhost -U ceiba -d postgres -c "CREATE DATABASE ceiba_test"
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -r requirements-dev.lock && pip install --no-deps -e .
 
       - name: Lint
         run: ruff check .
