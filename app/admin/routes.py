@@ -950,6 +950,8 @@ async def replace_catalog_event_types(
     ).all()
     for row in existing:
         await session.delete(row)
+    # Release unique asset/event pairs before inserting their replacements.
+    await session.flush()
     for mapping in event_type_mappings:
         session.add(
             CatalogEventTypeMap(
