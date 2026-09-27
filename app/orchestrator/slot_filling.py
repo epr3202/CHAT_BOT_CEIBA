@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.conversation.catalog_event_type import FIXED_PRICE_EVENT_TYPES
 from app.event.event_type import normalize_event_type
 
 QUESTION_CODE_BY_ACTION = {
@@ -46,6 +47,13 @@ class CaptureProgress:
     def has_event_type(self) -> bool:
         return normalize_event_type(self.event_type) is not None
 
+    @property
+    def needs_budget(self) -> bool:
+        return (
+            self.event_type not in FIXED_PRICE_EVENT_TYPES
+            and self.budget_data_status in {"NOT_ASKED", "ASKED_PENDING"}
+        )
+
 
 def select_next_question(progress: CaptureProgress) -> str | None:
     if not progress.has_event_type:
@@ -56,7 +64,7 @@ def select_next_question(progress: CaptureProgress) -> str | None:
         return "COLLECT_EVENT_DATE"
     if not progress.full_name or progress.full_name_needs_confirmation:
         return "COLLECT_CUSTOMER_NAME"
-    if progress.budget_data_status in {"NOT_ASKED", "ASKED_PENDING"}:
+    if progress.needs_budget:
         return "COLLECT_BUDGET"
     if not progress.services_requested:
         return "COLLECT_SERVICES"
@@ -73,7 +81,7 @@ def pending_fields_for(progress: CaptureProgress) -> list[str]:
         pending.append("event_date")
     if not progress.full_name or progress.full_name_needs_confirmation:
         pending.append("full_name")
-    if progress.budget_data_status in {"NOT_ASKED", "ASKED_PENDING"}:
+    if progress.needs_budget:
         pending.append("estimated_budget")
     if not progress.services_requested:
         pending.append("requested_services")

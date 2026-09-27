@@ -41,7 +41,10 @@ from app.channel.delivery import (
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings
-from app.conversation.catalog_event_type import resolve_catalog_event_type_label
+from app.conversation.catalog_event_type import (
+    FIXED_PRICE_EVENT_TYPES,
+    resolve_catalog_event_type_label,
+)
 from app.conversation.confirmation import (
     DENIALS,
     normalize_confirmation_text,
@@ -2023,7 +2026,15 @@ async def handle_general_information(
         )
 
     category = classification.information_category
-    if category is None:
+    fixed_price_entity = next((
+        entity for entity in normalized_entities(classification)
+        if entity.entity == "event_type"
+        and entity.quality_status in {"PROVIDED", "CORRECTED"}
+        and not entity.needs_confirmation
+        and normalize_event_type(entity.normalized_value or entity.raw_value)
+        in FIXED_PRICE_EVENT_TYPES
+    ), None)
+    if category is None and fixed_price_entity is None:
         if not understanding_failure_already_counted:
             conversation.failed_understanding_count += 1
         persist_classification_context(conversation, classification)
@@ -2054,7 +2065,7 @@ async def handle_general_information(
         conversation.pending_action = previous_pending_action
         return
 
-    response_code = response_code_for_category(category)
+    response_code = response_code_for_category(category) if category else NO_APPROVED_ANSWER
     if is_catalog_request_category(category):
         lead = await active_lead(session, conversation)
         event = await active_event(session, lead)
@@ -2098,6 +2109,29 @@ async def handle_general_information(
                 reason="Catalog information handled",
             )
         return
+    if fixed_price_entity is not None:
+        lead, event = await get_or_create_capture_models(
+            session, conversation, orchestration_input.customer,
+            request_id=orchestration_input.request_id,
+        )
+        apply_event_type(session, event, fixed_price_entity, orchestration_input.request_id)
+        try:
+            sent_count = await enqueue_proactive_catalogs_for_event_type(
+                session, knowledge_sessionmaker, conversation, orchestration_input.customer,
+                orchestration_input.inbound_message, lead.lead_id, event.event_type,
+                orchestration_input.request_id,
+            )
+        except CatalogCaptionTooLong:
+            # The catalog service audits rejection; the approved plans text can still answer.
+            sent_count = 0
+        audit_orchestrator_event(
+            session, "ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO", conversation,
+            reason="Fixed-price event information triggers proactive catalog selection",
+            request_id=orchestration_input.request_id,
+            extra={"event_type": event.event_type, "lead_id": str(lead.lead_id),
+                   "sent_count": sent_count},
+        )
+        response_code = "RESP-EVENTS-ROMANTIC-001"
     if response_code == "RESP-LOCATION-001" and wants_location_link(
         orchestration_input.message_text
     ):
@@ -2264,8 +2298,10 @@ async def handle_collecting_event_data(
             entities,
             orchestration_input.request_id,
         )
-    declined_by_evasion = not batch.rejected and should_mark_budget_declined_by_evasion(
-        lead, entities,
+    fixed_price_event = event.event_type in FIXED_PRICE_EVENT_TYPES
+    declined_by_evasion = (
+        not fixed_price_event and not batch.rejected
+        and should_mark_budget_declined_by_evasion(lead, entities)
     )
     if declined_by_evasion:
         apply_budget_declined(session, lead, orchestration_input.request_id)
@@ -2280,12 +2316,14 @@ async def handle_collecting_event_data(
     ]
     if handled_name_confirmation:
         unresolved = [field for field in unresolved if field != "full_name"]
-    if declined_by_evasion:
+    if declined_by_evasion or fixed_price_event:
         unresolved = [field for field in unresolved if field != "estimated_budget"]
     rejected_fields = [
         canonical_field(item.entity) for item in batch.rejected
         if item.code != "UNSUPPORTED_SERVICE_ITEM" and item.entity != "UNKNOWN"
     ]
+    if fixed_price_event:
+        rejected_fields = [field for field in rejected_fields if field != "estimated_budget"]
     conversation.pending_fields = list(dict.fromkeys(
         [*pending_fields_for(progress), *unresolved, *rejected_fields]
     ))

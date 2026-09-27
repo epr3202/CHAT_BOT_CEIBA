@@ -3,6 +3,9 @@ from __future__ import annotations
 import re
 import unicodedata
 
+# Fixed-price plans do not require a customer budget during event capture.
+FIXED_PRICE_EVENT_TYPES = {"ROMANTIC_DINNER"}
+
 # Source of truth: docs/conversation/entities.md, section 7.1.
 CATALOG_EVENT_TYPE_LABELS: dict[str, tuple[str, ...]] = {
     "WEDDING": ("boda", "matrimonio"),
