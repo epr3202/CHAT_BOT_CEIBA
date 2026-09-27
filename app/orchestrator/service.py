@@ -2027,11 +2027,14 @@ async def handle_general_information(
         )
 
     category = classification.information_category
-    fixed_price_entities = [
+    event_type_entities = [
         entity for entity in normalized_entities(classification)
         if entity.entity == "event_type"
         and entity.quality_status in {"PROVIDED", "CORRECTED"}
-        and not entity.needs_confirmation
+    ]
+    fixed_price_entities = [
+        entity for entity in event_type_entities
+        if not entity.needs_confirmation
         and normalize_event_type(entity.normalized_value or entity.raw_value)
         in FIXED_PRICE_EVENT_TYPES
     ]
@@ -2041,12 +2044,13 @@ async def handle_general_information(
     ), fixed_price_entities[0] if fixed_price_entities else None)
     mentioned_event_type = resolve_fixed_price_information_type(orchestration_input.message_text)
     if mentioned_event_type is not None and (
-        fixed_price_entity is None
-        or (
-            mentioned_event_type == "PROPOSAL"
+        not event_type_entities
+        or all(
+            not entity.needs_confirmation
             and normalize_event_type(
-                fixed_price_entity.normalized_value or fixed_price_entity.raw_value
-            ) != "PROPOSAL"
+                entity.normalized_value or entity.raw_value
+            ) == "ROMANTIC_DINNER"
+            for entity in event_type_entities
         )
     ):
         fixed_price_entity = ExtractedEntity(

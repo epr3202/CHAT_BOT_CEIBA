@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from typing import Literal
 
 # Fixed-price plans do not require a customer budget during event capture.
 FIXED_PRICE_EVENT_TYPES = {"ROMANTIC_DINNER", "PROPOSAL"}
@@ -58,14 +59,13 @@ def resolve_catalog_event_type_label(message_text: str) -> str | None:
     return _EVENT_TYPE_BY_NORMALIZED_LABEL.get(normalized)
 
 
-def resolve_fixed_price_information_type(message_text: str) -> str | None:
+def resolve_fixed_price_information_type(message_text: str) -> Literal["PROPOSAL"] | None:
     normalized = normalize_catalog_event_type_label(message_text)
     if re.search(
         r"\b(?:pedida de mano|propuesta de matrimonio|quieres ser mi|"
-        r"pedirle matrimonio|compromiso)\b",
+        r"pedirle matrimonio|pedir la mano|pedirle la mano|proponerle matrimonio|"
+        r"anillo de compromiso|fiesta de compromiso|celebracion de compromiso)\b",
         normalized,
     ):
         return "PROPOSAL"
-    if re.search(r"\bromantic[oa]s?\b", normalized):
-        return "ROMANTIC_DINNER"
     return None

@@ -621,9 +621,13 @@ No habilitar como APPROVED ni sincronizar como texto aprobado antes de esa confi
 ### Uso
 
 Información sobre `PROPOSAL` con tipo válido proporcionado o corregido por el cliente,
-sin confirmación pendiente, o con una mención explícita de pedida de mano en el mensaje.
-Si también menciona una cena romántica, prevalece `PROPOSAL`. Intentar el catálogo
-PROACTIVE y responder con este texto una vez aprobado, incluso sin asset activo.
+sin confirmación pendiente. El fallback textual exige una frase inequívoca de pedida
+de mano y solo se aplica si no hay entidades `event_type` `PROVIDED`/`CORRECTED`, o si
+todas ellas son `ROMANTIC_DINNER` sin confirmación pendiente; en ese caso prevalece
+`PROPOSAL`. Otros tipos proporcionados o corregidos nunca se sustituyen por el texto.
+«Compromiso» aislado y los adjetivos románticos no activan este fallback.
+Intentar el catálogo PROACTIVE y responder con este texto una vez aprobado, incluso
+sin asset activo.
 La captura omite el presupuesto y conserva los demás campos del flujo; no confirma
 disponibilidad automáticamente.
 

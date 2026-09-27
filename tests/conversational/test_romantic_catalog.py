@@ -401,6 +401,7 @@ async def proposal_catalogs(catalogs: CatalogFixture, tmp_path: Path) -> Catalog
 
 async def fixed_price_information_turn(
     catalogs: CatalogFixture, text: str, event_types: tuple[str, ...] = (),
+    *, information_category: str | None = None,
 ) -> int:
     async with catalogs.sessions() as session, session.begin():
         customer, conversation = await seed_conversation(session)
@@ -408,7 +409,7 @@ async def fixed_price_information_turn(
         catalogs.sessions, get_settings(), conversation.id, customer.id, text,
         classification("GENERAL_INFORMATION", [
             entity("event_type", value, value) for value in event_types
-        ]), f"wamid.fixed-price.{uuid4().hex}",
+        ], information_category=information_category), f"wamid.fixed-price.{uuid4().hex}",
     )
     return conversation.id
 
@@ -461,8 +462,12 @@ async def assert_fixed_price_information(
     "¿QUIÉRES SER MÍ ESPOSA?",
     "Quiero pedirle matrimonio",
     "PEDIRLE MATRIMONIO",
-    "Información sobre un compromiso",
-    "COMPROMISO",
+    "Quiero pedir la mano",
+    "PEDIRLE LA MANO",
+    "Quiero proponerle matrimonio",
+    "anillo de compromiso",
+    "Fiesta de compromiso",
+    "CELEBRACIÓN DE COMPROMISO",
 ])
 async def test_proposal_information_phrase_without_ai_entity(
     proposal_catalogs: CatalogFixture, text: str,
@@ -475,6 +480,7 @@ async def test_proposal_information_phrase_without_ai_entity(
 
 @pytest.mark.parametrize("text,event_types", [
     ("Pedida de mano con cena romántica", ()),
+    ("Pedida de mano con cena romántica", ("ROMANTIC_DINNER",)),
     ("CENA ROMANTICA PARA UNA PROPUESTA DE MATRIMONIO", ("ROMANTIC_DINNER",)),
     ("Cena romántica de compromiso", ("ROMANTIC_DINNER", "PROPOSAL")),
     ("Quiero más información", ("ROMANTIC_DINNER", "PROPOSAL")),
@@ -490,14 +496,83 @@ async def test_proposal_takes_priority_over_romantic_dinner(
     )
 
 
-@pytest.mark.parametrize("text", ["romántico", "ROMANTICO"])
-async def test_romantic_adjective_keeps_romantic_dinner(
-    catalogs: CatalogFixture, text: str,
+async def assert_no_fixed_price_capture(
+    catalogs: CatalogFixture, conversation_id: int, response_code: str,
 ) -> None:
-    conversation_id = await fixed_price_information_turn(catalogs, text)
-    await assert_fixed_price_information(
-        catalogs, conversation_id, "ROMANTIC_DINNER", ROMANTIC_CODE, ROMANTIC_TEXT,
+    async with catalogs.sessions() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation is not None and conversation.last_question_code == response_code
+        template = await session.scalar(select(KnowledgeEntry).where(
+            KnowledgeEntry.code == response_code,
+        ))
+        assert template is not None
+        outbox = list(await session.scalars(select(Outbox).where(
+            Outbox.conversation_id == conversation_id,
+        )))
+        assert all(row.message_kind == "TEXT" for row in outbox)
+        assert [(row.message_kind, row.payload["text"]["body"]) for row in outbox] == [
+            ("TEXT", template.answer_template),
+        ]
+        assert await session.scalar(select(func.count()).select_from(CatalogSend)) == 0
+        assert await session.scalar(select(AuditEvent.id).where(
+            AuditEvent.action.in_([
+                "EVENT_TYPE_CAPTURED", "EVENT_TYPE_CORRECTED",
+                "FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO",
+                "ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO",
+            ]),
+        )) is None
+
+
+@pytest.mark.parametrize("information_category,response_code", [
+    (None, "RESP-FALLBACK-001"),
+    ("tipos de eventos", "RESP-EVENTS-001"),
+])
+@pytest.mark.parametrize("text", [
+    "romántico", "ROMANTICO", "¿el lugar es romántico?",
+    "cotización sin compromiso", "tengo un compromiso ese día",
+    "COMPROMISO", "Información sobre un compromiso",
+])
+async def test_ambiguous_text_without_event_entity_does_not_capture_or_send_catalog(
+    proposal_catalogs: CatalogFixture, text: str,
+    information_category: str | None, response_code: str,
+) -> None:
+    conversation_id = await fixed_price_information_turn(
+        proposal_catalogs, text, information_category=information_category,
     )
+    await assert_no_fixed_price_capture(proposal_catalogs, conversation_id, response_code)
+    async with proposal_catalogs.sessions() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation.active_lead_id is None
+        assert await session.scalar(select(func.count()).select_from(Event)) == 0
+
+
+@pytest.mark.parametrize("event_type", ["ANNIVERSARY", "WEDDING"])
+@pytest.mark.parametrize("quality_status", ["PROVIDED", "CORRECTED"])
+@pytest.mark.parametrize("needs_confirmation", [False, True])
+async def test_proposal_text_preserves_other_classified_event_type(
+    proposal_catalogs: CatalogFixture, event_type: str, quality_status: str,
+    needs_confirmation: bool,
+) -> None:
+    async with proposal_catalogs.sessions() as session, session.begin():
+        customer, conversation = await seed_conversation(session)
+        lead = Lead(customer_id=customer.id, channel="WHATSAPP", lead_status="QUALIFYING")
+        session.add(lead)
+        await session.flush()
+        event = Event(lead_id=lead.lead_id, event_type=event_type)
+        session.add(event)
+        await session.flush()
+        conversation.active_lead_id = lead.lead_id
+    await run_turn(
+        proposal_catalogs.sessions, get_settings(), conversation.id, customer.id, "pedida de mano",
+        classification("GENERAL_INFORMATION", [
+            entity("event_type", event_type, event_type, quality_status, needs_confirmation),
+        ], information_category="tipos de eventos"), f"wamid.proposal.other.{uuid4().hex}",
+    )
+    await assert_no_fixed_price_capture(proposal_catalogs, conversation.id, "RESP-EVENTS-001")
+    async with proposal_catalogs.sessions() as session:
+        stored_event = await session.get(Event, event.event_id)
+        assert stored_event is not None and stored_event.event_type == event_type
+        assert await session.scalar(select(Event).where(Event.event_type == "PROPOSAL")) is None
 
 
 async def test_proposal_without_active_asset_still_sends_approved_plans_text(
