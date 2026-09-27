@@ -39,6 +39,8 @@ const state = {
   assignedToMe: localStorage.getItem(assignedToMeStorageKey) === "true",
   adminCases: [],
   catalogCategories: [],
+  unassignedCatalogs: [],
+  catalogEditor: null,
   paymentEvidence: [],
   agents: [],
   resetPreview: null,
@@ -163,6 +165,7 @@ async function requestJson(path, options = {}) {
   if (!response.ok) {
     let detail = typeof payload === "object" && payload !== null ? payload.detail || JSON.stringify(payload) : payload;
     if (Array.isArray(detail)) detail = detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
+    if (detail && typeof detail === "object") detail = JSON.stringify(detail);
     if (response.status === 401) {
       clearSession();
       applyAuthState();
@@ -277,9 +280,12 @@ async function loadCatalogCategories() {
   }
   setEmpty(container, "Cargando cobertura de catálogos...");
   try {
-    state.catalogCategories = await requestJson("/api/admin/catalogs/categories", {
-      headers: sessionHeaders(),
-    });
+    const [categories, catalogs] = await Promise.all([
+      requestJson("/api/admin/catalogs/categories", { headers: sessionHeaders() }),
+      requestJson("/api/admin/catalogs", { headers: sessionHeaders() }),
+    ]);
+    state.catalogCategories = categories;
+    state.unassignedCatalogs = catalogs.filter((catalog) => !catalog.event_type_mappings.length);
     renderCatalogCategories();
   } catch (error) {
     setEmpty(container, `No se pudo cargar la cobertura: ${error.message}`);
@@ -289,21 +295,26 @@ async function loadCatalogCategories() {
 function renderCatalogCategories() {
   const container = $("#catalogCategoryList");
   container.replaceChildren();
-  for (const category of state.catalogCategories) {
+  const categories = [...state.catalogCategories];
+  if (state.unassignedCatalogs.length) {
+    categories.push({ event_type: null, catalogs: state.unassignedCatalogs });
+  }
+  for (const category of categories) {
     const card = document.createElement("article");
     card.className = `catalogCategory ${category.covered ? "covered" : "uncovered"}`;
 
     const header = document.createElement("div");
     header.className = "catalogCategoryHeader";
     const title = document.createElement("strong");
-    title.textContent = category.event_type;
+    title.textContent = category.event_type ? catalogEventTypeLabel(category.event_type) : "Sin asignaciones";
     const coverage = document.createElement("span");
     coverage.className = `pill ${category.covered ? "ok" : "bad"}`;
     coverage.textContent = category.covered ? "Con cobertura" : "Sin cobertura";
-    header.append(title, coverage);
+    header.append(title);
+    if (category.event_type) header.append(coverage);
     card.append(header);
 
-    if (!category.covered) {
+    if (category.event_type && !category.covered) {
       const note = document.createElement("p");
       note.className = "catalogManualNote";
       note.textContent = "Atención manual para solicitudes sin PDF activo.";
@@ -313,17 +324,7 @@ function renderCatalogCategories() {
     const assets = document.createElement("div");
     assets.className = "catalogAssets";
     for (const catalog of category.catalogs) {
-      const row = document.createElement("div");
-      row.className = "catalogAsset";
-      const label = document.createElement("span");
-      label.textContent = `${catalog.name} · ${catalog.active ? "Activo" : "Inactivo"}`;
-      const toggle = actionButton(
-        catalog.active ? "Desactivar" : "Activar",
-        () => setCatalogActive(catalog.catalog_asset_id, !catalog.active),
-        catalog.active ? "danger" : ""
-      );
-      row.append(label, toggle);
-      assets.append(row);
+      assets.append(renderCatalogAsset(catalog, category.event_type));
     }
     if (!category.catalogs.length) {
       const empty = document.createElement("span");
@@ -333,6 +334,181 @@ function renderCatalogCategories() {
     }
     card.append(assets);
     container.append(card);
+  }
+}
+
+function catalogEventTypeLabel(eventType) {
+  return Array.from($("#catalogEventType").options).find((option) => option.value === eventType)?.label
+    || "Tipo de evento no reconocido";
+}
+
+const catalogSendModes = {
+  ON_REQUEST: { label: "A solicitud", explanation: "solo si el cliente pide el catálogo" },
+  PROACTIVE: { label: "Proactivo", explanation: "se envía solo al detectar el evento" },
+};
+
+function renderCatalogAsset(catalog, category) {
+  const row = document.createElement("div");
+  row.className = "catalogAsset";
+  row.dataset.catalogId = catalog.catalog_asset_id;
+  const heading = document.createElement("div");
+  heading.className = "catalogAssetHeading";
+  const name = document.createElement("strong");
+  name.textContent = catalog.name;
+  const status = document.createElement("span");
+  status.className = `pill ${catalog.active ? "ok" : "neutral"}`;
+  status.textContent = catalog.active ? "Activo" : "Inactivo";
+  heading.append(name, status);
+
+  const summary = document.createElement("ul");
+  summary.className = "catalogMappingSummary";
+  for (const mapping of catalog.event_type_mappings) {
+    const item = document.createElement("li");
+    item.textContent = `${catalogEventTypeLabel(mapping.event_type)} · ${catalogSendModes[mapping.send_mode]?.label || "Modo no reconocido"}`;
+    summary.append(item);
+  }
+  if (!catalog.event_type_mappings.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "Sin asignaciones";
+    summary.append(empty);
+  }
+  const actions = document.createElement("div");
+  actions.className = "catalogAssetActions";
+  const key = `${category || "unassigned"}:${catalog.catalog_asset_id}`;
+  const editing = state.catalogEditor?.key === key;
+  const edit = actionButton("Editar asignaciones", () => {
+    state.catalogEditor = {
+      key, catalogAssetId: catalog.catalog_asset_id,
+      mappings: catalog.event_type_mappings.map((mapping) => ({ ...mapping })),
+      saving: false, error: "",
+    };
+    renderCatalogCategories();
+    $(".catalogMappingEditor select")?.focus();
+  });
+  edit.setAttribute("aria-expanded", String(editing));
+  edit.disabled = Boolean(state.catalogEditor);
+  const toggle = actionButton(
+    catalog.active ? "Desactivar" : "Activar",
+    () => setCatalogActive(catalog.catalog_asset_id, !catalog.active),
+    catalog.active ? "danger" : ""
+  );
+  toggle.disabled = Boolean(state.catalogEditor?.saving);
+  actions.append(edit, toggle);
+  row.append(heading, summary, actions);
+  if (editing) row.append(renderCatalogMappingEditor(catalog));
+  return row;
+}
+
+function renderCatalogMappingEditor(catalog) {
+  const editor = state.catalogEditor;
+  const form = document.createElement("form");
+  form.className = "catalogMappingEditor";
+  form.setAttribute("aria-label", `Asignaciones de ${catalog.name}`);
+  form.addEventListener("submit", saveCatalogMappings);
+  const fields = document.createElement("fieldset");
+  fields.disabled = editor.saving;
+  const legend = document.createElement("legend");
+  legend.textContent = "Asignaciones del catálogo";
+  fields.append(legend);
+  const eventOptions = Array.from($("#catalogEventType").options);
+  editor.mappings.forEach((mapping, index) => {
+    const row = document.createElement("div");
+    row.className = "catalogMappingRow";
+    const eventLabel = document.createElement("label");
+    eventLabel.textContent = "Tipo de evento";
+    const eventSelect = document.createElement("select");
+    eventSelect.setAttribute("aria-label", "Tipo de evento");
+    eventSelect.required = true;
+    eventOptions.forEach((option) => eventSelect.add(new Option(option.label, option.value)));
+    eventSelect.value = mapping.event_type;
+    eventSelect.addEventListener("change", () => { mapping.event_type = eventSelect.value; });
+    eventLabel.append(eventSelect);
+    const remove = actionButton("Quitar fila", () => {
+      editor.mappings.splice(index, 1);
+      renderCatalogCategories();
+      $(".catalogMappingEditor select")?.focus();
+    });
+    const modeLabel = document.createElement("label");
+    modeLabel.className = "catalogMappingMode";
+    modeLabel.textContent = "Modo de envío";
+    const modeSelect = document.createElement("select");
+    modeSelect.setAttribute("aria-label", "Modo de envío");
+    for (const [value, mode] of Object.entries(catalogSendModes)) {
+      modeSelect.add(new Option(`${mode.label} (${mode.explanation})`, value));
+    }
+    modeSelect.value = mapping.send_mode;
+    const help = document.createElement("small");
+    help.className = "catalogModeHelp";
+    help.textContent = catalogSendModes[mapping.send_mode]?.explanation || "Selecciona un modo de envío.";
+    modeSelect.addEventListener("change", () => {
+      mapping.send_mode = modeSelect.value;
+      help.textContent = catalogSendModes[mapping.send_mode].explanation;
+    });
+    modeLabel.append(modeSelect);
+    row.append(eventLabel, remove, modeLabel, help);
+    fields.append(row);
+  });
+  if (!editor.mappings.length) {
+    const empty = document.createElement("p");
+    empty.className = "catalogEmpty";
+    empty.textContent = "Sin asignaciones. Añade una fila para elegir el tipo de evento.";
+    fields.append(empty);
+  }
+  const add = actionButton("Añadir fila", () => {
+    const available = eventOptions.find((option) => !editor.mappings.some((mapping) => mapping.event_type === option.value));
+    if (!available) return;
+    editor.mappings.push({ event_type: available.value, send_mode: "ON_REQUEST" });
+    renderCatalogCategories();
+    $$(".catalogMappingEditor .catalogMappingRow").at(-1)?.querySelector("select")?.focus();
+  });
+  add.disabled = editor.mappings.length >= eventOptions.length;
+  const error = document.createElement("p");
+  error.className = "formError";
+  error.setAttribute("role", "alert");
+  error.textContent = editor.error;
+  error.hidden = !editor.error;
+  const actions = document.createElement("div");
+  actions.className = "catalogAssetActions";
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "primary";
+  save.textContent = editor.saving ? "Guardando…" : "Guardar";
+  const cancel = actionButton("Cancelar", () => {
+    state.catalogEditor = null;
+    renderCatalogCategories();
+  });
+  actions.append(save, cancel);
+  fields.append(add, error, actions);
+  form.append(fields);
+  return form;
+}
+
+async function saveCatalogMappings(event) {
+  event.preventDefault();
+  const editor = state.catalogEditor;
+  if (!editor || editor.saving) return;
+  editor.error = "";
+  if (new Set(editor.mappings.map((mapping) => mapping.event_type)).size !== editor.mappings.length) {
+    editor.error = "Cada tipo de evento solo puede asignarse una vez.";
+    renderCatalogCategories();
+    return;
+  }
+  editor.saving = true;
+  renderCatalogCategories();
+  try {
+    await requestJson(`/api/admin/catalogs/${editor.catalogAssetId}/event-types`, {
+      method: "PUT", headers: sessionHeaders(),
+      body: JSON.stringify({ event_types: editor.mappings }),
+    });
+    if (state.catalogEditor !== editor) return;
+    state.catalogEditor = null;
+    await loadCatalogCategories();
+    logEvent("Asignaciones del catálogo guardadas.");
+  } catch (error) {
+    if (state.catalogEditor !== editor) return;
+    editor.saving = false;
+    editor.error = error.message;
+    renderCatalogCategories();
   }
 }
 
@@ -456,6 +632,8 @@ function clearSession() {
   state.adminCases = [];
   state.paymentEvidence = [];
   state.catalogCategories = [];
+  state.unassignedCatalogs = [];
+  state.catalogEditor = null;
   state.agents = [];
   $("#agentRows").replaceChildren();
   $("#agentEditForm").hidden = true;

@@ -226,7 +226,7 @@ const server = createServer(async (request, response) => {
       await proxy(request, response, "/admin/catalogs/upload");
       return;
     }
-    if (path.startsWith("/api/admin/catalogs/")) {
+    if (path === "/api/admin/catalogs" || path.startsWith("/api/admin/catalogs/")) {
       await proxy(request, response, path.replace("/api", ""));
       return;
     }
