@@ -361,3 +361,222 @@ async def test_budget_still_asked_for_non_romantic_event(catalogs: CatalogFixtur
         assert "estimated_budget" in conversation.pending_fields
         assert lead.budget_data_status == "ASKED_PENDING"
     await assert_romantic_template(catalogs.sessions)
+
+
+PROPOSAL_CODE = "RESP-EVENTS-PROPOSAL-001"
+PROPOSAL_TEXT = (
+    "Nuestras experiencias para pedir la mano: Entre Pétalos y Estrellas ($450.000), "
+    "Confesión bajo la Luna ($900.000) y Noche Inolvidable ($2.500.000, con exclusividad "
+    "de la terraza). Te envío el catálogo con el detalle de cada una. Cuéntame cuál "
+    "te interesa y para qué fecha, y te confirmo disponibilidad."
+)
+
+
+@pytest.fixture
+async def proposal_catalogs(catalogs: CatalogFixture, tmp_path: Path) -> CatalogFixture:
+    async with catalogs.sessions() as session, session.begin():
+        asset_ids = []
+        for mode in ("PROACTIVE", "ON_REQUEST"):
+            pdf = tmp_path / f"proposal-{mode}.pdf"
+            pdf.write_bytes(b"%PDF-1.4\nproposal test catalog\n")
+            asset = CatalogAsset(
+                name=f"Proposal {mode}", file_path=str(pdf), file_hash="b" * 64,
+                file_size=pdf.stat().st_size, mime_type="application/pdf", active=True,
+            )
+            session.add(asset)
+            await session.flush()
+            session.add(CatalogEventTypeMap(
+                catalog_asset_id=asset.catalog_asset_id, event_type="PROPOSAL", send_mode=mode,
+            ))
+            asset_ids.append(asset.catalog_asset_id)
+        template = await session.scalar(
+            select(KnowledgeEntry).where(KnowledgeEntry.code == PROPOSAL_CODE)
+        )
+        # Same test-only approval as romantic plans; the new seed must remain DRAFT.
+        if template is not None:
+            template.status = "APPROVED"
+            template.answer_template = template.answer_template.removeprefix("[REVISAR] ")
+    return CatalogFixture(catalogs.sessions, *asset_ids)
+
+
+async def fixed_price_information_turn(
+    catalogs: CatalogFixture, text: str, event_types: tuple[str, ...] = (),
+) -> int:
+    async with catalogs.sessions() as session, session.begin():
+        customer, conversation = await seed_conversation(session)
+    await run_turn(
+        catalogs.sessions, get_settings(), conversation.id, customer.id, text,
+        classification("GENERAL_INFORMATION", [
+            entity("event_type", value, value) for value in event_types
+        ]), f"wamid.fixed-price.{uuid4().hex}",
+    )
+    return conversation.id
+
+
+async def assert_fixed_price_information(
+    catalogs: CatalogFixture, conversation_id: int, event_type: str,
+    response_code: str, response_text: str, *, sent_count: int = 1,
+) -> None:
+    async with catalogs.sessions() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation is not None
+        event = await session.scalar(select(Event).where(
+            Event.lead_id == conversation.active_lead_id,
+        ))
+        assert event is not None and event.event_type == event_type
+        assert conversation.state == "BOT_ACTIVE"
+        assert conversation.last_question_code == response_code
+        assert conversation.pending_action is None
+        outbox = list(await session.scalars(select(Outbox).where(
+            Outbox.conversation_id == conversation_id,
+        ).order_by(Outbox.id)))
+        assert [row.payload["text"]["body"] for row in outbox if row.message_kind == "TEXT"] == [
+            response_text,
+        ]
+        documents = [row for row in outbox if row.message_kind == "DOCUMENT"]
+        assert [row.catalog_asset_id for row in documents] == [catalogs.proactive_id] * sent_count
+        captured = await session.scalar(select(AuditEvent).where(
+            AuditEvent.action == "EVENT_TYPE_CAPTURED",
+        ))
+        assert captured is not None and captured.new_value["event_type"] == event_type
+        audit = await session.scalar(select(AuditEvent).where(
+            AuditEvent.action == "FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO",
+        ))
+        assert audit is not None
+        assert audit.new_value["event_type"] == event_type
+        assert audit.new_value["lead_id"] == str(event.lead_id)
+        assert audit.new_value["sent_count"] == sent_count
+        if event_type == "PROPOSAL":
+            assert await session.scalar(select(AuditEvent.id).where(
+                AuditEvent.action == "ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO",
+            )) is None
+
+
+@pytest.mark.parametrize("text", [
+    "Quiero información sobre una pedida de mano",
+    "PEDIDA DE MANO",
+    "Información sobre una propuesta de matrimonio",
+    "PROPUESTA DE MATRIMONIO",
+    "Quiero un letrero: ¿quieres ser mi esposa?",
+    "¿QUIÉRES SER MÍ ESPOSA?",
+    "Quiero pedirle matrimonio",
+    "PEDIRLE MATRIMONIO",
+    "Información sobre un compromiso",
+    "COMPROMISO",
+])
+async def test_proposal_information_phrase_without_ai_entity(
+    proposal_catalogs: CatalogFixture, text: str,
+) -> None:
+    conversation_id = await fixed_price_information_turn(proposal_catalogs, text)
+    await assert_fixed_price_information(
+        proposal_catalogs, conversation_id, "PROPOSAL", PROPOSAL_CODE, PROPOSAL_TEXT,
+    )
+
+
+@pytest.mark.parametrize("text,event_types", [
+    ("Pedida de mano con cena romántica", ()),
+    ("CENA ROMANTICA PARA UNA PROPUESTA DE MATRIMONIO", ("ROMANTIC_DINNER",)),
+    ("Cena romántica de compromiso", ("ROMANTIC_DINNER", "PROPOSAL")),
+    ("Quiero más información", ("ROMANTIC_DINNER", "PROPOSAL")),
+    ("Quiero más información", ("PROPOSAL", "ROMANTIC_DINNER")),
+    ("Quiero más información", ("PROPOSAL",)),
+])
+async def test_proposal_takes_priority_over_romantic_dinner(
+    proposal_catalogs: CatalogFixture, text: str, event_types: tuple[str, ...],
+) -> None:
+    conversation_id = await fixed_price_information_turn(proposal_catalogs, text, event_types)
+    await assert_fixed_price_information(
+        proposal_catalogs, conversation_id, "PROPOSAL", PROPOSAL_CODE, PROPOSAL_TEXT,
+    )
+
+
+@pytest.mark.parametrize("text", ["romántico", "ROMANTICO"])
+async def test_romantic_adjective_keeps_romantic_dinner(
+    catalogs: CatalogFixture, text: str,
+) -> None:
+    conversation_id = await fixed_price_information_turn(catalogs, text)
+    await assert_fixed_price_information(
+        catalogs, conversation_id, "ROMANTIC_DINNER", ROMANTIC_CODE, ROMANTIC_TEXT,
+    )
+
+
+async def test_proposal_without_active_asset_still_sends_approved_plans_text(
+    proposal_catalogs: CatalogFixture,
+) -> None:
+    async with proposal_catalogs.sessions() as session, session.begin():
+        for asset_id in (proposal_catalogs.proactive_id, proposal_catalogs.on_request_id):
+            asset = await session.get(CatalogAsset, asset_id)
+            asset.active = False
+    conversation_id = await fixed_price_information_turn(proposal_catalogs, "pedida de mano")
+    await assert_fixed_price_information(
+        proposal_catalogs, conversation_id, "PROPOSAL", PROPOSAL_CODE, PROPOSAL_TEXT, sent_count=0,
+    )
+    async with proposal_catalogs.sessions() as session:
+        omitted = await session.scalar(select(AuditEvent).where(
+            AuditEvent.action == "CATALOG_SEND_OMITTED",
+        ))
+        assert omitted is not None
+        assert omitted.new_value["event_type"] == "PROPOSAL"
+        assert omitted.new_value["trigger"] == "PROACTIVE"
+        assert await session.scalar(select(func.count()).select_from(CatalogSend)) == 0
+
+
+async def test_proposal_capture_skips_budget_and_reaches_quote_confirmation(
+    proposal_catalogs: CatalogFixture,
+) -> None:
+    customer_id, conversation_id = await seed_capture(proposal_catalogs)
+    await run_turn(
+        proposal_catalogs.sessions, get_settings(), conversation_id, customer_id, "Pedida de mano",
+        classification("EVENT_INFORMATION", [entity("event_type", "Pedida de mano", "PROPOSAL")]),
+        "wamid.proposal.capture",
+    )
+    async with proposal_catalogs.sessions() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation.pending_action == "COLLECT_EVENT_DATE"
+        assert "estimated_budget" not in conversation.pending_fields
+    await run_turn(
+        proposal_catalogs.sessions, get_settings(), conversation_id, customer_id, "10 de octubre",
+        classification("MODIFY_EVENT_DATA", [entity("event_date", "10 de octubre de 2026", {
+            "event_date": "2026-10-10", "event_month": None,
+            "event_date_type": "EXACT", "event_date_raw": "10 de octubre de 2026",
+        })]), "wamid.proposal.date",
+    )
+    async with proposal_catalogs.sessions() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        lead = await session.get(Lead, conversation.active_lead_id)
+        assert conversation.state == "QUOTE_REQUEST_READY"
+        assert conversation.pending_action == "CONFIRM_QUOTE_REQUEST"
+        assert conversation.pending_fields == []
+        assert lead.budget_data_status == "NOT_ASKED"
+        assert lead.estimated_budget is None
+        budget = await session.scalar(select(KnowledgeEntry).where(
+            KnowledgeEntry.code == "RESP-BUDGET-001",
+        ))
+        texts = [row.payload["text"]["body"] for row in await session.scalars(select(Outbox).where(
+            Outbox.message_kind == "TEXT",
+        ))]
+        assert budget.answer_template not in texts
+
+
+def test_proposal_seed_is_draft_with_exact_plans_text() -> None:
+    from data.knowledge_seed import CONDITIONAL_DRAFT_CODES
+
+    assert PROPOSAL_CODE in CONDITIONAL_DRAFT_CODES
+    template = next(entry for entry in iter_seed_entries() if entry.code == PROPOSAL_CODE)
+    assert template.status == "DRAFT"
+    assert template.answer_template == f"[REVISAR] {PROPOSAL_TEXT}"
+
+
+async def test_unapproved_proposal_template_is_not_sent(catalogs: CatalogFixture) -> None:
+    conversation_id = await fixed_price_information_turn(catalogs, "pedida de mano")
+    async with catalogs.sessions() as session:
+        event = await session.scalar(select(Event))
+        assert event is not None and event.event_type == "PROPOSAL"
+        fallback = await session.scalar(select(KnowledgeEntry).where(
+            KnowledgeEntry.code == "RESP-AI-ERROR-001",
+        ))
+        texts = [row.payload["text"]["body"] for row in await session.scalars(select(Outbox).where(
+            Outbox.conversation_id == conversation_id, Outbox.message_kind == "TEXT",
+        ))]
+        assert texts == [fallback.answer_template]
+        assert all("[REVISAR]" not in text and "$450.000" not in text for text in texts)

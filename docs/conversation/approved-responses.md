@@ -611,6 +611,24 @@ del flujo y no confirma disponibilidad automáticamente.
 
 ---
 
+## RESP-EVENTS-PROPOSAL-001 — Pedidas de mano de precio fijo
+
+Estado: **DRAFT**. Pendiente de aprobación de Leandro.
+No habilitar como APPROVED ni sincronizar como texto aprobado antes de esa confirmación.
+
+> Nuestras experiencias para pedir la mano: Entre Pétalos y Estrellas ($450.000), Confesión bajo la Luna ($900.000) y Noche Inolvidable ($2.500.000, con exclusividad de la terraza). Te envío el catálogo con el detalle de cada una. Cuéntame cuál te interesa y para qué fecha, y te confirmo disponibilidad.
+
+### Uso
+
+Información sobre `PROPOSAL` con tipo válido proporcionado o corregido por el cliente,
+sin confirmación pendiente, o con una mención explícita de pedida de mano en el mensaje.
+Si también menciona una cena romántica, prevalece `PROPOSAL`. Intentar el catálogo
+PROACTIVE y responder con este texto una vez aprobado, incluso sin asset activo.
+La captura omite el presupuesto y conserva los demás campos del flujo; no confirma
+disponibilidad automáticamente.
+
+---
+
 ## RESP-EVENTS-002 — Evento especial
 
 > Nos gustan mucho las ideas especiales. Cuéntame en qué consiste, la fecha estimada y cuántas personas participarían para revisar contigo las condiciones necesarias.

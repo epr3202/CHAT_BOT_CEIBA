@@ -106,3 +106,28 @@ for (const [status, detail, shown] of [
     await expect(card().getByRole("form")).toHaveCount(0);
   });
 }
+
+test("Pedida de mano conserva el tipo de evento en el editor y en la API", async ({ page }, testInfo) => {
+  const { catalog, card } = await openCatalog(page, testInfo);
+  await card().getByRole("button", { name: "Editar asignaciones" }).click();
+  const eventType = card().getByLabel("Tipo de evento", { exact: true });
+  await expect(eventType.locator('option[value="PROPOSAL"]')).toHaveText("Pedida de mano");
+  await expect(page.locator('#catalogEventType option[value="PROPOSAL"]')).toHaveText("Pedida de mano");
+  const labelText = await page.evaluate(async () => {
+    const { label } = await import("/labels.mjs");
+    return label("eventType", "PROPOSAL");
+  });
+  expect(labelText).toBe("Pedida de mano");
+  await eventType.selectOption({ label: "Pedida de mano" });
+  const saved = page.waitForResponse(response => response.request().method() === "PUT"
+    && response.url().endsWith(`/api/admin/catalogs/${catalog.catalog_asset_id}/event-types`));
+  await card().getByRole("button", { name: "Guardar", exact: true }).click();
+  const response = await saved;
+  expect(response.status(), await response.text()).toBe(200);
+  expect(response.request().postDataJSON()).toEqual({
+    event_types: [{ event_type: "PROPOSAL", send_mode: "ON_REQUEST" }],
+  });
+  await expect(card()).toContainText("Pedida de mano · A solicitud");
+  await page.reload();
+  await expect(card()).toContainText("Pedida de mano · A solicitud");
+});

@@ -44,6 +44,7 @@ from app.config.settings import Settings
 from app.conversation.catalog_event_type import (
     FIXED_PRICE_EVENT_TYPES,
     resolve_catalog_event_type_label,
+    resolve_fixed_price_information_type,
 )
 from app.conversation.confirmation import (
     DENIALS,
@@ -2026,14 +2027,35 @@ async def handle_general_information(
         )
 
     category = classification.information_category
-    fixed_price_entity = next((
+    fixed_price_entities = [
         entity for entity in normalized_entities(classification)
         if entity.entity == "event_type"
         and entity.quality_status in {"PROVIDED", "CORRECTED"}
         and not entity.needs_confirmation
         and normalize_event_type(entity.normalized_value or entity.raw_value)
         in FIXED_PRICE_EVENT_TYPES
-    ), None)
+    ]
+    fixed_price_entity = next((
+        entity for entity in fixed_price_entities
+        if normalize_event_type(entity.normalized_value or entity.raw_value) == "PROPOSAL"
+    ), fixed_price_entities[0] if fixed_price_entities else None)
+    mentioned_event_type = resolve_fixed_price_information_type(orchestration_input.message_text)
+    if mentioned_event_type is not None and (
+        fixed_price_entity is None
+        or (
+            mentioned_event_type == "PROPOSAL"
+            and normalize_event_type(
+                fixed_price_entity.normalized_value or fixed_price_entity.raw_value
+            ) != "PROPOSAL"
+        )
+    ):
+        fixed_price_entity = ExtractedEntity(
+            entity="event_type",
+            raw_value=orchestration_input.message_text,
+            normalized_value=mentioned_event_type,
+            quality_status="PROVIDED",
+            confidence=1.0,
+        )
     if category is None and fixed_price_entity is None:
         if not understanding_failure_already_counted:
             conversation.failed_understanding_count += 1
@@ -2124,14 +2146,22 @@ async def handle_general_information(
         except CatalogCaptionTooLong:
             # The catalog service audits rejection; the approved plans text can still answer.
             sent_count = 0
-        audit_orchestrator_event(
-            session, "ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO", conversation,
-            reason="Fixed-price event information triggers proactive catalog selection",
-            request_id=orchestration_input.request_id,
-            extra={"event_type": event.event_type, "lead_id": str(lead.lead_id),
-                   "sent_count": sent_count},
+        audit_actions = ["FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO"]
+        if event.event_type == "ROMANTIC_DINNER":
+            # Keep the audit contract covered by the existing PR #29 regressions.
+            audit_actions.append("ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO")
+        for action in audit_actions:
+            audit_orchestrator_event(
+                session, action, conversation,
+                reason="Fixed-price event information triggers proactive catalog selection",
+                request_id=orchestration_input.request_id,
+                extra={"event_type": event.event_type, "lead_id": str(lead.lead_id),
+                       "sent_count": sent_count},
+            )
+        response_code = (
+            "RESP-EVENTS-PROPOSAL-001" if event.event_type == "PROPOSAL"
+            else "RESP-EVENTS-ROMANTIC-001"
         )
-        response_code = "RESP-EVENTS-ROMANTIC-001"
     if response_code == "RESP-LOCATION-001" and wants_location_link(
         orchestration_input.message_text
     ):

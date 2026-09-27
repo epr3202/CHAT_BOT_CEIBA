@@ -34,7 +34,7 @@ export const labels = {
   },
   // Source: app/conversation/catalog_event_type.py, CATALOG_EVENT_TYPE_LABELS.
   eventType: {
-    WEDDING: "Boda", CIVIL_WEDDING: "Boda civil", PROPOSAL: "Propuesta de matrimonio",
+    WEDDING: "Boda", CIVIL_WEDDING: "Boda civil", PROPOSAL: "Pedida de mano",
     BIRTHDAY: "Cumpleaños", GRADUATION: "Graduación", ANNIVERSARY: "Aniversario",
     ROMANTIC_DINNER: "Cena romántica", CORPORATE_EVENT: "Evento corporativo", FAMILY_EVENT: "Evento familiar",
     BAPTISM: "Bautizo", FIRST_COMMUNION: "Primera comunión", BABY_SHOWER: "Baby shower",
