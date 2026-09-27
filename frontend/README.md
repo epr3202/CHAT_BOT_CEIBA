@@ -48,6 +48,14 @@ solo las que ya tienen handoff:
 - filtro por estado conversacional;
 - filtro `Mis conversaciones` para la sesión autenticada.
 
+Las etiquetas de presentación viven en `labels.mjs`, con un diccionario por
+enumeración. `label(kind, value)` devuelve la etiqueta española o un elemento
+`code` con el valor desconocido (sin interpretar HTML); un dato vacío se muestra
+como `Sin dato`. Los filtros y formularios conservan los valores de la API.
+Los resúmenes traducen sus campos estructurados y prefijos de dirección, sin
+modificar nombres ni mensajes de los clientes. Las fechas usan `es-CO`, formato
+corto de fecha y hora y zona `America/Bogota`, independiente del navegador.
+
 El panel también cubre estas superficies actuales del backend:
 
 - salud de API;
@@ -99,17 +107,17 @@ general de operación:
 - el historial de tomas/devoluciones se carga al abrir el detalle del caso;
 - si la conversación está en `WAITING_FOR_HUMAN`, se debe tomar el handoff
   pendiente existente;
-- el botón `Responder` abre la bandeja `Tomados` y enfoca el handoff cuando aplica.
+- el botón `Responder` abre la bandeja `Asignado` y enfoca el handoff cuando aplica.
 
 ### Handoffs
 
 La bandeja humana mantiene las colas históricas por estado:
 
-- `Pendientes`: handoffs creados por el bot u operación, todavía sin asesor activo;
-- `Tomados`: conversaciones en atención humana;
-- `Devueltos`: casos que ya regresaron al bot.
+- `Pendiente`: handoffs creados por el bot u operación, todavía sin asesor activo;
+- `Asignado`: conversaciones en atención humana;
+- `Devuelto`: casos que ya regresaron al bot.
 
-En `Tomados`, cada tarjeta muestra dos fuentes:
+En `Asignado`, cada tarjeta muestra dos fuentes:
 
 - resumen determinístico del momento de escalamiento o toma manual;
 - hilo de chat vivo consultado con `GET /admin/conversations/{conversation_id}/messages`.
@@ -122,8 +130,8 @@ Estados de mensajes salientes:
 
 - mensajes ya materializados como `Message OUTBOUND` aparecen como burbujas
   salientes sin estado adicional;
-- filas `outbox` todavía no enviadas aparecen como salientes con `pending`,
-  `sending` o `failed`;
+- filas `outbox` todavía no enviadas aparecen como salientes con `Pendiente`,
+  `Enviando`, `Fallido`, `Suprimido`, `En revisión` o `Descartado`;
 - si el worker falla contra Meta, el hilo permite ver que el mensaje fue escrito,
   aunque la investigación técnica se hace en `outbox.last_error`.
 

@@ -1,3 +1,5 @@
+import { labels, label, formatDate, summaryContent } from "./labels.mjs";
+
 const sessionTokenStorageKey = "ceiba.sessionToken";
 const legacyAdminTokenStorageKey = "ceiba.adminToken";
 const legacyAgentDocumentIdStorageKey = "ceiba.agentDocumentId";
@@ -56,6 +58,22 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 function setText(id, value) {
   const node = document.getElementById(id);
   if (node) node.textContent = value;
+}
+
+function localizeControls() {
+  $$('[data-label-kind]').forEach((node) => {
+    node.replaceChildren(label(node.dataset.labelKind, node.dataset.labelValue));
+  });
+  const selects = [
+    ["#conversationStateFilter", "conversationState"],
+    ["#agentCreateRole", "role", ["AGENT", "ADMIN"]],
+    ["#agentEditRole", "role", ["AGENT", "ADMIN"]],
+    ["#catalogEventType", "eventType"],
+    ["#catalogSendMode", "sendMode", ["ON_REQUEST", "PROACTIVE"]],
+  ];
+  for (const [selector, kind, values = Object.keys(labels[kind])] of selects) {
+    for (const value of values) $(selector).add(new Option(labels[kind][value], value));
+  }
 }
 
 function setEmpty(container, text, className = "emptyState") {
@@ -170,7 +188,7 @@ async function requestJson(path, options = {}) {
       clearSession();
       applyAuthState();
     }
-    const error = new Error(detail || `HTTP ${response.status}`);
+    const error = new Error(detail || `Error de solicitud (${response.status})`);
     error.status = response.status;
     error.retryAfter = response.headers.get("Retry-After");
     throw error;
@@ -210,11 +228,16 @@ function renderPaymentEvidence() {
     const title = document.createElement("strong");
     title.textContent = evidence.customer_name || evidence.customer_phone;
     const meta = document.createElement("span");
-    meta.textContent = `Evidencia #${evidence.id} · Conversacion ${evidence.conversation_id} · ${evidence.mime_type}`;
+    meta.textContent = `Evidencia #${evidence.id} · Conversación ${evidence.conversation_id} · ${evidence.mime_type}`;
     const downloadStatus = document.createElement("span");
     downloadStatus.className = "pill neutral";
-    downloadStatus.textContent = evidence.download_status;
-    details.append(title, meta, downloadStatus);
+    downloadStatus.replaceChildren(label("downloadStatus", evidence.download_status));
+    const reviewStatus = document.createElement("span");
+    reviewStatus.className = "pill neutral";
+    reviewStatus.replaceChildren(label("reviewStatus", evidence.review_status));
+    const created = document.createElement("span");
+    created.textContent = formatDate(evidence.created_at);
+    details.append(title, meta, reviewStatus, downloadStatus, created);
 
     const note = document.createElement("textarea");
     note.rows = 2;
@@ -239,7 +262,7 @@ async function downloadPaymentEvidence(evidenceId) {
     const response = await fetch(`/api/admin/payment-evidence/${evidenceId}/download`, {
       headers: sessionHeaders(),
     });
-    if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error((await response.text()) || `Error de solicitud (${response.status})`);
     const blobUrl = URL.createObjectURL(await response.blob());
     const link = document.createElement("a");
     link.href = blobUrl;
@@ -262,10 +285,7 @@ async function reviewPaymentEvidence(evidenceId, decision, note) {
       headers: sessionHeaders(),
       body: JSON.stringify({ note: note.trim() }),
     });
-    const notification = result.customer_notification === "ENQUEUED"
-      ? "mensaje al cliente encolado"
-      : "notificacion al cliente diferida";
-    logEvent(`Evidencia #${evidenceId} revisada: ${notification}.`);
+    logEvent(`Evidencia #${evidenceId} revisada: `, label("notification", result.customer_notification), ".");
     await loadPaymentEvidence();
   } catch (error) {
     logEvent(`No se pudo revisar el comprobante: ${error.message}`);
@@ -306,7 +326,7 @@ function renderCatalogCategories() {
     const header = document.createElement("div");
     header.className = "catalogCategoryHeader";
     const title = document.createElement("strong");
-    title.textContent = category.event_type ? catalogEventTypeLabel(category.event_type) : "Sin asignaciones";
+    title.replaceChildren(category.event_type ? label("eventType", category.event_type) : "Sin asignaciones");
     const coverage = document.createElement("span");
     coverage.className = `pill ${category.covered ? "ok" : "bad"}`;
     coverage.textContent = category.covered ? "Con cobertura" : "Sin cobertura";
@@ -337,14 +357,9 @@ function renderCatalogCategories() {
   }
 }
 
-function catalogEventTypeLabel(eventType) {
-  return Array.from($("#catalogEventType").options).find((option) => option.value === eventType)?.label
-    || "Tipo de evento no reconocido";
-}
-
-const catalogSendModes = {
-  ON_REQUEST: { label: "A solicitud", explanation: "solo si el cliente pide el catálogo" },
-  PROACTIVE: { label: "Proactivo", explanation: "se envía solo al detectar el evento" },
+const catalogSendModeHelp = {
+  ON_REQUEST: "solo si el cliente pide el catálogo",
+  PROACTIVE: "se envía solo al detectar el evento",
 };
 
 function renderCatalogAsset(catalog, category) {
@@ -357,14 +372,14 @@ function renderCatalogAsset(catalog, category) {
   name.textContent = catalog.name;
   const status = document.createElement("span");
   status.className = `pill ${catalog.active ? "ok" : "neutral"}`;
-  status.textContent = catalog.active ? "Activo" : "Inactivo";
+  status.replaceChildren(label("active", catalog.active));
   heading.append(name, status);
 
   const summary = document.createElement("ul");
   summary.className = "catalogMappingSummary";
   for (const mapping of catalog.event_type_mappings) {
     const item = document.createElement("li");
-    item.textContent = `${catalogEventTypeLabel(mapping.event_type)} · ${catalogSendModes[mapping.send_mode]?.label || "Modo no reconocido"}`;
+    item.append(label("eventType", mapping.event_type), " · ", label("sendMode", mapping.send_mode));
     summary.append(item);
   }
   if (!catalog.event_type_mappings.length) {
@@ -433,16 +448,16 @@ function renderCatalogMappingEditor(catalog) {
     modeLabel.textContent = "Modo de envío";
     const modeSelect = document.createElement("select");
     modeSelect.setAttribute("aria-label", "Modo de envío");
-    for (const [value, mode] of Object.entries(catalogSendModes)) {
-      modeSelect.add(new Option(`${mode.label} (${mode.explanation})`, value));
+    for (const [value, explanation] of Object.entries(catalogSendModeHelp)) {
+      modeSelect.add(new Option(`${label("sendMode", value)} (${explanation})`, value));
     }
     modeSelect.value = mapping.send_mode;
     const help = document.createElement("small");
     help.className = "catalogModeHelp";
-    help.textContent = catalogSendModes[mapping.send_mode]?.explanation || "Selecciona un modo de envío.";
+    help.textContent = catalogSendModeHelp[mapping.send_mode] || "Selecciona un modo de envío.";
     modeSelect.addEventListener("change", () => {
       mapping.send_mode = modeSelect.value;
-      help.textContent = catalogSendModes[mapping.send_mode].explanation;
+      help.textContent = catalogSendModeHelp[mapping.send_mode];
     });
     modeLabel.append(modeSelect);
     row.append(eventLabel, remove, modeLabel, help);
@@ -581,7 +596,7 @@ async function resolveAgentIdentity() {
   try {
     state.agent = await requestJson("/api/admin/me", { headers: sessionHeaders() });
     setText("agentState", `${state.agent.name}`);
-    setText("agentRoleState", state.agent.role);
+    $("#agentRoleState").replaceChildren(label("role", state.agent.role));
   } catch (error) {
     clearSession();
     setText("agentState", "Sesión inválida");
@@ -610,7 +625,7 @@ async function login() {
     sessionStorage.setItem(sessionTokenStorageKey, state.sessionToken);
     $("#pin").value = "";
     setText("agentState", state.agent.name);
-    setText("agentRoleState", state.agent.role);
+    $("#agentRoleState").replaceChildren(label("role", state.agent.role));
     applyAuthState();
     logEvent(`Sesión iniciada para ${state.agent.name}.`);
     await refreshAll();
@@ -657,7 +672,7 @@ async function logout() {
       await requestJson("/api/admin/logout", { method: "POST", headers: sessionHeaders() });
     }
   } catch (error) {
-    logEvent(`Logout falló: ${error.message}`);
+    logEvent(`No se pudo cerrar la sesión: ${error.message}`);
   } finally {
     clearSession();
     applyAuthState();
@@ -689,14 +704,15 @@ async function checkHealth() {
     state.environment = null;
     applyAuthState();
     setApiState("bad", "API caída");
-    logEvent(`Health falló: ${error.message}`);
+    logEvent(`Falló la comprobación de la API: ${error.message}`);
   }
 }
 
-function logEvent(message) {
+function logEvent(...parts) {
   const list = $("#eventLog");
   const item = document.createElement("li");
-  item.textContent = `${new Date().toLocaleTimeString("es-CO", { hour12: false })} · ${message}`;
+  const message = parts.map(part => typeof part === "string" ? part : part.textContent).join("");
+  item.append(`${formatDate(new Date())} · `, ...parts);
   list.prepend(item);
   setText("metricWebhook", message.slice(0, 22));
 }
@@ -730,10 +746,10 @@ async function sendWebhook({ duplicate = false } = {}) {
     logEvent(duplicate ? `Duplicado reenviado: ${payload.messageId}` : `Webhook aceptado: ${payload.text}`);
     await refreshAll();
   } catch (error) {
-    const hint = error.message === "META_APP_SECRET y texto son obligatorios"
-      ? " Exporta META_APP_SECRET antes de arrancar node frontend/server.mjs."
-      : "";
-    logEvent(`Webhook falló: ${error.message}.${hint}`);
+    const detail = error.message === "META_APP_SECRET y texto son obligatorios"
+      ? "Configura el secreto de simulación y escribe un mensaje."
+      : error.message;
+    logEvent(`Falló la simulación: ${detail}`);
   }
 }
 
@@ -743,7 +759,7 @@ async function loadHandoffs(status = state.currentStatus) {
   $$(".segment").forEach((button) => button.classList.toggle("active", button.dataset.status === status));
 
   const list = $("#handoffList");
-  setEmpty(list, `Cargando ${status.toLowerCase()}...`);
+  setEmpty(list, "Cargando casos...");
 
   try {
     const handoffs = await requestJson(`/api/admin/handoffs?status=${encodeURIComponent(status)}`, {
@@ -797,7 +813,8 @@ function caseFromHandoff(handoff) {
     conversationId: handoff.conversation_id,
     status: handoff.status,
     priority: handoff.priority,
-    reason: parsed.motivo || handoff.reason,
+    reason: handoff.reason,
+    reasonKind: "handoffReason",
     customerName: handoff.customer_name || parsed.cliente || "Cliente sin nombre confirmado",
     phone: handoff.customer_phone || parsed.telefono || "Teléfono no disponible",
     assignedTo: handoff.assigned_to || "Sin asignar",
@@ -817,7 +834,8 @@ function caseFromConversation(conversation) {
     status: conversation.state,
     handoffStatus,
     priority: conversation.handoff_priority || "NORMAL",
-    reason: conversation.handoff_reason || conversation.last_intent || "Sin clasificar",
+    reason: conversation.handoff_reason || conversation.last_intent,
+    reasonKind: conversation.handoff_reason ? "handoffReason" : "intent",
     customerName: conversation.customer_name || "Cliente sin nombre confirmado",
     phone: conversation.customer_phone || "Teléfono no disponible",
     assignedTo: assignedAgent || (conversation.bot_enabled ? "Bot activo" : "Sin asignar"),
@@ -855,6 +873,7 @@ function renderAdminCases() {
       item.customerName,
       item.phone,
       item.reason,
+      item.reason ? labels[item.reasonKind]?.[item.reason] : "Sin clasificar",
       item.assignedTo,
       String(item.conversationId),
       String(item.id),
@@ -877,15 +896,15 @@ function renderAdminCases() {
     $(".casePhone", row).textContent = `${item.phone} · conversación ${item.conversationId}`;
     const status = $(".caseStatus", row);
     status.className = `caseStatus pill ${statusClass(item.handoffStatus)}`;
-    status.textContent = statusLabel(item.handoffStatus, item.status);
+    status.replaceChildren(statusLabel(item.handoffStatus, item.status));
     $(".caseAssignment", row).textContent = assignmentText(item);
-    $(".caseReason", row).textContent = item.reason;
-    $(".caseActivity", row).textContent = activityText(item);
+    $(".caseReason", row).replaceChildren(reasonLabel(item));
+    $(".caseActivity", row).replaceChildren(activityText(item));
     const actions = $(".caseActions", row);
     if (directTakeEligibleStates.has(item.status)) {
       actions.append(actionButton("Tomar conversación", () => takeConversation(item.conversationId), "primary"));
     } else if (item.status === "WAITING_FOR_HUMAN" && item.handoffStatus === "PENDING" && item.id !== null) {
-      actions.append(actionButton("Tomar handoff", () => takeHandoff(item.id), "primary"));
+      actions.append(actionButton("Tomar caso", () => takeHandoff(item.id), "primary"));
     }
     if (item.handoffStatus === "TAKEN" && item.id !== null) {
       actions.append(actionButton("Responder", () => openHandoffAndFocus(item.id)));
@@ -905,23 +924,25 @@ function statusClass(status) {
 }
 
 function statusLabel(status, conversationState = null) {
-  return {
-    PENDING: "Pendiente",
-    TAKEN: "Asignado",
-    RETURNED: "Devuelto",
-    RESOLVED: "Resuelto",
-    SIN_HANDOFF: conversationState || "Sin handoff",
-  }[status] || status;
+  if (status === "SIN_HANDOFF") {
+    return conversationState ? label("conversationState", conversationState) : "Sin caso humano";
+  }
+  return label("handoffStatus", status);
+}
+
+function reasonLabel(item) {
+  return item.reason ? label(item.reasonKind, item.reason) : "Sin clasificar";
 }
 
 function activityText(item) {
   const timestamp = item.resolvedAt || item.takenAt || item.createdAt;
   if (!timestamp) return "Sin fecha";
-  const label = item.resolvedAt ? "Devuelto" : item.takenAt ? "Tomado" : "Creado";
-  if (item.lastMessageDirection) {
-    return `${item.lastMessageDirection} · ${new Date(timestamp).toLocaleString("es-CO", { hour12: false })}`;
-  }
-  return `${label} · ${new Date(timestamp).toLocaleString("es-CO", { hour12: false })}`;
+  const action = item.lastMessageDirection ? label("direction", item.lastMessageDirection)
+    : item.resolvedAt ? label("handoffStatus", "RETURNED")
+    : item.takenAt ? label("handoffStatus", "TAKEN") : "Creado";
+  const content = document.createDocumentFragment();
+  content.append(action, ` · ${formatDate(timestamp)}`);
+  return content;
 }
 
 function assignmentText(item) {
@@ -950,13 +971,15 @@ function openHandoffAndFocus(handoffId) {
 function showSummary(item) {
   $("#summaryModalTitle").textContent = item.customerName;
   $("#summaryModalMeta").textContent = `${item.phone} · conversación ${item.conversationId}`;
-  $("#summaryModalDetails").textContent = [
-    `Estado: ${statusLabel(item.handoffStatus, item.status)}`,
-    `Asignación: ${item.assignedTo}`,
-    `Motivo: ${item.reason}`,
-    `Actividad: ${activityText(item)}`,
-  ].join("\n");
-  $("#summaryModalBody").textContent = item.summary || "Sin resumen disponible.";
+  $("#summaryModalDetails").replaceChildren(
+    "Estado: ", label("conversationState", item.status),
+    `\nAsignación: ${item.assignedTo}\nMotivo: `, reasonLabel(item),
+    "\nActividad: ", activityText(item),
+  );
+  if (item.handoffStatus && item.handoffStatus !== "SIN_HANDOFF") {
+    $("#summaryModalDetails").append("\nEstado del caso: ", label("handoffStatus", item.handoffStatus));
+  }
+  $("#summaryModalBody").replaceChildren(summaryContent(item.summary));
   $("#summaryModal").hidden = false;
   loadAssignmentHistory(item.conversationId);
 }
@@ -969,11 +992,11 @@ async function loadAssignmentHistory(conversationId) {
     const lines = history.map((event) => {
       if (event.action === "HANDOFF_RETURNED") return `${event.actor} devolvió`;
       if (event.action === "CONVERSATION_MANUAL_TAKEOVER") return `${event.actor} tomó conversación`;
-      return `${event.actor} tomó handoff`;
+      return `${event.actor} tomó el caso`;
     });
-    $("#summaryModalDetails").textContent += `\nHistorial: ${lines.join(" · ") || "Sin eventos"}`;
+    $("#summaryModalDetails").append(`\nHistorial: ${lines.join(" · ") || "Sin eventos"}`);
   } catch (error) {
-    $("#summaryModalDetails").textContent += `\nHistorial: no disponible`;
+    $("#summaryModalDetails").append("\nHistorial: no disponible");
     logEvent(`Historial falló: ${error.message}`);
   }
 }
@@ -993,7 +1016,7 @@ function renderHandoffs(handoffs) {
   list.replaceChildren();
   state.visibleConversationIds = new Set(handoffs.map((handoff) => handoff.conversation_id));
   if (!handoffs.length) {
-    setEmpty(list, "No hay handoffs en este estado.");
+    setEmpty(list, "No hay casos en este estado.");
     return;
   }
 
@@ -1002,11 +1025,12 @@ function renderHandoffs(handoffs) {
     const node = template.content.firstElementChild.cloneNode(true);
     node.dataset.handoffId = String(handoff.id);
     $(".handoffTitle", node).textContent = `Conversación ${handoff.conversation_id}`;
-    $(".handoffMeta", node).textContent = `Handoff ${handoff.id} · ${handoff.reason} · ${handoff.status}`;
+    $(".handoffMeta", node).replaceChildren(`Caso ${handoff.id} · `,
+      label("handoffReason", handoff.reason), " · ", label("handoffStatus", handoff.status));
     const priority = $(".priority", node);
     priority.className = `priority ${priorityClass(handoff.priority)}`;
-    priority.textContent = handoff.priority;
-    $(".summary", node).textContent = handoff.summary || "Sin resumen disponible";
+    priority.replaceChildren(label("priority", handoff.priority));
+    $(".summary", node).replaceChildren(summaryContent(handoff.summary));
     $(".chatThread", node).dataset.conversationId = String(handoff.conversation_id);
     setEmpty($(".chatThread", node), "Cargando conversación...", "chatEmpty");
 
@@ -1040,7 +1064,7 @@ function actionButton(label, onClick, className = "") {
 async function takeHandoff(handoffId) {
   saveLocalConfig();
   if (!state.sessionToken) {
-    logEvent("Inicia sesión para tomar handoffs.");
+    logEvent("Inicia sesión para tomar casos.");
     return;
   }
   try {
@@ -1051,11 +1075,11 @@ async function takeHandoff(handoffId) {
     await requestJson(`/api/admin/handoffs/${handoffId}/take`, {
       ...options,
     });
-    logEvent(`Handoff ${handoffId} tomado.`);
+    logEvent(`Caso ${handoffId} tomado.`);
     await refreshAll();
     await loadHandoffs("TAKEN");
   } catch (error) {
-    logEvent(`No se pudo tomar el handoff: ${error.message}`);
+    logEvent(`No se pudo tomar el caso: ${error.message}`);
   }
 }
 
@@ -1154,7 +1178,7 @@ function renderChatThread(thread, messages) {
 
     const meta = document.createElement("div");
     meta.className = "chatMeta";
-    meta.textContent = chatMetaText(message);
+    meta.replaceChildren(chatMetaText(message));
     bubble.append(meta);
 
     thread.append(bubble);
@@ -1166,15 +1190,11 @@ function renderChatThread(thread, messages) {
 }
 
 function chatMetaText(message) {
-  const timestamp = message.created_at
-    ? new Date(message.created_at).toLocaleTimeString("es-CO", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      })
-    : "";
-  const status = message.status ? ` · ${message.status.toLowerCase()}` : "";
-  return `${timestamp}${status}`;
+  const content = document.createDocumentFragment();
+  content.append(label("direction", message.direction), ` · ${formatDate(message.created_at)}`);
+  if (message.message_type) content.append(" · ", label("messageType", message.message_type));
+  if (message.status) content.append(" · ", label("outboxStatus", message.status));
+  return content;
 }
 
 async function returnHandoff(handoffId) {
@@ -1185,10 +1205,10 @@ async function returnHandoff(handoffId) {
       headers: operationHeaders(),
       body: JSON.stringify({ resolution }),
     });
-    logEvent(`Handoff ${handoffId} devuelto al bot.`);
+    logEvent(`Caso ${handoffId} devuelto al bot.`);
     await refreshAll();
   } catch (error) {
-    logEvent(`No se pudo devolver el handoff: ${error.message}`);
+    logEvent(`No se pudo devolver el caso: ${error.message}`);
   }
 }
 
@@ -1234,11 +1254,11 @@ function renderAgents() {
   for (const agent of agents) {
     const row = document.createElement("tr");
     row.dataset.agentId = agent.id;
-    for (const value of [agent.name, agent.role,
+    for (const value of [agent.name, label("role", agent.role),
       agent.has_credentials ? agent.document_id : "sin credenciales",
-      agent.active ? "Activo" : "Inactivo", new Date(agent.created_at).toLocaleString("es-CO")]) {
+      label("active", agent.active), formatDate(agent.created_at)]) {
       const cell = document.createElement("td");
-      cell.textContent = value;
+      cell.append(value);
       row.append(cell);
     }
     const cell = document.createElement("td");
@@ -1415,7 +1435,7 @@ function renderResetSummary(summary) {
     list.append(term, value);
   }
   container.append(title, list);
-  setText("resetRequestId", `request_id: ${summary.request_id}`);
+  setText("resetRequestId", `ID de solicitud: ${summary.request_id}`);
 }
 
 async function previewReset(event) {
@@ -1546,6 +1566,7 @@ function bindUi() {
   });
 }
 
+localizeControls();
 applyConfigToForm();
 bindUi();
 applyAuthState();

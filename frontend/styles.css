@@ -525,7 +525,6 @@ textarea {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
-  text-transform: uppercase;
 }
 
 .clientCell strong,
@@ -798,6 +797,11 @@ textarea {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
+}
+
+code {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .catalogAssetActions {
