@@ -19,9 +19,9 @@ test -s "$backup_file"
 docker compose run --rm --no-deps app alembic upgrade head
 docker compose run --rm --no-deps app python scripts/load_knowledge.py
 docker compose up -d --no-deps app worker
-if docker compose config --services | grep -qx admin; then
-  docker compose up -d --no-deps --force-recreate admin
-fi
+# admin is a versioned service since phase 1a; the old `config --services | grep -q`
+# guard failed intermittently (grep -q closes the pipe early -> compose exits 255 under pipefail).
+docker compose up -d --no-deps --force-recreate admin
 deadline=$((SECONDS + 60))
 until curl -sf http://localhost:8000/ready >/dev/null; do
   if (( SECONDS >= deadline )); then

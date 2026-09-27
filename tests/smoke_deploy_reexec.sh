@@ -35,9 +35,7 @@ git -C "$seed_repo" push --quiet
 
 docker() {
   printf '%s|%s\n' "${DEPLOY_REEXEC:-unset}" "$*" >>"$SMOKE_DOCKER_LOG"
-  if [[ "$*" == "compose config --services" ]]; then
-    printf 'app\nworker\nadmin\n'
-  elif [[ "$*" == "compose exec -T db pg_dump -U ceiba -d ceiba -Fc" ]]; then
+  if [[ "$*" == "compose exec -T db pg_dump -U ceiba -d ceiba -Fc" ]]; then
     printf 'x'
   fi
 }
@@ -62,7 +60,6 @@ expected_docker_calls=(
   "1|compose run --rm --no-deps app alembic upgrade head"
   "1|compose run --rm --no-deps app python scripts/load_knowledge.py"
   "1|compose up -d --no-deps app worker"
-  "1|compose config --services"
   "1|compose up -d --no-deps --force-recreate admin"
 )
 mapfile -t actual_docker_calls <"$docker_log"
@@ -98,4 +95,4 @@ if [[ "${#backup_files[@]}" -ne 1 || ! -s "${backup_files[0]}" ]]; then
   exit 1
 fi
 
-echo "PASS: re-exec preserved the tested SHA with detached HEAD, a nonempty backup, and 8 expected Docker calls."
+echo "PASS: re-exec preserved the tested SHA with detached HEAD, a nonempty backup, and 7 expected Docker calls."
