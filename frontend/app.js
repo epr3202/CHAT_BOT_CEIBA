@@ -91,11 +91,30 @@ function renderAdminTokenRequired() {
 }
 
 function simulationVisible() {
-  if (state.environment) return ["development", "testing"].includes(state.environment);
-  return ["localhost", "127.0.0.1"].includes(location.hostname);
+  return ["development", "testing"].includes(state.environment);
 }
 
 function applyAuthState() {
+  try {
+    renderAuthState();
+    const banner = $("#authError");
+    if (banner) banner.hidden = true;
+  } catch (error) {
+    let banner = $("#authError");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "authError";
+      banner.className = "panel formError";
+      banner.setAttribute("role", "alert");
+      document.body.prepend(banner);
+    }
+    banner.textContent = `No se pudo mostrar el panel: ${error.message || String(error)}`;
+    banner.hidden = false;
+    console.error("No se pudo mostrar el panel", error);
+  }
+}
+
+function renderAuthState() {
   const authenticated = Boolean(state.sessionToken && state.agent);
   document.body.classList.toggle("loggedOut", !authenticated);
   $(".nav").hidden = !authenticated;
@@ -489,6 +508,8 @@ async function checkHealth() {
     applyAuthState();
     setApiState("ok", data.status === "ok" ? "API ok" : "API responde");
   } catch (error) {
+    state.environment = null;
+    applyAuthState();
     setApiState("bad", "API caída");
     logEvent(`Health falló: ${error.message}`);
   }

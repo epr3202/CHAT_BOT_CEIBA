@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
@@ -156,8 +156,19 @@ async function serveStatic(request, response) {
   }
 
   try {
-    const content = await readFile(filePath);
-    response.writeHead(200, {"Content-Type": contentTypes[extname(filePath)] || "application/octet-stream"});
+    let content = await readFile(filePath);
+    if (extname(filePath) === ".html") {
+      // A cached pre-login bundle is incompatible with the dedicated login markup.
+      const assets = await Promise.all(["app.js", "styles.css"].map(name => readFile(join(frontendRoot, name))));
+      const version = createHash("sha256").update(Buffer.concat(assets)).digest("hex").slice(0, 16);
+      content = content.toString("utf8")
+        .replace('src="/app.js"', `src="/app.js?v=${version}"`)
+        .replace('href="/styles.css"', `href="/styles.css?v=${version}"`);
+    }
+    response.writeHead(200, {
+      "Content-Type": contentTypes[extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-store",
+    });
     response.end(content);
   } catch {
     response.writeHead(404);

@@ -76,9 +76,58 @@ jobs:
       - name: Test
         run: pytest -q
 
+  frontend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ceiba_frontend_test
+          POSTGRES_USER: ceiba
+          POSTGRES_PASSWORD: ceiba
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ceiba -d ceiba_frontend_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://ceiba:ceiba@127.0.0.1:5432/ceiba_frontend_test
+      TEST_DATABASE_URL: postgresql+asyncpg://ceiba:ceiba@127.0.0.1:5432/ceiba_frontend_test
+      ENVIRONMENT: production
+      META_APP_SECRET: test
+      META_ACCESS_TOKEN: test
+      META_VERIFY_TOKEN: test
+      OPENROUTER_API_KEY: test
+      QUALITY_STAGE: suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/frontend/package-lock.json
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.lock && pip install --no-deps -e .
+          npm ci --prefix tests/frontend
+      - name: Prepare migrated frontend database
+        run: |
+          alembic upgrade head
+          python -m tests.frontend.seed_admin
+      - name: Install Chromium
+        working-directory: tests/frontend
+        run: npx playwright install --with-deps chromium
+      - name: Frontend regression
+        run: npm --prefix tests/frontend test
+
   deploy:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     concurrency:
       group: deploy-production

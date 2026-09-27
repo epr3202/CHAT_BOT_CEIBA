@@ -1,0 +1,11 @@
+{
+  "name": "ceiba-frontend-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --config playwright.config.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
