@@ -1098,6 +1098,59 @@ async def test_tc_cat_021_admin_catalog_event_types_accept_send_mode_objects(
 
 
 @pytest.mark.asyncio
+async def test_admin_catalog_event_types_replace_send_mode_keeping_same_event_type(
+    client_fixture: AsyncClient,
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+) -> None:
+    await bootstrap_agent()
+    headers = await login_headers(client_fixture)
+    pdf_file(tmp_path, "planes-romanticos.pdf")
+    original_mapping = {"event_type": "ROMANTIC_DINNER", "send_mode": "ON_REQUEST"}
+    replacement_mapping = {"event_type": "ROMANTIC_DINNER", "send_mode": "PROACTIVE"}
+    created = await client_fixture.post(
+        "/admin/catalogs",
+        headers=headers,
+        json={
+            "name": "Planes románticos",
+            "file_path": "planes-romanticos.pdf",
+            "event_types": [original_mapping],
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["event_type_mappings"] == [original_mapping]
+    asset_id = UUID(created.json()["catalog_asset_id"])
+
+    response = await client_fixture.put(
+        f"/admin/catalogs/{asset_id}/event-types",
+        headers=headers,
+        json={"event_types": [replacement_mapping]},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["event_type_mappings"] == [replacement_mapping]
+    async with sessionmaker_fixture() as session:
+        mappings = (
+            await session.scalars(
+                select(CatalogEventTypeMap).where(
+                    CatalogEventTypeMap.catalog_asset_id == asset_id
+                )
+            )
+        ).all()
+        assert [(row.event_type, row.send_mode) for row in mappings] == [
+            ("ROMANTIC_DINNER", "PROACTIVE")
+        ]
+        audit = (
+            await session.scalars(
+                select(AuditEvent).where(AuditEvent.action == "CATALOG_EVENT_TYPES_REPLACED")
+            )
+        ).one()
+        assert audit.old_value["event_type_mappings"] == [original_mapping]
+        assert audit.new_value["event_type_mappings"] == [replacement_mapping]
+        assert audit.new_value["catalog_asset_id"] == str(asset_id)
+
+
+@pytest.mark.asyncio
 async def test_tc_cat_022_admin_catalog_event_types_validate_send_mode_at_edge(
     client_fixture: AsyncClient,
     tmp_path: Path,
