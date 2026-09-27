@@ -79,13 +79,6 @@ async def catalogs(
                         event_type="ROMANTIC_DINNER", send_mode=mode,
                     ))
                     asset_ids.append(asset.catalog_asset_id)
-                template = await session.scalar(
-                    select(KnowledgeEntry).where(KnowledgeEntry.code == ROMANTIC_CODE)
-                )
-                # Approval is test-only; the seed must remain DRAFT pending Leandro's OK.
-                if template is not None:
-                    template.status = "APPROVED"
-                    template.answer_template = template.answer_template.removeprefix("[REVISAR] ")
             yield CatalogFixture(sessions, *asset_ids)
     finally:
         await cleanup_test_environment()
@@ -102,7 +95,8 @@ async def assert_romantic_template(sessions: async_sessionmaker[AsyncSession]) -
     assert template.answer_template == ROMANTIC_TEXT
     seed = next((entry for entry in iter_seed_entries() if entry.code == ROMANTIC_CODE), None)
     assert seed is not None
-    assert seed.status == "DRAFT", "Production copy still awaits Leandro's approval"
+    assert seed.status == "APPROVED"
+    assert seed.answer_template == ROMANTIC_TEXT
 
 
 async def information_turn(
