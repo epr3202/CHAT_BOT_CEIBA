@@ -596,8 +596,8 @@ No confirmar espacio sin revisión.
 
 ## RESP-EVENTS-ROMANTIC-001 — Planes románticos de precio fijo
 
-Estado: **DRAFT**. Pendiente de que Emerson confirme la aprobación de Leandro.
-No habilitar como APPROVED ni sincronizar como texto aprobado antes de esa confirmación.
+Estado: **APPROVED**. Texto aprobado por Leandro y confirmado por Emerson el
+**2026-09-27**.
 
 > Nuestras experiencias románticas para dos: Ritual del Corazón ($250.000), Romance entre Copas ($400.000), Mañanas de Encanto ($450.000, fines de semana), Cinema y Amor ($700.000) y Refugio para Dos ($1.000.000). Te envío el catálogo con el detalle de cada una. Cuéntame cuál te interesa y para qué fecha, y te confirmo disponibilidad.
 
@@ -605,7 +605,7 @@ No habilitar como APPROVED ni sincronizar como texto aprobado antes de esa confi
 
 Información sobre `ROMANTIC_DINNER` con tipo válido proporcionado o corregido por el
 cliente, sin confirmación pendiente. Intentar el catálogo PROACTIVE y responder con
-este texto una vez aprobado, incluso si no hay mapping PROACTIVE. La captura de
+este texto, incluso si no hay mapping PROACTIVE. La captura de
 planes de precio fijo omite la pregunta de presupuesto; conserva los demás campos
 del flujo y no confirma disponibilidad automáticamente.
 
