@@ -23,7 +23,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import cast, func, or_, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
@@ -66,6 +66,9 @@ from app.event.models import EVENT_TYPES
 from app.handoff.models import Handoff
 from app.orchestrator.service import enqueue_template
 from app.payment.models import PaymentEvidence
+from app.plan.models import Plan
+from app.reservation.models import Reservation
+from app.reservation.service import InvalidReservationTransition, transition_reservation
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -150,6 +153,81 @@ class AgentIdentityPayload(BaseModel):
 class LoginPayload(BaseModel):
     token: str
     agent: AgentIdentityPayload
+
+
+class PlanPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(None, min_length=1, max_length=180)
+    price_cop: int | None = Field(None, gt=0, le=2147483647)
+    duration_minutes: int | None = Field(None, gt=0, le=2147483647)
+    exclusive: bool | None = None
+    weekend_only: bool | None = None
+    active: bool | None = None
+    sort_order: int | None = Field(None, ge=-2147483648, le=2147483647)
+
+    @model_validator(mode="after")
+    def validate_changes(self) -> PlanPatchRequest:
+        if not self.model_fields_set:
+            raise ValueError("Indica al menos un campo para actualizar.")
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Los campos del plan no pueden ser nulos.")
+        if self.name is not None:
+            self.name = self.name.strip()
+            if not self.name:
+                raise ValueError("El nombre es obligatorio.")
+        return self
+
+
+class PlanPayload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    plan_id: UUID
+    code: str
+    name: str
+    event_type: Literal["ROMANTIC_DINNER", "PROPOSAL"]
+    price_cop: int
+    duration_minutes: int
+    exclusive: bool
+    weekend_only: bool
+    active: bool
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+
+ReservationStatus = Literal["PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED", "EXPIRED", "CANCELLED"]
+
+
+class ReservationPayload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    reservation_id: UUID
+    lead_id: UUID
+    event_id: UUID
+    plan_id: UUID
+    conversation_id: int
+    customer_id: int
+    plan_name: str | None = None
+    customer_name: str | None = None
+    status: ReservationStatus
+    starts_at: datetime
+    ends_at: datetime
+    price_cop: int
+    amount_paid_cop: int
+    payment_kind: Literal["DEPOSIT", "FULL"] | None
+    balance_due_at: datetime | None
+    hold_expires_at: datetime | None
+    external_calendar_id: str | None
+    calendar_status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class CancelReservationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    note: str = Field(min_length=1, max_length=255)
 
 
 class AssignmentHistoryPayload(BaseModel):
@@ -330,6 +408,136 @@ async def authenticated_admin(session: AsyncSession, authorization: str | None) 
     agent = await authenticated_agent(session, authorization)
     require_admin(agent)
     return agent
+
+
+@router.get("/plans")
+async def list_plans(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[PlanPayload]:
+    await authenticated_admin(session, authorization)
+    plans = await session.scalars(select(Plan).order_by(Plan.sort_order, Plan.code))
+    return [PlanPayload.model_validate(plan) for plan in plans]
+
+
+@router.patch("/plans/{plan_id}")
+async def update_plan(
+    plan_id: UUID,
+    body: PlanPatchRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> PlanPayload:
+    admin = await authenticated_admin(session, authorization)
+    actor = admin.name
+    await session.rollback()
+    async with session.begin():
+        plan = await session.get(Plan, plan_id, with_for_update=True)
+        if plan is None:
+            raise HTTPException(status_code=404, detail="El plan no existe.")
+        changes = body.model_dump(exclude_unset=True)
+        old_value = {field: getattr(plan, field) for field in changes}
+        for field, value in changes.items():
+            setattr(plan, field, value)
+        session.add(AuditEvent(
+            actor=actor, action="PLAN_UPDATED", entity="plan",
+            old_value={"plan_id": str(plan_id), **old_value},
+            new_value={"plan_id": str(plan_id), **changes},
+            reason="Administrador actualizó el plan.", request_id=request_id or str(uuid4()),
+        ))
+        await session.flush()
+        await session.refresh(plan)
+        payload = PlanPayload.model_validate(plan)
+    return payload
+
+
+@router.get("/reservations")
+async def list_reservations(
+    session: DbSession,
+    reservation_status: Annotated[ReservationStatus | None, Query(alias="status")] = None,
+    from_at: Annotated[datetime | None, Query(alias="from")] = None,
+    to_at: Annotated[datetime | None, Query(alias="to")] = None,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[ReservationPayload]:
+    await authenticated_admin(session, authorization)
+    if any(value is not None and value.utcoffset() is None for value in (from_at, to_at)):
+        raise HTTPException(status_code=422, detail="Las fechas deben incluir zona horaria.")
+    if from_at is not None and to_at is not None and from_at > to_at:
+        raise HTTPException(status_code=422, detail="Desde no puede ser posterior a Hasta.")
+    query = (
+        select(Reservation, Plan.name, Customer.full_name)
+        .join(Plan, Plan.plan_id == Reservation.plan_id)
+        .join(Customer, Customer.id == Reservation.customer_id)
+        .order_by(Reservation.starts_at, Reservation.reservation_id)
+    )
+    if reservation_status is not None:
+        query = query.where(Reservation.status == reservation_status)
+    if from_at is not None:
+        query = query.where(Reservation.starts_at >= from_at)
+    if to_at is not None:
+        query = query.where(Reservation.starts_at <= to_at)
+    rows = await session.execute(query)
+    return [
+        ReservationPayload.model_validate(reservation).model_copy(update={
+            "plan_name": plan_name, "customer_name": customer_name,
+        })
+        for reservation, plan_name, customer_name in rows
+    ]
+
+
+async def reservation_payload(
+    session: AsyncSession, reservation: Reservation,
+) -> ReservationPayload:
+    plan_name = await session.scalar(select(Plan.name).where(Plan.plan_id == reservation.plan_id))
+    customer_name = await session.scalar(
+        select(Customer.full_name).where(Customer.id == reservation.customer_id)
+    )
+    return ReservationPayload.model_validate(reservation).model_copy(update={
+        "plan_name": plan_name, "customer_name": customer_name,
+    })
+
+
+@router.get("/reservations/{reservation_id}")
+async def get_reservation(
+    reservation_id: UUID,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> ReservationPayload:
+    await authenticated_admin(session, authorization)
+    reservation = await session.get(Reservation, reservation_id)
+    if reservation is None:
+        raise HTTPException(status_code=404, detail="La reserva no existe.")
+    return await reservation_payload(session, reservation)
+
+
+@router.post("/reservations/{reservation_id}/cancel")
+async def cancel_reservation(
+    reservation_id: UUID,
+    body: CancelReservationRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> ReservationPayload:
+    admin = await authenticated_admin(session, authorization)
+    actor = admin.name
+    await session.rollback()
+    async with session.begin():
+        reservation = await session.get(Reservation, reservation_id, with_for_update=True)
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="La reserva no existe.")
+        try:
+            await transition_reservation(
+                session, reservation, "CANCELLED", actor=actor, reason=body.note,
+                request_id=request_id or str(uuid4()),
+            )
+        except InvalidReservationTransition as error:
+            raise HTTPException(
+                status_code=409, detail="La reserva está vencida o ya está cancelada."
+            ) from error
+        await session.flush()
+        await session.refresh(reservation)
+        payload = await reservation_payload(session, reservation)
+    return payload
 
 
 @router.get("/payment-evidence")
