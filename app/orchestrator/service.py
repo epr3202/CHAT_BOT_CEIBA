@@ -19,7 +19,6 @@ from app.appointment.service import (
     VisitServiceResult,
     interpret_visit_time,
     resolve_visit_date_text,
-    settle_visit_appointment,
     validate_visit_attendees,
 )
 from app.audit.models import AuditEvent
@@ -1640,7 +1639,6 @@ async def handle_appointment_confirmation(
             new_time=time.fromisoformat(draft["visit_time"]),
             actor="CUSTOMER",
             now=current_bogota_datetime(),
-            defer_settlement=True,
         )
     else:
         result = await service.confirm_appointment(
@@ -1654,7 +1652,6 @@ async def handle_appointment_confirmation(
             customer_confirmation=True,
             now=current_bogota_datetime(),
             request_id=orchestration_input.request_id,
-            defer_settlement=True,
         )
     await apply_visit_service_result(
         session,
@@ -1727,8 +1724,6 @@ async def apply_visit_service_result(
 
     target = result.state
     if target == ConversationState.APPOINTMENT_CONFIRMED:
-        if result.settlement is not None:
-            await settle_visit_appointment(session, result.settlement)
         set_pending_action(conversation, None)
         conversation.visit_draft = None
     if target is not None and conversation.state != target.value:

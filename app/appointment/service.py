@@ -109,7 +109,7 @@ class VisitAttendeesResult:
 
 @dataclass(frozen=True)
 class VisitSettlement:
-    """Database-only completion to apply with the conversation after deferred Calendar I/O."""
+    """Database-only completion in the service transaction after Calendar I/O."""
 
     operation: Literal["CONFIRM", "RESCHEDULE"]
     appointment_id: UUID
@@ -159,7 +159,6 @@ class VisitServiceResult:
     external_calendar_id: str | None = None
     variables: dict[str, str] = field(default_factory=dict)
     needs_handoff: bool = False
-    settlement: VisitSettlement | None = None
 
 
 @dataclass(frozen=True)
@@ -470,7 +469,6 @@ class VisitSchedulingService:
         now: datetime,
         request_id: str | None = None,
         simulate_confirmation_message_failure: bool = False,
-        defer_settlement: bool = False,
     ) -> VisitServiceResult:
         if not customer_confirmation:
             return VisitServiceResult(
@@ -500,7 +498,6 @@ class VisitSchedulingService:
                 visit_time=visit_time,
                 attendee_count=attendee_count,
                 visit_reason=visit_reason,
-                requires_reconciliation=defer_settlement,
             )
         except IntegrityError:
             return VisitServiceResult(
@@ -536,15 +533,13 @@ class VisitSchedulingService:
             "CONFIRM", appointment_id, visit_date, visit_time, event_id,
             self._reminder_at(visit_date),
         )
-        if not defer_settlement:
-            async with self.sessionmaker() as session, session.begin():
-                await settle_visit_appointment(session, settlement)
+        async with self.sessionmaker() as session, session.begin():
+            await settle_visit_appointment(session, settlement)
         return VisitServiceResult(
             response_code="RESP-VISIT-CONFIRM-003",
             state=ConversationState.APPOINTMENT_CONFIRMED,
             appointment_id=appointment_id,
             external_calendar_id=event_id,
-            settlement=settlement if defer_settlement else None,
             variables={
                 "visit_date": format_date_natural(visit_date),
                 "visit_time": _format_visit_time(visit_time),
@@ -619,7 +614,6 @@ class VisitSchedulingService:
         new_time: time,
         actor: str,
         now: datetime,
-        defer_settlement: bool = False,
     ) -> VisitServiceResult:
         async with self.sessionmaker() as session:
             appointment = await session.get(Appointment, appointment_id)
@@ -638,8 +632,6 @@ class VisitSchedulingService:
         if not available:
             return VisitServiceResult(response_code="RESP-VISIT-CONFIRM-005")
 
-        if defer_settlement:
-            await self._mark_appointment_for_reconciliation(appointment_id)
         try:
             description = await self._build_current_visit_description(
                 customer_id=appointment.customer_id,
@@ -665,9 +657,8 @@ class VisitSchedulingService:
             self._reminder_at(new_date), previous_date, previous_time, actor,
         )
         try:
-            if not defer_settlement:
-                async with self.sessionmaker() as session, session.begin():
-                    await settle_visit_appointment(session, settlement)
+            async with self.sessionmaker() as session, session.begin():
+                await settle_visit_appointment(session, settlement)
         except IntegrityError:
             return VisitServiceResult(response_code="RESP-VISIT-CONFIRM-005")
 
@@ -675,7 +666,6 @@ class VisitSchedulingService:
             response_code="RESP-RESCHEDULE-004",
             state=ConversationState.APPOINTMENT_CONFIRMED,
             appointment_id=appointment_id,
-            settlement=settlement if defer_settlement else None,
             variables={
                 "new_visit_date": format_date_natural(new_date),
                 "new_visit_time": _format_visit_time(new_time),
@@ -776,7 +766,6 @@ class VisitSchedulingService:
         visit_time: time,
         attendee_count: int,
         visit_reason: str,
-        requires_reconciliation: bool = False,
     ) -> UUID:
         async with self.sessionmaker() as session:
             try:
@@ -789,7 +778,6 @@ class VisitSchedulingService:
                         attendee_count=attendee_count,
                         visit_reason=visit_reason,
                         appointment_status="PENDING_CONFIRMATION",
-                        requires_reconciliation=requires_reconciliation,
                     )
                     session.add(appointment)
                     await session.flush()
