@@ -111,8 +111,10 @@ def test_r3_one_migration_directly_after_0027() -> None:
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
     heads = scripts.get_heads()
     assert len(heads) == 1
-    assert heads[0] != "20260910_0027", "B1a: falta la migración de planes y reservas"
-    assert scripts.get_revision(heads[0]).down_revision == "20260910_0027"
+    # Keep the B1a lineage contract valid when later slices add successors.
+    lineage = {revision.revision: revision for revision in scripts.walk_revisions()}
+    assert "20260930_0028" in lineage, "B1a: falta la migración de planes y reservas"
+    assert lineage["20260930_0028"].down_revision == "20260910_0027"
 
 
 def test_r3_deploy_seeds_plans_after_knowledge_before_start() -> None:
