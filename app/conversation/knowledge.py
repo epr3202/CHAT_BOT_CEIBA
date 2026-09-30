@@ -77,7 +77,7 @@ async def render_response(
             )
 
     try:
-        presented_variables = present_variables(variables, response_code=code)
+        presented_variables = present_variables(variables)
     except VariablePresentationError as error:
         raise KnowledgeRenderError(
             KnowledgeRenderErrorReason.PRESENTATION_ERROR,
