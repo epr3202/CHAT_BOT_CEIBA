@@ -52,6 +52,7 @@ from app.agent.auth import (
 from app.agent.models import Agent, AgentSession
 from app.appointment.models import Appointment, BlockedDate, Holiday
 from app.audit.models import AuditEvent
+from app.calendar.adapter import CalendarUnavailableError, get_calendar_adapter
 from app.catalog.models import CATALOG_SEND_MODES, CatalogAsset, CatalogEventTypeMap
 from app.channel.delivery import human_context
 from app.channel.media import detect_pdf_mime_type, sha256_file
@@ -67,6 +68,13 @@ from app.handoff.models import Handoff
 from app.orchestrator.service import enqueue_template
 from app.payment.models import PaymentEvidence
 from app.plan.models import Plan
+from app.reservation.availability import (
+    BookingBlocker,
+    BookingWindow,
+    fetch_booking_context,
+    validate_booking_window,
+)
+from app.reservation.booking import deposit_amount
 from app.reservation.models import Reservation
 from app.reservation.service import InvalidReservationTransition, transition_reservation
 
@@ -495,6 +503,53 @@ async def reservation_payload(
     return ReservationPayload.model_validate(reservation).model_copy(update={
         "plan_name": plan_name, "customer_name": customer_name,
     })
+
+
+class BookingAvailabilityPayload(BaseModel):
+    available: bool
+    blockers: list[BookingBlocker]
+    starts_at: datetime
+    ends_at: datetime
+    deposit_amount_cop: int
+    window: BookingWindow
+
+
+@router.get("/reservations/availability")
+async def reservation_availability(
+    plan_id: UUID,
+    starts_at: datetime,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> BookingAvailabilityPayload:
+    await authenticated_admin(session, authorization)
+    if starts_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="La fecha debe incluir zona horaria.")
+    plan = await session.get(Plan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="El plan no existe.")
+    if not plan.active:
+        raise HTTPException(status_code=422, detail="El plan está inactivo.")
+    ends_at = starts_at + timedelta(minutes=plan.duration_minutes)
+    # Authentication/plan reads autobegin. Detach the snapshot, close that read,
+    # and give the availability helper an idle session with no caller writes.
+    session.expunge(plan)
+    await session.rollback()
+    settings = get_settings()
+    window = validate_booking_window(starts_at, ends_at, settings)
+    try:
+        availability = await fetch_booking_context(
+            session, plan=plan, starts_at=starts_at, ends_at=ends_at,
+            calendar=get_calendar_adapter(settings), settings=settings,
+        )
+    except CalendarUnavailableError as exc:
+        raise HTTPException(
+            status_code=503, detail="No se pudo consultar la disponibilidad. Intenta nuevamente."
+        ) from exc
+    return BookingAvailabilityPayload(
+        available=window.ok and availability.available, blockers=availability.blockers,
+        starts_at=starts_at, ends_at=ends_at,
+        deposit_amount_cop=deposit_amount(plan), window=window,
+    )
 
 
 @router.get("/reservations/{reservation_id}")
