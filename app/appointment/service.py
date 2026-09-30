@@ -56,6 +56,12 @@ SPANISH_MONTHS = {
     "noviembre": 11,
     "diciembre": 12,
 }
+_NUMERIC_VISIT_DATE = re.compile(
+    r"\b(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{2,4}))?\b",
+)
+_TEXTUAL_VISIT_DATE = re.compile(
+    rf"\b(\d{{1,2}})\s+(?:de\s+)?({'|'.join(SPANISH_MONTHS)})(?:\s+de\s+(\d{{4}}))?\b",
+)
 SPANISH_WEEKDAYS = {
     "lunes": 0,
     "martes": 1,
@@ -148,6 +154,23 @@ def resolve_visit_date_text(
     require_absolute_confirmation: bool,
 ) -> VisitDateTextResult:
     normalized = _normalize_spanish_text(message_text)
+    absolute = _resolve_absolute_visit_date(normalized, today)
+    if absolute is not None:
+        contradicted = any(
+            re.search(rf"\b{name}\b", normalized) and weekday != absolute.weekday()
+            for name, weekday in SPANISH_WEEKDAYS.items()
+        )
+        return VisitDateTextResult(
+            absolute,
+            needs_confirmation=contradicted,
+            next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+            interpretation="EXACTA",
+        )
+    if _NUMERIC_VISIT_DATE.search(normalized) or _TEXTUAL_VISIT_DATE.search(normalized):
+        return VisitDateTextResult(
+            None, needs_confirmation=False,
+            next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+        )
     relative = _resolve_relative_visit_date(normalized, today)
     if relative is not None:
         return VisitDateTextResult(
@@ -155,15 +178,6 @@ def resolve_visit_date_text(
             needs_confirmation=require_absolute_confirmation,
             next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
             interpretation="RELATIVA",
-        )
-
-    absolute = _resolve_absolute_visit_date(normalized, today)
-    if absolute is not None:
-        return VisitDateTextResult(
-            absolute,
-            needs_confirmation=False,
-            next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
-            interpretation="EXACTA",
         )
 
     return VisitDateTextResult(
@@ -175,8 +189,7 @@ def resolve_visit_date_text(
 
 
 def interpret_visit_time(message_text: str, offered_slots: list[time]) -> VisitTimeResult:
-    normalized = _normalize_spanish_text(message_text)
-    candidate = _extract_visit_time(normalized)
+    candidate = parse_visit_time_text(message_text)
     if candidate is None:
         return VisitTimeResult(
             False,
@@ -232,7 +245,7 @@ def _resolve_relative_visit_date(normalized: str, today: date) -> date | None:
 
 
 def _resolve_absolute_visit_date(normalized: str, today: date) -> date | None:
-    numeric = re.search(r"\b(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{2,4}))?\b", normalized)
+    numeric = _NUMERIC_VISIT_DATE.search(normalized)
     if numeric is not None:
         day_value = int(numeric.group(1))
         month_value = int(numeric.group(2))
@@ -242,11 +255,7 @@ def _resolve_absolute_visit_date(normalized: str, today: date) -> date | None:
             year_value += 2000
         return _future_date(day_value, month_value, year_value, today)
 
-    month_pattern = "|".join(SPANISH_MONTHS)
-    textual = re.search(
-        rf"\b(\d{{1,2}})\s+(?:de\s+)?({month_pattern})(?:\s+de\s+(\d{{4}}))?\b",
-        normalized,
-    )
+    textual = _TEXTUAL_VISIT_DATE.search(normalized)
     if textual is None:
         return None
     return _future_date(
@@ -263,40 +272,61 @@ def _future_date(
     year_value: int | None,
     today: date,
 ) -> date | None:
-    inferred_year = year_value or today.year
+    years = (
+        [year_value] if year_value is not None
+        else range(today.year, min(today.year + 8, date.max.year) + 1)
+    )
+    for year in years:
+        try:
+            candidate = date(year, month_value, day_value)
+        except ValueError:
+            continue
+        if candidate >= today:
+            return candidate
+    return None
+
+
+_MONTH_TOKEN = "|".join(SPANISH_MONTHS)
+_DATE_NUMBERS = re.compile(
+    rf"\b(?:(?:el|dia)\s+)?\d{{1,2}}\s*[/-]\s*\d{{1,2}}(?:\s*[/-]\s*\d{{2,4}})?\b"
+    rf"|\b(?:(?:el|dia)\s+)?\d{{1,2}}\s+(?:de\s+)?(?:{_MONTH_TOKEN})\b"
+    r"(?:\s+de\s+\d{4})?"
+    r"|\b(?:el|dia)\s+\d{1,2}\b"
+)
+_CLOCK_CANDIDATES = re.compile(
+    r"\b(?P<prefix>a\s+las?\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+    r"(?:\s*(?P<period>[ap]\.?\s*m\.?|de\s+la\s+(?:manana|tarde|noche)))?(?!\w)"
+)
+
+
+def parse_visit_time_text(message_text: str) -> time | None:
+    """Extract a clock, never a calendar day; validation remains in interpret_visit_time."""
+    normalized = _normalize_spanish_text(message_text)
+    clocks = _DATE_NUMBERS.sub(" ", normalized)
+    candidates = list(_CLOCK_CANDIDATES.finditer(clocks))
+    explicit = [m for m in candidates if m.group("prefix") or m.group("minute") is not None
+                or m.group("period")]
+    selected = next(iter(explicit or candidates), None)
+    if selected is None:
+        hour = next((value for word, value in SPANISH_HOURS.items()
+                     if re.search(rf"\b{word}\b", clocks)), None)
+        minute, period = 0, clocks
+    else:
+        hour = int(selected.group("hour"))
+        minute = int(selected.group("minute") or 0)
+        period = selected.group("period") or clocks
+    if hour is None:
+        return None
+    afternoon = re.search(r"\b(?:p\.?\s*m\.?|tarde|noche)\b", period) is not None
+    morning = re.search(r"\b(?:a\.?\s*m\.?|manana)\b", period) is not None
+    if afternoon and 1 <= hour < 12:
+        hour += 12
+    elif morning and hour == 12:
+        hour = 0
     try:
-        candidate = date(inferred_year, month_value, day_value)
+        return time(hour, minute)
     except ValueError:
         return None
-    if year_value is not None:
-        return candidate if candidate >= today else None
-    if candidate < today:
-        try:
-            return date(today.year + 1, month_value, day_value)
-        except ValueError:
-            return None
-    return candidate
-
-
-def _extract_visit_time(normalized: str) -> time | None:
-    numeric = re.search(r"\b(?:a\s+las?\s+)?(\d{1,2})(?::(\d{2}))?\b", normalized)
-    if numeric is not None:
-        hour_value = int(numeric.group(1))
-        minute_value = int(numeric.group(2) or 0)
-        is_afternoon = any(token in normalized for token in ("tarde", "pm", "p. m."))
-        if is_afternoon and 1 <= hour_value < 12:
-            hour_value += 12
-        try:
-            return time(hour_value, minute_value)
-        except ValueError:
-            return None
-
-    for word, hour_value in SPANISH_HOURS.items():
-        if re.search(rf"\b{word}\b", normalized):
-            if "tarde" in normalized and hour_value < 12:
-                hour_value += 12
-            return time(hour_value)
-    return None
 
 
 def validate_visit_attendees(

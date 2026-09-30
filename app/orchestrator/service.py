@@ -949,6 +949,7 @@ async def handle_visit_intent(
     if intent == "SCHEDULE_VISIT":
         await start_visit_scheduling(
             session,
+            settings,
             knowledge_sessionmaker,
             orchestration_input,
             classification,
@@ -1029,6 +1030,7 @@ async def handle_visit_intent(
 
 async def start_visit_scheduling(
     session: AsyncSession,
+    settings: Settings,
     knowledge_sessionmaker: Any,
     orchestration_input: OrchestrationInput,
     classification: IntentClassification,
@@ -1051,17 +1053,11 @@ async def start_visit_scheduling(
             "RESP-VISIT-002",
             {},
         )
-    await enqueue_template(
-        session,
-        knowledge_sessionmaker,
-        conversation,
-        orchestration_input.customer,
-        orchestration_input.inbound_message,
-        "RESP-VISIT-003",
-        {},
-    )
     persist_classification_context(conversation, classification)
     conversation.failed_understanding_count = 0
+    await handle_waiting_for_appointment_date(
+        session, settings, knowledge_sessionmaker, orchestration_input, classification,
+    )
 
 
 async def handle_appointment_flow_state(
@@ -1137,6 +1133,7 @@ async def handle_appointment_flow_state(
     if intent == "SCHEDULE_VISIT":
         await start_visit_scheduling(
             session,
+            settings,
             knowledge_sessionmaker,
             orchestration_input,
             classification,
@@ -1201,7 +1198,7 @@ async def handle_waiting_for_appointment_date(
         today=current_bogota_datetime().date(),
         require_absolute_confirmation=True,
     )
-    if decision.interpretation == "RELATIVA":
+    if decision.needs_confirmation or decision.interpretation == "RELATIVA":
         # INTERIM(states.md): pending approved absolute-date confirmation copy.
         await enqueue_template(
             session,
@@ -1267,6 +1264,14 @@ async def handle_waiting_for_appointment_date(
         reason="Validated visit date has available slots",
     )
     set_pending_action(conversation, "SELECT_VISIT_TIME")
+    selected = interpret_visit_time(
+        orchestration_input.message_text, [slot.start_time for slot in availability.slots],
+    )
+    if selected.accepted:
+        await handle_waiting_for_appointment_selection(
+            session, settings, knowledge_sessionmaker, orchestration_input, classification,
+        )
+        return
     await enqueue_template(
         session,
         knowledge_sessionmaker,
