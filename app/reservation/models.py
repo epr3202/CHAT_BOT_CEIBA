@@ -5,9 +5,10 @@ from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, validates
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.config.database import Base
+from app.plan.models import Plan
 
 RESERVATION_STATUSES = ("PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED", "EXPIRED", "CANCELLED")
 
@@ -41,6 +42,7 @@ class Reservation(Base):
     plan_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("plan.plan_id"), nullable=False
     )
+    plan: Mapped[Plan] = relationship(lazy="raise")
     conversation_id: Mapped[int] = mapped_column(ForeignKey("conversation.id"), nullable=False)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PAYMENT_PENDING")

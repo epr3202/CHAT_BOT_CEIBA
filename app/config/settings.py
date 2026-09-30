@@ -68,6 +68,28 @@ class Settings(BaseSettings):
     calendar_adapter: Literal["fake", "google"] = Field(default="fake", alias="CALENDAR_ADAPTER")
     google_service_account_file: str = Field(default="", alias="GOOGLE_SERVICE_ACCOUNT_FILE")
 
+    # B1b-1 backend only; the conversation gate is reserved for B1b-2.
+    self_service_booking_enabled: bool = Field(default=False, alias="SELF_SERVICE_BOOKING_ENABLED")
+    booking_exclusivity_keyword: str = Field(
+        default="exclusividad", alias="BOOKING_EXCLUSIVITY_KEYWORD", min_length=1
+    )
+    booking_hours_start: str = Field(
+        default="12:00", alias="BOOKING_HOURS_START", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+    )
+    booking_hours_end: str = Field(
+        default="21:00", alias="BOOKING_HOURS_END", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+    )
+    booking_min_lead_days: int = Field(default=1, alias="BOOKING_MIN_LEAD_DAYS", ge=0)
+    booking_deposit_percent: int = Field(default=50, alias="BOOKING_DEPOSIT_PERCENT", ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_booking_settings(self) -> Settings:
+        if self.booking_hours_start >= self.booking_hours_end:
+            raise ValueError("BOOKING_HOURS_START must precede BOOKING_HOURS_END on the same day")
+        if not self.booking_exclusivity_keyword.strip():
+            raise ValueError("BOOKING_EXCLUSIVITY_KEYWORD must not be blank")
+        return self
+
     openrouter_api_key: str = Field(alias="OPENROUTER_API_KEY")
     openrouter_base_url: str = Field(
         default="https://openrouter.ai/api/v1",

@@ -11,6 +11,7 @@ from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.handoff.models import Handoff
 from app.payment.models import PaymentEvidence
+from app.reservation.booking import attach_payment_evidence
 
 SYSTEM_ACTOR = "SYSTEM"
 PAYMENT_MEDIA_TYPES = frozenset({"image", "document"})
@@ -85,6 +86,7 @@ async def create_payment_evidence(
     )
     session.add(evidence)
     await session.flush()
+    await attach_payment_evidence(session, evidence, request_id=request_id)
 
     session.add(
         AuditEvent(
