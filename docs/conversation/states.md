@@ -1802,7 +1802,59 @@ La IA nunca podrá establecer `PAYMENT_CONFIRMED`.
 
 # 27. Máquina de estados de reserva
 
-## Estados
+## 27.1 B1a — planes de cena romántica y pedida de mano
+
+El contrato D2 implementado en `app/reservation/service.py` y el CHECK de
+`reservation.status` admiten únicamente estos cinco estados. Son estados de la
+reserva, independientes de los estados de conversación y de revisión de pagos.
+
+| Estado actual | PAYMENT_PENDING | PAYMENT_REVIEW | RESERVED | EXPIRED | CANCELLED |
+| --- | --- | --- | --- | --- | --- |
+| PAYMENT_PENDING | No | Sí | No | Sí | Sí |
+| PAYMENT_REVIEW | No | No | Sí | No | Sí |
+| RESERVED | No | No | No | No | Sí |
+| EXPIRED | No | No | No | No | No |
+| CANCELLED | No | No | No | No | No |
+
+`EXPIRED` y `CANCELLED` son terminales; tampoco se permiten transiciones al mismo
+estado. `InvalidReservationTransition` representa una transición fuera de esta
+matriz. No se agrega ningún estado de conversación.
+
+`transition_reservation` valida exclusivamente D2 y exige actor y motivo no
+vacíos antes de modificar la reserva. Añade un `AuditEvent` con acción
+`RESERVATION_STATUS_CHANGED`, entidad `reservation`, actor, motivo, request_id y
+valores anterior/nuevo con `status` y `reservation_id`. No hace commit: el
+llamador es dueño de la transacción y del bloqueo de la fila.
+
+Las **guardas de negocio las aplica el llamador en B1b/B2**, incluyendo pago
+confirmado por un humano, importe requerido, disponibilidad y confirmación
+autorizada. Las guardas críticas descritas abajo siguen siendo obligatorias para
+los futuros flujos de negocio; G3 implementa persistencia y administración,
+sin habilitar creación de reservas desde el bot ni confirmación automática de
+pagos. Revisar un comprobante con accept/reject no cambia una reserva vinculada,
+su importe pagado ni su calendario en B1a.
+
+En G3, la cancelación solo está disponible para ADMIN, requiere `note` no vacío,
+bloquea la fila y llama a `transition_reservation` con el nombre del administrador
+como actor y `note` como motivo. Una repetición devuelve HTTP 409 sin insertar una
+segunda auditoría. No ejecuta devolución ni cambios en calendarios externos.
+
+`hold_expires_at`, `calendar_status` y `external_calendar_id` son campos de
+persistencia sin comportamiento en B1a. No se crean bloqueos temporales ni se
+programan expiraciones. **Conflicto con `scope.md` §17.4/§17.6 (bloqueos temporales)
+pendiente de decisión de producto antes de B1b**: el alcance vigente prohíbe
+bloqueos previos al pago confirmado y marca el bloqueo temporal fuera del alcance.
+Agregar un campo nullable no autoriza activar esa funcionalidad.
+
+Esta matriz es la decisión específica autorizada para B1a frente al diseño
+general de reservas en `data-matrix.md` §19 y los flujos generales de cancelación.
+`INQUIRY`, `QUOTED`, `CANCEL_REQUESTED` y `COMPLETED` quedan reservados al diseño
+para eventos grandes, pendiente de implementación. No forman parte del CHECK ni
+del servicio de B1a; la administración B1a cancela directamente según D2.
+
+## 27.2 Diseño general para eventos grandes — pendiente de implementación
+
+### Estados
 
 ```text
 INQUIRY
@@ -1815,7 +1867,7 @@ CANCELLED
 COMPLETED
 ```
 
-## Transiciones
+### Transiciones
 
 ```text
 INQUIRY → QUOTED
@@ -1828,7 +1880,7 @@ CANCEL_REQUESTED → CANCELLED
 CANCEL_REQUESTED → RESERVED
 ```
 
-## Guarda crítica `PAYMENT_REVIEW → RESERVED`
+### Guarda crítica `PAYMENT_REVIEW → RESERVED`
 
 ```text
 payment_status = PAYMENT_CONFIRMED
@@ -1837,7 +1889,7 @@ event_date_available = true
 authorized_agent_confirmation = true
 ```
 
-## Invariante
+### Invariante
 
 ```text
 reservation_status = RESERVED
