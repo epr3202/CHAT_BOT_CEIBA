@@ -216,7 +216,7 @@ async def test_r7_admin_availability_real_blockers(
     "case,status", [("agent", 403), ("missing", 404), ("inactive", 422), ("naive", 422)]
 )
 async def test_r7_admin_errors(client: AsyncClient, case: str, status: int) -> None:
-    assert any(route.path == "/admin/reservations/availability" for route in app.routes), (
+    assert "/admin/reservations/availability" in app.openapi()["paths"], (
         "B1b-1: falta la ruta estática de disponibilidad"
     )
     row = await seed_reservation()
