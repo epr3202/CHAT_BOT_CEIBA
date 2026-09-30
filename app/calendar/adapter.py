@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from functools import lru_cache
 from typing import Protocol
+from uuid import uuid4
 
 from app.config.settings import Settings
 
@@ -39,7 +40,22 @@ class ExternalEventRef:
     description: str | None = None
 
 
+@dataclass(frozen=True)
+class CalendarEvent:
+    event_id: str
+    calendar_id: str
+    summary: str
+    description: str | None
+    start: datetime
+    end: datetime
+
+
 class CalendarAdapter(Protocol):
+    async def list_events(
+        self, start: datetime, end: datetime, calendar_ids: Iterable[str],
+    ) -> list[CalendarEvent]:
+        ...
+
     async def get_busy_intervals(
         self,
         target_date: date,
@@ -87,6 +103,7 @@ class FakeCalendarAdapter:
         self.timeout_after_create = timeout_after_create
         self.fail_update_once = fail_update_once
         self._events: dict[str, ExternalEventRef] = {}
+        self._listed_events: list[CalendarEvent] = []
         self.created_event_ids: list[str] = []
         self.updated_event_ids: list[str] = []
         self.deleted_event_ids: list[str] = []
@@ -95,6 +112,26 @@ class FakeCalendarAdapter:
         self.update_call_count = 0
         self.delete_call_count = 0
         self.query_call_count = 0
+
+    def add_event(
+        self, calendar_id: str, summary: str, start: datetime, end: datetime,
+        description: str | None = None,
+    ) -> CalendarEvent:
+        event = CalendarEvent(uuid4().hex, calendar_id, summary, description, start, end)
+        self._listed_events.append(event)
+        return event
+
+    async def list_events(
+        self, start: datetime, end: datetime, calendar_ids: Iterable[str],
+    ) -> list[CalendarEvent]:
+        if "list_events" in self.raise_on or "query" in self.raise_on:
+            raise CalendarUnavailableError("fake calendar listing failed")
+        ids = set(calendar_ids)
+        return sorted(
+            (event for event in self._listed_events
+             if event.calendar_id in ids and event.start < end and start < event.end),
+            key=lambda event: (event.start, event.calendar_id, event.event_id),
+        )
 
     def add_busy(self, calendar_id: str, start: datetime, end: datetime) -> None:
         self.busy_by_calendar.setdefault(calendar_id, []).append(BusyInterval(start, end))

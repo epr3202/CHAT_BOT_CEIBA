@@ -18,6 +18,7 @@ from google.oauth2.service_account import Credentials
 from app.calendar.adapter import (
     AlreadyExistsError,
     BusyInterval,
+    CalendarEvent,
     CalendarUnavailableError,
     EventNotFoundError,
     ExternalEventRef,
@@ -43,6 +44,54 @@ class GoogleCalendarAdapter:
         self._http_client = http_client or httpx.AsyncClient(timeout=10.0)
         self._token_provider = token_provider or self._get_default_token
         self._credentials: Credentials | None = None
+
+    async def list_events(
+        self, start: datetime, end: datetime, calendar_ids: Iterable[str],
+    ) -> list[CalendarEvent]:
+        """Read each configured calendar completely; never return partial availability."""
+        if start.utcoffset() is None or end.utcoffset() is None or start >= end:
+            raise ValueError("Calendar event listing requires an aware, increasing interval")
+        events: list[CalendarEvent] = []
+        for calendar_id in dict.fromkeys(calendar_ids):
+            params = {
+                "timeMin": start.isoformat(), "timeMax": end.isoformat(),
+                "singleEvents": "true", "orderBy": "startTime",
+            }
+            seen_tokens: set[str] = set()
+            while True:
+                url = httpx.URL(
+                    f"{GOOGLE_CALENDAR_API_BASE_URL}/calendars/"
+                    f"{quote(calendar_id, safe='')}/events",
+                    params=params,
+                )
+                response = await self._request("GET", str(url), operation="list")
+                try:
+                    data = response.json()
+                    if (not isinstance(data, dict) or data.get("error") or data.get("errors")
+                            or not isinstance(data.get("items"), list)):
+                        raise ValueError("Missing calendar event collection")
+                    for item in data["items"]:
+                        if not isinstance(item, dict):
+                            raise ValueError("Malformed calendar event")
+                        if item.get("status") == "cancelled":
+                            continue
+                        event = _listed_event(
+                            item, calendar_id, data.get("timeZone", "America/Bogota")
+                        )
+                        if event.start < end and start < event.end:
+                            events.append(event)
+                    token = data.get("nextPageToken")
+                    if token is None:
+                        break
+                    if not isinstance(token, str) or not token or token in seen_tokens:
+                        raise ValueError("Invalid or repeated calendar page token")
+                    seen_tokens.add(token)
+                    params["pageToken"] = token
+                except (ValueError, TypeError, KeyError) as exc:
+                    raise CalendarUnavailableError(
+                        f"Google Calendar events response malformed for calendar: {calendar_id}"
+                    ) from exc
+        return sorted(events, key=lambda event: (event.start, event.calendar_id, event.event_id))
 
     async def get_busy_intervals(
         self,
@@ -204,6 +253,33 @@ class GoogleCalendarAdapter:
 
     def _event_url(self, event_id: str) -> str:
         return f"{self._events_url()}/{quote(event_id, safe='')}"
+
+
+def _listed_event(data: dict[str, Any], calendar_id: str, timezone: str) -> CalendarEvent:
+    """Keep all-day exclusivity visible, using the provider calendar's timezone."""
+    def boundary(key: str) -> datetime:
+        value = data[key]
+        if not isinstance(value, dict):
+            raise ValueError("Invalid calendar event boundary")
+        if "dateTime" in value:
+            if not isinstance(value["dateTime"], str):
+                raise ValueError("Invalid calendar datetime")
+            result = datetime.fromisoformat(value["dateTime"].replace("Z", "+00:00"))
+            if result.utcoffset() is None:
+                result = result.replace(tzinfo=ZoneInfo(value.get("timeZone", timezone)))
+            return result
+        return datetime.combine(date.fromisoformat(value["date"]), time.min,
+                                tzinfo=ZoneInfo(timezone))
+
+    event_id = data["id"]
+    summary, description = data.get("summary", ""), data.get("description")
+    if (not isinstance(event_id, str) or not event_id or not isinstance(summary, str)
+            or (description is not None and not isinstance(description, str))):
+        raise ValueError("Invalid calendar event metadata")
+    start, end = boundary("start"), boundary("end")
+    if end <= start:
+        raise ValueError("Invalid calendar event interval")
+    return CalendarEvent(event_id, calendar_id, summary, description, start, end)
 
 
 def _validate_event_id(event_id: str) -> None:
