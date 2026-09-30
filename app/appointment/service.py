@@ -108,6 +108,50 @@ class VisitAttendeesResult:
 
 
 @dataclass(frozen=True)
+class VisitSettlement:
+    """Database-only completion to apply with the conversation after deferred Calendar I/O."""
+
+    operation: Literal["CONFIRM", "RESCHEDULE"]
+    appointment_id: UUID
+    visit_date: date
+    visit_time: time
+    external_calendar_id: str
+    reminder_at: datetime
+    previous_date: date | None = None
+    previous_time: time | None = None
+    actor: str | None = None
+
+
+async def settle_visit_appointment(session: AsyncSession, change: VisitSettlement) -> None:
+    appointment = await session.get(Appointment, change.appointment_id, with_for_update=True)
+    if appointment is None:
+        raise ValueError(f"Appointment not found: {change.appointment_id}")
+    if change.operation == "CONFIRM":
+        if appointment.appointment_status != "PENDING_CONFIRMATION":
+            raise ValueError("Appointment changed before confirmation settlement")
+        appointment.external_calendar_id = change.external_calendar_id
+        appointment.appointment_status = "CONFIRMED"
+    else:
+        if (appointment.appointment_date, appointment.start_time) != (
+            change.previous_date, change.previous_time,
+        ) or appointment.appointment_status not in ACTIVE_APPOINTMENT_STATUSES:
+            raise ValueError("Appointment changed before reschedule settlement")
+        appointment.appointment_date = change.visit_date
+        appointment.start_time = change.visit_time
+        appointment.end_time = calculate_visit_end_time(change.visit_time)
+        appointment.appointment_status = "RESCHEDULED"
+        appointment.reschedule_count += 1
+        session.add(AppointmentChange(
+            appointment_id=change.appointment_id, previous_date=change.previous_date,
+            previous_start_time=change.previous_time, new_date=change.visit_date,
+            new_start_time=change.visit_time, changed_by_type=change.actor,
+            changed_by_id=change.actor,
+        ))
+    appointment.reminder_scheduled_at = change.reminder_at
+    appointment.requires_reconciliation = False
+
+
+@dataclass(frozen=True)
 class VisitServiceResult:
     response_code: str
     state: ConversationState | None = None
@@ -115,6 +159,7 @@ class VisitServiceResult:
     external_calendar_id: str | None = None
     variables: dict[str, str] = field(default_factory=dict)
     needs_handoff: bool = False
+    settlement: VisitSettlement | None = None
 
 
 @dataclass(frozen=True)
@@ -425,6 +470,7 @@ class VisitSchedulingService:
         now: datetime,
         request_id: str | None = None,
         simulate_confirmation_message_failure: bool = False,
+        defer_settlement: bool = False,
     ) -> VisitServiceResult:
         if not customer_confirmation:
             return VisitServiceResult(
@@ -454,6 +500,7 @@ class VisitSchedulingService:
                 visit_time=visit_time,
                 attendee_count=attendee_count,
                 visit_reason=visit_reason,
+                requires_reconciliation=defer_settlement,
             )
         except IntegrityError:
             return VisitServiceResult(
@@ -485,12 +532,19 @@ class VisitSchedulingService:
                 needs_handoff=True,
             )
 
-        await self._confirm_pending_appointment(appointment_id, event_id, visit_date)
+        settlement = VisitSettlement(
+            "CONFIRM", appointment_id, visit_date, visit_time, event_id,
+            self._reminder_at(visit_date),
+        )
+        if not defer_settlement:
+            async with self.sessionmaker() as session, session.begin():
+                await settle_visit_appointment(session, settlement)
         return VisitServiceResult(
             response_code="RESP-VISIT-CONFIRM-003",
             state=ConversationState.APPOINTMENT_CONFIRMED,
             appointment_id=appointment_id,
             external_calendar_id=event_id,
+            settlement=settlement if defer_settlement else None,
             variables={
                 "visit_date": format_date_natural(visit_date),
                 "visit_time": _format_visit_time(visit_time),
@@ -565,6 +619,7 @@ class VisitSchedulingService:
         new_time: time,
         actor: str,
         now: datetime,
+        defer_settlement: bool = False,
     ) -> VisitServiceResult:
         async with self.sessionmaker() as session:
             appointment = await session.get(Appointment, appointment_id)
@@ -583,6 +638,8 @@ class VisitSchedulingService:
         if not available:
             return VisitServiceResult(response_code="RESP-VISIT-CONFIRM-005")
 
+        if defer_settlement:
+            await self._mark_appointment_for_reconciliation(appointment_id)
         try:
             description = await self._build_current_visit_description(
                 customer_id=appointment.customer_id,
@@ -603,29 +660,14 @@ class VisitSchedulingService:
                 needs_handoff=True,
             )
 
+        settlement = VisitSettlement(
+            "RESCHEDULE", appointment_id, new_date, new_time, appointment_id.hex,
+            self._reminder_at(new_date), previous_date, previous_time, actor,
+        )
         try:
-            async with self.sessionmaker() as session:
-                async with session.begin():
-                    appointment = await session.get(Appointment, appointment_id)
-                    if appointment is None:
-                        return VisitServiceResult(response_code="RESP-RESCHEDULE-006")
-                    appointment.appointment_date = new_date
-                    appointment.start_time = new_time
-                    appointment.end_time = calculate_visit_end_time(new_time)
-                    appointment.appointment_status = "RESCHEDULED"
-                    appointment.reschedule_count += 1
-                    appointment.reminder_scheduled_at = self._reminder_at(new_date)
-                    session.add(
-                        AppointmentChange(
-                            appointment_id=appointment_id,
-                            previous_date=previous_date,
-                            previous_start_time=previous_time,
-                            new_date=new_date,
-                            new_start_time=new_time,
-                            changed_by_type=actor,
-                            changed_by_id=actor,
-                        )
-                    )
+            if not defer_settlement:
+                async with self.sessionmaker() as session, session.begin():
+                    await settle_visit_appointment(session, settlement)
         except IntegrityError:
             return VisitServiceResult(response_code="RESP-VISIT-CONFIRM-005")
 
@@ -633,6 +675,7 @@ class VisitSchedulingService:
             response_code="RESP-RESCHEDULE-004",
             state=ConversationState.APPOINTMENT_CONFIRMED,
             appointment_id=appointment_id,
+            settlement=settlement if defer_settlement else None,
             variables={
                 "new_visit_date": format_date_natural(new_date),
                 "new_visit_time": _format_visit_time(new_time),
@@ -733,6 +776,7 @@ class VisitSchedulingService:
         visit_time: time,
         attendee_count: int,
         visit_reason: str,
+        requires_reconciliation: bool = False,
     ) -> UUID:
         async with self.sessionmaker() as session:
             try:
@@ -745,6 +789,7 @@ class VisitSchedulingService:
                         attendee_count=attendee_count,
                         visit_reason=visit_reason,
                         appointment_status="PENDING_CONFIRMATION",
+                        requires_reconciliation=requires_reconciliation,
                     )
                     session.add(appointment)
                     await session.flush()
@@ -835,22 +880,6 @@ class VisitSchedulingService:
             visit_attendee_count=attendee_count,
             visit_reason=visit_reason,
         )
-
-    async def _confirm_pending_appointment(
-        self,
-        appointment_id: UUID,
-        external_calendar_id: str,
-        visit_date: date,
-    ) -> None:
-        async with self.sessionmaker() as session:
-            async with session.begin():
-                appointment = await session.get(Appointment, appointment_id)
-                if appointment is None:
-                    raise ValueError(f"Appointment not found: {appointment_id}")
-                appointment.external_calendar_id = external_calendar_id
-                appointment.appointment_status = "CONFIRMED"
-                appointment.reminder_scheduled_at = self._reminder_at(visit_date)
-                appointment.requires_reconciliation = False
 
     async def _mark_appointment_for_reconciliation(self, appointment_id: UUID) -> None:
         async with self.sessionmaker() as session:

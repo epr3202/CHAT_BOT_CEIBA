@@ -2240,6 +2240,16 @@ La derivación usa `RESERVATION_CONFIRMATION` y `handoff_response_code` para sel
 Una fecha relativa conserva su expresión en `event_date_raw`, con `event_date` nula y
 `event_date_type = UNKNOWN`; el detalle del handoff incluye «pendiente de confirmación».
 
+## 38.3 Cierre transaccional de una visita confirmada
+
+Calendar se consulta y modifica mediante las llamadas diferidas, sin transacción
+conversacional abierta. Tras obtener su resultado, la confirmación o reprogramación
+local de la cita, la transición a `APPOINTMENT_CONFIRMED`, `pending_action = NULL`,
+`visit_draft = NULL`, la auditoría y el outbox se guardan en una misma transacción.
+Si esa transacción falla, no se publica una confirmación local parcial; la operación
+externa queda para revisión mediante el protocolo existente de inbox.
+Cuando había captura de evento suspendida, se conserva su reanudación al cerrar la visita.
+
 # 39. Bloqueos e invariantes críticos
 
 ## INV-ST-001 — Bot pausado
