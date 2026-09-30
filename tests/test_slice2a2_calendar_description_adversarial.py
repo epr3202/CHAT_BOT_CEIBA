@@ -29,7 +29,7 @@ FULL_DESCRIPTION = "\n".join(
     (
         "Nombre del cliente: Natalia Pérez",
         "Teléfono: +573001112233",
-        "Tipo de evento: WEDDING",
+        "Tipo de evento: Boda",
         "Invitados del evento: 80",
         "Asistentes a la visita: 2",
         "Motivo de la visita: Conocer el salón",
