@@ -18,6 +18,7 @@ docker compose exec -T db pg_dump -U ceiba -d ceiba -Fc > "$backup_file"
 test -s "$backup_file"
 docker compose run --rm --no-deps app alembic upgrade head
 docker compose run --rm --no-deps app python scripts/load_knowledge.py
+docker compose run --rm --no-deps app python scripts/load_plans.py
 docker compose up -d --no-deps app worker
 # admin is a versioned service since phase 1a; the old `config --services | grep -q`
 # guard failed intermittently (grep -q closes the pipe early -> compose exits 255 under pipefail).
