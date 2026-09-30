@@ -33,6 +33,7 @@ from app.handoff.service import create_handoff
 from app.orchestrator.service import (
     SENSITIVE_HANDOFF_INTENTS,
     VISIT_INTENTS,
+    deterministic_booking_or_catalog_classification,
     enqueue_template,
 )
 from app.orchestrator.service import OrchestrationInput as OrchestrationInput
@@ -319,6 +320,12 @@ async def classify_message(
         decision_source = "DETERMINISTIC"
     directed_event_type: str | None = None
     confidence_entity_rescued = False
+    if classification is None:
+        classification = deterministic_booking_or_catalog_classification(
+            persisted.message_text, persisted.context,
+        )
+        if classification is not None:
+            decision_source = "DETERMINISTIC"
     if classification is None:
         decision_source = "LLM"
         async with OpenRouterIntentClient(settings, sessionmaker) as classifier:
@@ -787,6 +794,8 @@ def persisted_message_from_models(
         customer_id=message.customer_id,
         message_text=extract_text_body(message.content),
         context={
+            "state": conversation.state,
+            "bot_enabled": conversation.bot_enabled,
             "last_intent": conversation.last_intent,
             "pending_action": conversation.pending_action,
             "last_question_code": conversation.last_question_code,

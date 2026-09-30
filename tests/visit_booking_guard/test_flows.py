@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import time
 
 import pytest
 
 from app.ai.models import AIExecution
 from app.appointment.models import Appointment
 from app.audit.models import AuditEvent
+from app.channel import inbound
+from app.channel.models import InboxJob
 from app.conversation.catalog_event_type import FIXED_PRICE_EVENT_TYPES
 from app.conversation.knowledge import render_response
 from app.event.models import Event
@@ -80,12 +82,9 @@ async def test_r1_booking_date_persisted_on_event_and_handoff(
     )
     assert event.event_type == event_type
     if relative:
-        # Existing fields may hold the candidate or only the original expression.
-        # In either case the handoff below must explicitly require confirmation.
-        assert event.event_date in {None, date(2026, 10, 3)}
-        assert event.event_date_type in (
-            {None, "UNKNOWN"} if event.event_date is None else {"EXACT"}
-        )
+        # G3-J: a relative date must never be persisted as EXACT before confirmation.
+        assert event.event_date is None
+        assert event.event_date_type == "UNKNOWN"
     else:
         assert event.event_date == VISIT_DATE and event.event_date_type == "EXACT"
     cases = await harness.rows(Handoff)
@@ -318,3 +317,39 @@ async def test_r8_second_yes_completes_without_duplicate_appointment(harness: Ha
     await harness.assert_completed()
     assert len(await harness.rows(Appointment)) == 1
     assert harness.calendar.create_call_count == 1
+
+
+async def test_g3_a_booking_words_in_visit_reason_keep_visit_flow(harness: Harness) -> None:
+    """Added in G3 at Emerson's explicit request (A), not part of G2."""
+    await harness.seed(state="WAITING_FOR_APPOINTMENT_SELECTION", pending="COLLECT_VISIT_REASON",
+                       draft=time_draft(visit_time="08:00", attendee_count=3))
+    await harness.send("para reservar la terraza", intent="SCHEDULE_VISIT")
+    await harness.assert_completed()
+    conversation = await harness.conversation()
+    assert conversation.visit_draft["visit_reason"] == "para reservar la terraza"
+    assert conversation.state == "APPOINTMENT_PENDING_CONFIRMATION"
+    assert conversation.pending_action == "CONFIRM_APPOINTMENT"
+    assert await harness.rows(Handoff) == []
+    assert (await harness.rows(Event))[0].event_type == "ROMANTIC_DINNER"
+
+
+async def test_g3_a_changed_lead_type_retries_before_applying_guard(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await harness.seed()
+    original = inbound.classify_message
+
+    async def change_type_after_decision(*args: object, **kwargs: object) -> object:
+        decision = await original(*args, **kwargs)
+        event = (await harness.rows(Event))[0]
+        async with harness.db() as session, session.begin():
+            stored = await session.get(Event, event.event_id)
+            stored.event_type = "WEDDING"
+        return decision
+
+    monkeypatch.setattr(inbound, "classify_message", change_type_after_decision)
+    await harness.send(BOOK_ABSOLUTE, intent="SCHEDULE_VISIT")
+    assert await harness.rows(Handoff) == []
+    assert (await harness.conversation()).state == "BOT_ACTIVE"
+    job = (await harness.rows(InboxJob))[0]
+    assert job.status == "PENDING" and job.last_error == "CONTEXT_CHANGED_RECLASSIFY"

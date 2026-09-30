@@ -62,6 +62,11 @@ from app.conversation.entity_validation import (
 )
 from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
+from app.conversation.fixed_price_booking import (
+    FIXED_PRICE_BOOKING_REASON,
+    booking_guard_eligible,
+    is_fixed_price_booking,
+)
 from app.conversation.knowledge import KnowledgeRenderError, render_response
 from app.conversation.models import Conversation
 from app.conversation.pending_actions import validate_pending_action
@@ -272,6 +277,15 @@ async def _orchestrate_inbound_message(
 
     if (
         orchestration_input.decision_source == "DETERMINISTIC"
+        and classification.reasoning_code == FIXED_PRICE_BOOKING_REASON
+    ):
+        await handle_fixed_price_booking(
+            session, settings, knowledge_sessionmaker, orchestration_input, classification,
+        )
+        return
+
+    if (
+        orchestration_input.decision_source == "DETERMINISTIC"
         and classification.primary_intent == "HUMAN_REQUEST"
         and classification.reasoning_code == EXPLICIT_HUMAN_REASON
     ):
@@ -439,6 +453,81 @@ def conversation_context(conversation: Conversation) -> dict[str, Any]:
         "failed_understanding_count": conversation.failed_understanding_count,
         "pending_confirmation": conversation.pending_confirmation,
     }
+
+
+async def booking_event_context(
+    session: AsyncSession, conversation: Conversation,
+) -> dict[str, str | None] | None:
+    if not booking_guard_eligible(
+        conversation.state, conversation.pending_action, conversation.bot_enabled,
+    ):
+        return None
+    event = await active_event(session, await active_lead(session, conversation))
+    if event is not None:
+        event = await session.get(
+            Event, event.event_id, with_for_update=True, populate_existing=True,
+        )
+    return {"event_id": str(event.event_id), "event_type": event.event_type} if event else None
+
+
+def deterministic_booking_or_catalog_classification(
+    message_text: str, context: dict[str, Any],
+) -> IntentClassification | None:
+    # Precedence: pending_action routes → D1 guard → CATALOG_CAPTURE/type resolution → LLM.
+    facts = context.get("booking_event") or {}
+    if booking_guard_eligible(
+        context.get("state"), context.get("pending_action"), context.get("bot_enabled", True),
+    ) and is_fixed_price_booking(message_text, facts.get("event_type")):
+        return IntentClassification(
+            primary_intent="HUMAN_REQUEST", sub_intent=None, confidence=0, needs_human=True,
+            needs_confirmation=False, priority="NORMAL",
+            handoff_reason="RESERVATION_CONFIRMATION", requested_action="CREATE_HANDOFF",
+            reasoning_code=FIXED_PRICE_BOOKING_REASON,
+        )
+    if context.get("pending_action") == CATALOG_CAPTURE_ACTION and (
+        resolve_catalog_event_type_label(message_text) is not None
+    ):
+        return IntentClassification(
+            primary_intent="UNKNOWN", sub_intent=None, confidence=0,
+            requested_action=None, needs_confirmation=False, needs_human=False,
+            handoff_reason=None, priority="NORMAL", reasoning_code="CATALOG_LABEL_MATCH",
+        )
+    return None
+
+
+async def handle_fixed_price_booking(
+    session: AsyncSession, settings: Settings, knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput, classification: IntentClassification,
+) -> None:
+    conversation = orchestration_input.conversation
+    facts = await booking_event_context(session, conversation)
+    if not facts or not is_fixed_price_booking(
+        orchestration_input.message_text, facts["event_type"],
+    ):
+        raise ValueError("Fixed-price booking context changed before settlement")
+    event = await session.get(Event, UUID(facts["event_id"]))
+    decision = resolve_visit_date_text(
+        orchestration_input.message_text, today=current_bogota_datetime().date(),
+        require_absolute_confirmation=True,
+    )
+    detail = f"Nueva solicitud de reserva para {format_event_type(event.event_type)}."
+    if decision.resolved_date is not None:
+        old = date_snapshot(event)
+        event.event_date = None if decision.needs_confirmation else decision.resolved_date
+        event.event_month = None
+        event.event_date_type = "UNKNOWN" if decision.needs_confirmation else "EXACT"
+        event.event_date_raw = orchestration_input.message_text[:200]
+        audit_domain_change(
+            session, "EVENT_DATE_CAPTURED", "event", old, date_snapshot(event),
+            "Fecha solicitada para reserva; confirmación humana si es relativa o contradictoria",
+            orchestration_input.request_id,
+        )
+        detail += f" Fecha solicitada: {format_date_natural(decision.resolved_date)}"
+        detail += " (pendiente de confirmación)." if decision.needs_confirmation else "."
+    await create_handoff_and_pause(
+        session, settings, knowledge_sessionmaker, orchestration_input, classification,
+        reason="RESERVATION_CONFIRMATION", priority="NORMAL", detail=detail,
+    )
 
 
 def current_pending(conversation: Conversation) -> PendingProposal:

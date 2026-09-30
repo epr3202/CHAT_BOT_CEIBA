@@ -2221,6 +2221,25 @@ de estrategia o escalar.
 
 ---
 
+## 38.2 Precedencia determinista de una nueva solicitud de reserva
+
+Tras los bloqueos de conversación y la solicitud explícita de asesor, el orden es:
+rutas por `pending_action` → guard de reserva de precio fijo → `CATALOG_CAPTURE` y
+resolución de su etiqueta de tipo → clasificador LLM si no se resolvió el turno.
+
+El guard de reserva solo se evalúa con `pending_action IS NULL`, bot habilitado y
+estado `BOT_ACTIVE` o `ANSWERING_INFORMATION`. Requiere que el evento del lead activo
+sea `ROMANTIC_DINNER` o `PROPOSAL` y una expresión del vocabulario cerrado de reserva.
+Una mención explícita de visita conserva el flujo de visitas. Una respuesta dentro
+de visitas, nombre, cotización o confirmación nunca se interpreta mediante este guard.
+La decisión usa datos del backend y se revalida antes de persistir; no usa la confianza
+ni acciones pendientes propuestas por el clasificador.
+
+La derivación usa `RESERVATION_CONFIRMATION` y `handoff_response_code` para seleccionar
+`RESP-HANDOFF-001`/`RESP-HANDOFF-002`. La fecha pertenece a `Event`, nunca a `visit_draft`.
+Una fecha relativa conserva su expresión en `event_date_raw`, con `event_date` nula y
+`event_date_type = UNKNOWN`; el detalle del handoff incluye «pendiente de confirmación».
+
 # 39. Bloqueos e invariantes críticos
 
 ## INV-ST-001 — Bot pausado

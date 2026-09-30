@@ -21,6 +21,7 @@ from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.orchestrator.inbox_effects import AgendaResults, DeferredAgendaCall, agenda_results
+from app.orchestrator.service import booking_event_context
 
 logger = structlog.get_logger(__name__)
 SessionMaker = async_sessionmaker[AsyncSession]
@@ -44,7 +45,10 @@ def silent_reason(conversation: Conversation) -> str | None:
     return "SILENT_BOT_DISABLED" if not conversation.bot_enabled else None
 
 
-def fingerprint(conversation: Conversation, customer: Customer) -> str:
+def fingerprint(
+    conversation: Conversation, customer: Customer,
+    booking_event: dict[str, str | None] | None = None,
+) -> str:
     # Local processing order plus this check cover relevant concurrent human/context changes.
     values = {
         c.name: getattr(conversation, c.name)
@@ -52,6 +56,8 @@ def fingerprint(conversation: Conversation, customer: Customer) -> str:
         if c.name not in {"created_at", "last_message_at"}
     }
     values["customer_full_name"] = customer.full_name
+    if booking_event is not None:
+        values["booking_event"] = booking_event
     return hashlib.sha256(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -217,6 +223,9 @@ async def claim_inbox_batch(
             ):
                 continue
             message = await session.get(Message, job.message_id)
+            booking_event = await booking_event_context(session, conversation)
+            persisted = inbound.persisted_message_from_models(message, conversation)
+            persisted.context["booking_event"] = booking_event
             job.status, job.claim_token, job.claimed_at = "PROCESSING", uuid4(), now
             claims.append(
                 InboxClaim(
@@ -224,8 +233,8 @@ async def claim_inbox_batch(
                     job.message_id,
                     conversation_id,
                     job.claim_token,
-                    inbound.persisted_message_from_models(message, conversation),
-                    fingerprint(conversation, customer),
+                    persisted,
+                    fingerprint(conversation, customer, booking_event),
                     inbound.parse_request_id(job.request_id),
                     bool(silent_reason(conversation)),
                 )
@@ -242,7 +251,8 @@ async def apply_turn(
             return "DISCARDED"
         job, customer, conversation = current
         silent = silent_reason(conversation)
-        if fingerprint(conversation, customer) != claim.context_fingerprint:
+        booking_event = await booking_event_context(session, conversation)
+        if fingerprint(conversation, customer, booking_event) != claim.context_fingerprint:
             if job.external_operation is not None:
                 retire(job, "REVIEW", "CONTEXT_CHANGED_AFTER_EXTERNAL")
                 return "REVIEW"
@@ -313,7 +323,8 @@ async def prepare_external(sm: SessionMaker, claim: InboxClaim, call: DeferredAg
         if current is None:
             return False
         job, customer, conversation = current
-        if fingerprint(conversation, customer) != claim.context_fingerprint:
+        booking_event = await booking_event_context(session, conversation)
+        if fingerprint(conversation, customer, booking_event) != claim.context_fingerprint:
             fail_locked(job, "CONTEXT_CHANGED_RECLASSIFY", datetime.now(UTC), get_settings())
             return False
         if call.mutating:
