@@ -83,6 +83,23 @@ body.loggedOut .sidebar {
   flex-wrap: wrap;
 }
 
+.plansTable input[type="text"] {
+  min-width: 210px;
+}
+
+.plansTable input[type="number"] {
+  min-width: 110px;
+}
+
+.plansTable input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+
+.plansTable button {
+  white-space: nowrap;
+}
+
 .resetCounts {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) auto;

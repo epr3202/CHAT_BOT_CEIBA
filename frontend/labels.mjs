@@ -28,6 +28,11 @@ export const labels = {
   active: { true: "Activo", false: "Inactivo" },
   sendMode: { PROACTIVE: "Proactivo", ON_REQUEST: "A solicitud" },
   reviewStatus: { PENDING_REVIEW: "Pendiente de revisión", ACCEPTED: "Aceptado", REJECTED: "Rechazado" },
+  reservationStatus: {
+    PAYMENT_PENDING: "Pendiente de pago", PAYMENT_REVIEW: "En revisión de pago",
+    RESERVED: "Reservada", EXPIRED: "Vencida", CANCELLED: "Cancelada",
+  },
+  paymentKind: { DEPOSIT: "Abono", FULL: "Pago total" },
   downloadStatus: {
     PENDING: "Pendiente", DOWNLOADED: "Descargado", FAILED_RETRYABLE: "Fallo temporal",
     FAILED_PERMANENT: "Fallo permanente",

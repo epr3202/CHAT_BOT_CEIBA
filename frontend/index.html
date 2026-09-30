@@ -37,6 +37,12 @@
         <button class="navItem" data-view="agents" data-admin-only="true" title="Agentes" hidden>
           <span class="icon">♙</span><span>Agentes</span>
         </button>
+        <button class="navItem" data-view="plans" data-admin-only="true" title="Planes" hidden>
+          <span class="icon" aria-hidden="true">▤</span><span>Planes</span>
+        </button>
+        <button class="navItem" data-view="reservations" data-admin-only="true" title="Reservas" hidden>
+          <span class="icon" aria-hidden="true">▦</span><span>Reservas</span>
+        </button>
         <button class="navItem" data-view="tools" data-admin-only="true" title="Herramientas" hidden>
           <span class="icon">⚙</span><span>Herramientas</span>
         </button>
@@ -251,6 +257,60 @@
               <ol id="eventLog" class="eventLog"></ol>
             </div>
           </div>
+        </section>
+      </section>
+
+      <section class="view" id="plans" hidden>
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Planes</h2>
+            <button id="refreshPlans" type="button">Actualizar</button>
+          </div>
+          <p id="plansFeedback" role="status" aria-live="polite" hidden></p>
+          <div class="tableScroll">
+            <table class="agentsTable plansTable">
+              <thead><tr>
+                <th>Nombre</th><th>Tipo de evento</th><th>Precio (COP)</th><th>Duración (minutos)</th>
+                <th>Exclusivo</th><th>Solo fines de semana</th><th>Activo</th><th>Orden</th><th>Acciones</th>
+              </tr></thead>
+              <tbody id="planRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="reservations" hidden>
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Reservas</h2>
+            <button id="refreshReservations" type="button">Actualizar</button>
+          </div>
+          <label>Estado
+            <select id="reservationStatusFilter"><option value="">Todos</option></select>
+          </label>
+          <p id="reservationsFeedback" role="status" aria-live="polite" hidden></p>
+          <div class="tableScroll">
+            <table class="agentsTable">
+              <thead><tr><th>Cliente</th><th>Plan</th><th>Inicio</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody id="reservationRows"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel" id="reservationDetail" hidden>
+          <div class="panelHeader">
+            <h2>Detalle de reserva</h2>
+            <button id="closeReservationDetail" type="button">Cerrar detalle</button>
+          </div>
+          <p id="reservationDetailFeedback" role="status" aria-live="polite" hidden></p>
+          <dl id="reservationDetails" class="resetCounts" aria-live="polite"></dl>
+          <form id="reservationCancelForm" class="managementForm" hidden>
+            <label>Motivo
+              <textarea id="reservationCancelNote" maxlength="255" required></textarea>
+            </label>
+            <div class="actions">
+              <button class="danger" id="cancelReservation" type="submit">Cancelar reserva</button>
+            </div>
+          </form>
         </section>
       </section>
 

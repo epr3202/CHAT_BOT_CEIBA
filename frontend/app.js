@@ -45,6 +45,12 @@ const state = {
   catalogEditor: null,
   paymentEvidence: [],
   agents: [],
+  plans: [],
+  planWrites: new Set(),
+  reservations: [],
+  reservationDetail: null,
+  reservationListRequest: 0,
+  reservationDetailRequest: 0,
   resetPreview: null,
   resetBusy: false,
   visibleConversationIds: new Set(),
@@ -70,6 +76,7 @@ function localizeControls() {
     ["#agentEditRole", "role", ["AGENT", "ADMIN"]],
     ["#catalogEventType", "eventType"],
     ["#catalogSendMode", "sendMode", ["ON_REQUEST", "PROACTIVE"]],
+    ["#reservationStatusFilter", "reservationStatus"],
   ];
   for (const [selector, kind, values = Object.keys(labels[kind])] of selects) {
     for (const value of values) $(selector).add(new Option(labels[kind][value], value));
@@ -167,6 +174,8 @@ function selectView(view) {
   if (view === "catalogsModule") loadCatalogCategories();
   if (view === "paymentEvidence") loadPaymentEvidence();
   if (view === "agents") loadAgents();
+  if (view === "plans") loadPlans();
+  if (view === "reservations") loadReservations();
 }
 
 async function requestJson(path, options = {}) {
@@ -650,6 +659,21 @@ function clearSession() {
   state.unassignedCatalogs = [];
   state.catalogEditor = null;
   state.agents = [];
+  state.plans = [];
+  state.planWrites = new Set();
+  state.reservations = [];
+  state.reservationDetail = null;
+  state.reservationListRequest += 1;
+  state.reservationDetailRequest += 1;
+  $("#planRows").replaceChildren();
+  $("#reservationRows").replaceChildren();
+  $("#reservationDetails").replaceChildren();
+  $("#reservationDetail").hidden = true;
+  $("#reservationCancelForm").reset();
+  $("#refreshPlans").disabled = false;
+  for (const id of ["plansFeedback", "reservationsFeedback", "reservationDetailFeedback"]) {
+    managementFeedback(id, "");
+  }
   $("#agentRows").replaceChildren();
   $("#agentEditForm").hidden = true;
   $("#agentCredentialsForm").hidden = true;
@@ -1225,6 +1249,8 @@ async function refreshAll() {
   if (state.agent?.role === "ADMIN") {
     await Promise.all([loadCatalogCategories(), loadPaymentEvidence()]);
     if (state.currentView === "agents") await loadAgents();
+    if (state.currentView === "plans") await loadPlans();
+    if (state.currentView === "reservations") await loadReservations();
   }
 }
 
@@ -1232,6 +1258,257 @@ function feedback(id, message, error = false) {
   const node = document.getElementById(id);
   node.textContent = message;
   node.classList.toggle("formError", error);
+}
+
+function managementFeedback(id, message, error = false) {
+  const node = document.getElementById(id);
+  node.textContent = message;
+  node.hidden = !message;
+  node.classList.toggle("formError", error);
+  node.setAttribute("role", error ? "alert" : "status");
+}
+
+async function managementRequest(path, options = {}) {
+  try {
+    return await requestJson(path, { ...options, headers: sessionHeaders() });
+  } catch (error) {
+    if (error.status) throw error;
+    throw new Error("No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.");
+  }
+}
+
+function emptyTable(body, columns, message) {
+  body.replaceChildren();
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = columns;
+  cell.textContent = message;
+  row.append(cell);
+  body.append(row);
+}
+
+async function loadPlans() {
+  if (state.agent?.role !== "ADMIN" || state.planWrites.size) return;
+  const token = state.sessionToken;
+  managementFeedback("plansFeedback", "Cargando planes…");
+  try {
+    const plans = await managementRequest("/api/admin/plans");
+    if (token !== state.sessionToken) return;
+    state.plans = plans;
+    renderPlans();
+    managementFeedback("plansFeedback", "");
+  } catch (error) {
+    if (token === state.sessionToken) {
+      managementFeedback("plansFeedback", `No se pudieron cargar los planes: ${error.message}`, true);
+    }
+  }
+}
+
+function renderPlans() {
+  const body = $("#planRows");
+  body.replaceChildren();
+  if (!state.plans.length) {
+    emptyTable(body, 9, "No hay planes disponibles.");
+    return;
+  }
+  const fields = [
+    ["name", "Nombre", "text"], ["price_cop", "Precio (COP)", "number"],
+    ["duration_minutes", "Duración (minutos)", "number"], ["exclusive", "Exclusivo", "checkbox"],
+    ["weekend_only", "Solo fines de semana", "checkbox"], ["active", "Activo", "checkbox"],
+    ["sort_order", "Orden", "number"],
+  ];
+  for (const plan of state.plans) {
+    const row = document.createElement("tr");
+    const controls = {};
+    for (const [field, title, type] of fields) {
+      const cell = document.createElement("td");
+      const input = document.createElement("input");
+      input.type = type;
+      input.setAttribute("aria-label", title);
+      if (type === "checkbox") input.checked = plan[field];
+      else {
+        input.value = plan[field];
+        input.required = true;
+        if (type === "number") {
+          input.step = "1";
+          input.min = field === "sort_order" ? "-2147483648" : "1";
+          input.max = "2147483647";
+        } else input.maxLength = 180;
+      }
+      controls[field] = input;
+      cell.append(input);
+      row.append(cell);
+      if (field === "name") {
+        const eventCell = document.createElement("td");
+        eventCell.append(label("eventType", plan.event_type));
+        row.append(eventCell);
+      }
+    }
+    const actions = document.createElement("td");
+    actions.append(actionButton("Guardar", (event) => savePlan(plan, controls, event.currentTarget)));
+    row.append(actions);
+    body.append(row);
+  }
+}
+
+async function savePlan(plan, controls, button) {
+  if (state.agent?.role !== "ADMIN" || button.disabled) return;
+  if (Object.values(controls).some((input) => !input.reportValidity())) return;
+  const changes = {};
+  for (const [field, input] of Object.entries(controls)) {
+    changes[field] = input.type === "checkbox" ? input.checked
+      : input.type === "number" ? Number(input.value) : input.value.trim();
+  }
+  const writes = state.planWrites;
+  const token = state.sessionToken;
+  writes.add(plan.plan_id);
+  button.disabled = true;
+  button.textContent = "Guardando…";
+  Object.values(controls).forEach((input) => { input.disabled = true; });
+  $("#refreshPlans").disabled = true;
+  managementFeedback("plansFeedback", "");
+  try {
+    const updated = await managementRequest(`/api/admin/plans/${plan.plan_id}`, {
+      method: "PATCH", body: JSON.stringify(changes),
+    });
+    if (token !== state.sessionToken) return;
+    Object.assign(plan, updated);
+    for (const [field, input] of Object.entries(controls)) {
+      if (input.type === "checkbox") input.checked = updated[field];
+      else input.value = updated[field];
+    }
+    managementFeedback("plansFeedback", "Plan guardado.");
+  } catch (error) {
+    if (token === state.sessionToken) {
+      managementFeedback("plansFeedback", `No se pudo guardar el plan: ${error.message}`, true);
+    }
+  } finally {
+    writes.delete(plan.plan_id);
+    button.disabled = false;
+    button.textContent = "Guardar";
+    Object.values(controls).forEach((input) => { input.disabled = false; });
+    if (writes === state.planWrites) $("#refreshPlans").disabled = writes.size > 0;
+  }
+}
+
+async function loadReservations() {
+  if (state.agent?.role !== "ADMIN") return;
+  const request = ++state.reservationListRequest;
+  const params = new URLSearchParams();
+  const status = $("#reservationStatusFilter").value;
+  if (status) params.set("status", status);
+  managementFeedback("reservationsFeedback", "Cargando reservas…");
+  try {
+    const reservations = await managementRequest(`/api/admin/reservations?${params}`);
+    if (request !== state.reservationListRequest) return;
+    state.reservations = reservations;
+    renderReservations();
+    managementFeedback("reservationsFeedback", "");
+  } catch (error) {
+    if (request === state.reservationListRequest) {
+      managementFeedback("reservationsFeedback", `No se pudieron cargar las reservas: ${error.message}`, true);
+    }
+  }
+}
+
+function renderReservations() {
+  const body = $("#reservationRows");
+  body.replaceChildren();
+  if (!state.reservations.length) {
+    emptyTable(body, 5, "No hay reservas con este filtro.");
+    return;
+  }
+  for (const reservation of state.reservations) {
+    const row = document.createElement("tr");
+    for (const value of [reservation.customer_name || "Sin nombre", reservation.plan_name || "Sin plan",
+      formatDate(reservation.starts_at), label("reservationStatus", reservation.status)]) {
+      const cell = document.createElement("td");
+      cell.append(value);
+      row.append(cell);
+    }
+    const actions = document.createElement("td");
+    actions.append(actionButton("Ver detalle", () => openReservationDetail(reservation.reservation_id)));
+    row.append(actions);
+    body.append(row);
+  }
+}
+
+async function openReservationDetail(id) {
+  if (state.agent?.role !== "ADMIN") return;
+  const request = ++state.reservationDetailRequest;
+  state.reservationDetail = null;
+  $("#reservationDetail").hidden = false;
+  $("#reservationDetails").replaceChildren();
+  $("#reservationCancelForm").hidden = true;
+  managementFeedback("reservationDetailFeedback", "Cargando detalle…");
+  try {
+    const reservation = await managementRequest(`/api/admin/reservations/${id}`);
+    if (request !== state.reservationDetailRequest) return;
+    renderReservationDetail(reservation);
+    managementFeedback("reservationDetailFeedback", "");
+  } catch (error) {
+    if (request === state.reservationDetailRequest) {
+      managementFeedback("reservationDetailFeedback", `No se pudo cargar el detalle: ${error.message}`, true);
+    }
+  }
+}
+
+function renderReservationDetail(reservation) {
+  state.reservationDetail = reservation;
+  const details = $("#reservationDetails");
+  const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+  details.replaceChildren();
+  for (const [title, value] of [
+    ["Cliente", reservation.customer_name || "Sin nombre"], ["Plan", reservation.plan_name || "Sin plan"],
+    ["Estado", label("reservationStatus", reservation.status)], ["Inicio", formatDate(reservation.starts_at)],
+    ["Fin", formatDate(reservation.ends_at)], ["Precio", cop.format(reservation.price_cop)],
+    ["Pagado", cop.format(reservation.amount_paid_cop)],
+    ["Modalidad de pago", reservation.payment_kind ? label("paymentKind", reservation.payment_kind) : "Sin modalidad"],
+    ["Vencimiento del saldo", formatDate(reservation.balance_due_at)],
+  ]) {
+    const term = document.createElement("dt");
+    term.textContent = title;
+    const description = document.createElement("dd");
+    description.append(value);
+    details.append(term, description);
+  }
+  const form = $("#reservationCancelForm");
+  form.reset();
+  form.hidden = !["PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED"].includes(reservation.status);
+}
+
+async function cancelReservation(event) {
+  event.preventDefault();
+  const button = $("#cancelReservation");
+  const reservation = state.reservationDetail;
+  if (state.agent?.role !== "ADMIN" || button.disabled || !reservation) return;
+  const note = $("#reservationCancelNote").value.trim();
+  if (!note) {
+    managementFeedback("reservationDetailFeedback", "Escribe el motivo de la cancelación.", true);
+    return;
+  }
+  const request = state.reservationDetailRequest;
+  button.disabled = true;
+  button.textContent = "Guardando…";
+  $("#reservationCancelNote").disabled = true;
+  managementFeedback("reservationDetailFeedback", "");
+  try {
+    const updated = await managementRequest(`/api/admin/reservations/${reservation.reservation_id}/cancel`, {
+      method: "POST", body: JSON.stringify({ note }),
+    });
+    if (request !== state.reservationDetailRequest) return;
+    renderReservationDetail(updated);
+    managementFeedback("reservationDetailFeedback", "Reserva cancelada.");
+    await loadReservations();
+  } catch (error) {
+    if (request === state.reservationDetailRequest) {
+      managementFeedback("reservationDetailFeedback", `No se pudo cancelar la reserva: ${error.message}`, true);
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = "Cancelar reserva";
+    $("#reservationCancelNote").disabled = false;
+  }
 }
 
 async function loadAgents() {
@@ -1516,6 +1793,18 @@ function bindUi() {
     login();
   });
   $("#refreshAgents").addEventListener("click", loadAgents);
+  $("#refreshPlans").addEventListener("click", loadPlans);
+  $("#refreshReservations").addEventListener("click", loadReservations);
+  $("#reservationStatusFilter").addEventListener("change", () => {
+    state.reservationDetailRequest += 1;
+    $("#reservationDetail").hidden = true;
+    loadReservations();
+  });
+  $("#reservationCancelForm").addEventListener("submit", cancelReservation);
+  $("#closeReservationDetail").addEventListener("click", () => {
+    state.reservationDetailRequest += 1;
+    $("#reservationDetail").hidden = true;
+  });
   $("#agentStatusFilter").addEventListener("change", renderAgents);
   $("#agentCreateForm").addEventListener("submit", createAgent);
   $("#agentEditForm").addEventListener("submit", saveAgent);
