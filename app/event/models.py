@@ -65,6 +65,9 @@ class Event(Base):
     )
     event_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     event_type_other: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("plan.plan_id"), nullable=True, index=True
+    )
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     event_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
     event_date_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
