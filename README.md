@@ -334,10 +334,32 @@ Comandos útiles dentro del simulador:
 | `HUMAN_HOURS_DAYS` | No | `1,2,3,4,5` | Slice 1: dias de atencion humana, weekday Python |
 | `HUMAN_HOURS_START` | No | `08:00` | Slice 1: inicio de atencion humana |
 | `HUMAN_HOURS_END` | No | `16:00` | Slice 1: fin de atencion humana |
+| `SELF_SERVICE_BOOKING_ENABLED` | No | `false` | Reservado para B1b-2; sin uso en B1b-1 |
+| `BOOKING_EXCLUSIVITY_KEYWORD` | No | `exclusividad` | D3: texto que bloquea en título o descripción de Calendar |
+| `BOOKING_HOURS_START` | No | `12:00` | Inicio permitido en Bogotá; **pendiente confirmación Leandro** |
+| `BOOKING_HOURS_END` | No | `21:00` | Fin permitido en Bogotá; **pendiente confirmación Leandro** |
+| `BOOKING_MIN_LEAD_DAYS` | No | `1` | Anticipación por fecha local, en días de calendario |
+| `BOOKING_DEPOSIT_PERCENT` | No | `50` | Anticipo sugerido; redondeo hacia arriba a múltiplos de COP 1.000 |
 
-Las reglas de negocio no van en variables de entorno. Horarios de visita, anticipacion,
+Como excepción provisional autorizada para B1b-1, las reglas `BOOKING_*` se configuran
+por entorno; D3 y la ventana están pendientes de confirmación de Leandro. Los
+horarios de visita, anticipacion de visitas,
 asistentes, presupuesto referente y SLAs pertenecen a la futura tabla `Configuration`
 descrita en `docs/product/scope.md` §18.2.
+
+Verificación B1b-1 (solo ADMIN, sin frontend):
+`GET /admin/reservations/availability?plan_id=<uuid>&starts_at=<ISO-con-zona>`.
+Codificar el signo `+` como `%2B` al construir la URL. Devuelve `available`,
+`blockers` (`kind` y referencia), `starts_at`, `ends_at`, `deposit_amount_cop` y
+`window: {ok, reason}`. `available` exige ventana válida y ausencia de bloqueadores.
+Los motivos de ventana son `TIMEZONE_REQUIRED`, `INVALID_RANGE`,
+`CROSSES_MIDNIGHT`, `OUTSIDE_HOURS` y `MIN_LEAD_DAYS`; una ventana válida usa `reason=null`.
+Plan inexistente: 404; plan inactivo o fecha sin zona: 422; AGENT: 403;
+Calendar inaccesible o sin calendarios configurados: 503.
+La consulta lee todos los IDs de `GOOGLE_FREEBUSY_CALENDAR_IDS` mediante
+[Google Calendar events.list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).
+Se requieren permisos para leer los detalles de los eventos, además de freebusy.
+La consulta no crea reservas ni bloquea franjas; B2 deberá revalidar al aceptar el pago.
 
 Limitacion conocida Slice 1: la seleccion de la plantilla de escalamiento humano distingue
 dias y horas configuradas, pero no bloquea festivos. El calendario de festivos llega con

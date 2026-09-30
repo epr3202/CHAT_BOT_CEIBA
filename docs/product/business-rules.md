@@ -1639,6 +1639,47 @@ está `APPROVED`.
 
 # 18. Reglas de reservas
 
+## BR-RES-D3 — Disponibilidad de planes B1b-1
+
+**D3 y ventana horaria: pendiente confirmación Leandro.** Contrato provisional
+autorizado para el backend del slice B1b-1, 2026-09-30; pruebas R1, R2, R3, R7 y R8.
+
+La intersección de intervalos usa fin exclusivo: `inicio_a < fin_b` y
+`inicio_b < fin_a`. Dos intervalos que únicamente comparten el borde no solapan.
+
+* Un evento solapado de cualquiera de los calendarios de
+  `GOOGLE_FREEBUSY_CALENDAR_IDS` bloquea solo si título o descripción contienen
+  `BOOKING_EXCLUSIVITY_KEYWORD` (default `exclusividad`), ignorando mayúsculas y
+  tildes. Su bloqueador es `CALENDAR_EXCLUSIVE`, con referencia al ID del evento.
+* Una reserva solapada solo cuenta si está `RESERVED`. Si su plan es exclusivo,
+  bloquea cualquier plan (`RESERVED_EXCLUSIVE`). Si su plan no es exclusivo,
+  bloquea únicamente solicitudes de planes exclusivos (`RESERVED_CONFLICT`).
+  La referencia es el UUID de la reserva. Dos planes no exclusivos pueden
+  coincidir bajo D3; esta decisión requiere confirmación de Leandro.
+* `PAYMENT_PENDING`, `PAYMENT_REVIEW`, `EXPIRED` y `CANCELLED` nunca bloquean.
+* Errores de Calendar, un calendario inaccesible o respuestas incompletas
+  invalidan la consulta completa. Nunca se interpretan como disponibilidad.
+* La consulta es de solo lectura y termina la transacción SQL antes de acceder
+  a Calendar. B2 debe revalidar al aceptar el pago; la consulta no retiene cupo.
+
+La ventana exige inicio y fin en el mismo día de `America/Bogota`, intervalo
+positivo y horario completo dentro de `BOOKING_HOURS_START=12:00` y
+`BOOKING_HOURS_END=21:00`, ambos **pendiente confirmación Leandro**. La fecha
+local de inicio debe ser al menos hoy más `BOOKING_MIN_LEAD_DAYS=1`; no son
+24 horas móviles. Se rechazan cruces de medianoche. El backend devuelve un
+código de motivo y el endpoint marca `available=false` si la ventana no es válida.
+Esta ventana es distinta de la agenda de visitas. `weekend_only` no se evalúa
+en B1b-1; `validate_booking_window` no recibe un plan. Su uso conversacional queda
+pendiente del alcance de B1b-2.
+
+La solicitud copia precio y duración del plan; el anticipo mostrado es
+`ceil(precio × BOOKING_DEPOSIT_PERCENT / 100)` redondeado hacia arriba al siguiente
+múltiplo de COP 1.000, con porcentaje por defecto 50. Mostrarlo no confirma pago.
+**Regla de producto confirmada para este slice:** no hay bloqueo previo al pago,
+ni holds. La franja se bloquea solo al pasar a `RESERVED` cuando un asesor acepta
+comprobantes con acumulado ≥ 50 % (B2). B1b-1 solo crea `PAYMENT_PENDING` y vincula
+evidencias pasando a `PAYMENT_REVIEW`; no confirma reservas ni escribe Calendar.
+
 ## BR-RES-001 — Porcentaje
 
 La fecha se separará con:

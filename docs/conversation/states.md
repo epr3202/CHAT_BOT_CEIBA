@@ -1802,7 +1802,7 @@ La IA nunca podrá establecer `PAYMENT_CONFIRMED`.
 
 # 27. Máquina de estados de reserva
 
-## 27.1 B1a — planes de cena romántica y pedida de mano
+## 27.1 B1a / B1b-1 — planes de cena romántica y pedida de mano
 
 El contrato D2 implementado en `app/reservation/service.py` y el CHECK de
 `reservation.status` admiten únicamente estos cinco estados. Son estados de la
@@ -1839,12 +1839,42 @@ bloquea la fila y llama a `transition_reservation` con el nombre del administrad
 como actor y `note` como motivo. Una repetición devuelve HTTP 409 sin insertar una
 segunda auditoría. No ejecuta devolución ni cambios en calendarios externos.
 
-`hold_expires_at`, `calendar_status` y `external_calendar_id` son campos de
-persistencia sin comportamiento en B1a. No se crean bloqueos temporales ni se
-programan expiraciones. **Conflicto con `scope.md` §17.4/§17.6 (bloqueos temporales)
-pendiente de decisión de producto antes de B1b**: el alcance vigente prohíbe
-bloqueos previos al pago confirmado y marca el bloqueo temporal fuera del alcance.
-Agregar un campo nullable no autoriza activar esa funcionalidad.
+En **B1b-1**, `create_pending_reservation` crea una solicitud `PAYMENT_PENDING`,
+copia precio y duración del plan activo y compatible con el evento, inicia
+`amount_paid_cop=0`, `calendar_status=NONE` y `hold_expires_at=NULL`. Vincula
+`event.plan_id` y captura la fecha local de Bogotá con tipo `EXACT`. Registra
+`RESERVATION_CREATED` y, si cambia la fecha o su precisión, `EVENT_DATE_CAPTURED`.
+El servicio hace flush, sin commit; el llamador conserva la transacción y la
+idempotencia del mensaje. No consulta disponibilidad por sí mismo.
+
+Al persistir un comprobante, `attach_payment_evidence` busca la solicitud
+`PAYMENT_PENDING` más reciente de la misma conversación (solo si no hay
+conversación, por lead). Vincula `payment_evidence.reservation_id` y pasa a
+`PAYMENT_REVIEW` mediante D2, con actor `SYSTEM`, motivo `Comprobante recibido`
+y auditoría. Todo ocurre dentro de la misma transacción del comprobante. Una
+evidencia ya vinculada no repite la transición ni la auditoría. Sin solicitud
+pendiente no modifica reservas. Recibir evidencia no incrementa el importe pagado.
+
+**Decisión de producto B1b-1 (2026-09-30): nada se bloquea antes del pago.**
+`PAYMENT_PENDING` y `PAYMENT_REVIEW` son solicitudes, no franjas reservadas.
+Solo `RESERVED` bloquea según D3, después de que un asesor acepte comprobantes
+con acumulado de al menos 50 % en B2. No hay holds ni expiraciones programadas.
+Así se resuelve la duda de B1a sobre `scope.md` §17.4/§17.6: no se habilitan
+bloqueos temporales. La prohibición general de reserva sin pago confirmado
+continúa aplicándose a `RESERVED`, no a la fila pendiente de este contrato.
+
+B1b-1 entrega backend y un GET de verificación ADMIN; no modifica orquestador,
+plantillas, frontend ni escribe en Calendar. `SELF_SERVICE_BOOKING_ENABLED=false`
+queda reservado para B1b-2, sin uso en este slice. Accept/reject administrativo
+sigue sin confirmar la reserva ni acumular pagos; esa integración corresponde a B2.
+
+La futura lectura en B1b-2 debe salir de la transacción del inbox usando
+`DeferredAgendaCall` / `AgendaResults` de `inbox_effects`: diferir la operación,
+cargar y separar el plan en una sesión independiente, llamar a
+`fetch_booking_context` con una sesión inactiva y reproducir su resultado.
+El helper termina su transacción de lectura y separa las reservas con sus planes
+antes de llamar a `list_events`; rechaza sesiones con transacciones o escrituras
+pendientes. El resultado es una instantánea, no un bloqueo; B2 debe revalidarlo.
 
 Esta matriz es la decisión específica autorizada para B1a frente al diseño
 general de reservas en `data-matrix.md` §19 y los flujos generales de cancelación.
