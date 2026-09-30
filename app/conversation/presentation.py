@@ -80,7 +80,10 @@ def visit_reason_summary(visit_reason: str) -> str:
     for event_type, aliases in CATALOG_EVENT_TYPE_LABELS.items():
         if label in {normalize_catalog_event_type_label(alias) for alias in aliases}:
             return format_event_type(event_type)
-    return visit_reason
+    return re.sub(
+        r"^(?:(?:s[ií]\b\s*,?\s*)?es\s+)?para\s+", "", visit_reason.strip(),
+        flags=re.IGNORECASE,
+    ).strip()
 
 
 def format_date_natural(value: date) -> str:
@@ -275,12 +278,17 @@ VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
 }
 
 
-def present_variables(variables: dict[str, Any]) -> dict[str, str]:
+def present_variables(
+    variables: dict[str, Any], *, response_code: str | None = None,
+) -> dict[str, str]:
     presented: dict[str, str] = {}
     for variable, value in variables.items():
         presenter = VARIABLE_PRESENTERS.get(variable)
         if presenter is None:
             raise VariablePresentationError(variable)
+        if response_code == "RESP-VISIT-CONFIRM-001" and variable == "event_type":
+            # This approved template's legacy slot holds the customer's visit reason.
+            presenter = _present_visit_reason
         try:
             presented[variable] = presenter(value)
         except VariablePresentationError:
@@ -288,3 +296,9 @@ def present_variables(variables: dict[str, Any]) -> dict[str, str]:
         except (TypeError, ValueError) as error:
             raise VariablePresentationError(variable) from error
     return presented
+
+
+def _present_visit_reason(value: Any) -> str:
+    reason = _normalized_text(value)
+    event_type = _EVENT_TYPE_BY_NORMALIZED_VALUE.get(normalize_catalog_event_type_label(reason))
+    return format_event_type(event_type) if event_type is not None else reason

@@ -90,6 +90,7 @@ class VisitDateTextResult:
     needs_confirmation: bool
     next_state: ConversationState
     interpretation: VisitDateInterpretation = "NO_INTERPRETABLE"
+    matched_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +203,9 @@ def resolve_visit_date_text(
     require_absolute_confirmation: bool,
 ) -> VisitDateTextResult:
     normalized = _normalize_spanish_text(message_text)
+    absolute_match = (
+        _NUMERIC_VISIT_DATE.search(normalized) or _TEXTUAL_VISIT_DATE.search(normalized)
+    )
     absolute = _resolve_absolute_visit_date(normalized, today)
     if absolute is not None:
         contradicted = any(
@@ -213,6 +217,7 @@ def resolve_visit_date_text(
             needs_confirmation=contradicted,
             next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
             interpretation="EXACTA",
+            matched_text=_date_match_text(message_text, absolute_match),
         )
     if _NUMERIC_VISIT_DATE.search(normalized) or _TEXTUAL_VISIT_DATE.search(normalized):
         return VisitDateTextResult(
@@ -222,10 +227,11 @@ def resolve_visit_date_text(
     relative = _resolve_relative_visit_date(normalized, today)
     if relative is not None:
         return VisitDateTextResult(
-            relative,
+            relative[0],
             needs_confirmation=require_absolute_confirmation,
             next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
             interpretation="RELATIVA",
+            matched_text=_date_match_text(message_text, relative[1]),
         )
 
     return VisitDateTextResult(
@@ -236,8 +242,10 @@ def resolve_visit_date_text(
     )
 
 
-def interpret_visit_time(message_text: str, offered_slots: list[time]) -> VisitTimeResult:
-    candidate = parse_visit_time_text(message_text)
+def interpret_visit_time(
+    message_text: str, offered_slots: list[time], *, require_explicit: bool = False,
+) -> VisitTimeResult:
+    candidate = parse_visit_time_text(message_text, require_explicit=require_explicit)
     if candidate is None:
         return VisitTimeResult(
             False,
@@ -274,21 +282,36 @@ def _normalize_spanish_text(value: str) -> str:
     return "".join(character for character in decomposed if not unicodedata.combining(character))
 
 
-def _resolve_relative_visit_date(normalized: str, today: date) -> date | None:
-    if re.search(r"\bpasado\s+manana\b", normalized):
-        return today + timedelta(days=2)
-    if re.search(r"\bmanana\b", normalized):
-        return today + timedelta(days=1)
-    if re.search(r"\bhoy\b", normalized):
-        return today
+def _date_match_text(message_text: str, match: re.Match[str] | None) -> str | None:
+    """Map the normalized match back to its original spelling, including accents."""
+    if match is None:
+        return None
+    original = message_text.strip()
+    offsets = [
+        index
+        for index, character in enumerate(original)
+        for normalized in unicodedata.normalize("NFKD", character.casefold())
+        if not unicodedata.combining(normalized)
+    ]
+    return original[offsets[match.start()]:offsets[match.end() - 1] + 1]
+
+
+def _resolve_relative_visit_date(
+    normalized: str, today: date,
+) -> tuple[date, re.Match[str]] | None:
+    for pattern, days in ((r"\bpasado\s+manana\b", 2), (r"\bmanana\b", 1), (r"\bhoy\b", 0)):
+        match = re.search(pattern, normalized)
+        if match is not None:
+            return today + timedelta(days=days), match
 
     for weekday_name, weekday in SPANISH_WEEKDAYS.items():
-        if not re.search(rf"\b(?:(?:el|este|proximo)\s+)?{weekday_name}\b", normalized):
+        match = re.search(rf"\b(?:(?:el|este|proximo)\s+)?{weekday_name}\b", normalized)
+        if match is None:
             continue
         days_until = (weekday - today.weekday()) % 7
         if days_until == 0:
             days_until = 7
-        return today + timedelta(days=days_until)
+        return today + timedelta(days=days_until), match
     return None
 
 
@@ -342,18 +365,20 @@ _DATE_NUMBERS = re.compile(
     r"|\b(?:el|dia)\s+\d{1,2}\b"
 )
 _CLOCK_CANDIDATES = re.compile(
-    r"\b(?P<prefix>a\s+las?\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+    r"\b(?P<prefix>a\s+las\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
     r"(?:\s*(?P<period>[ap]\.?\s*m\.?|de\s+la\s+(?:manana|tarde|noche)))?(?!\w)"
 )
 
 
-def parse_visit_time_text(message_text: str) -> time | None:
+def parse_visit_time_text(message_text: str, *, require_explicit: bool) -> time | None:
     """Extract a clock, never a calendar day; validation remains in interpret_visit_time."""
     normalized = _normalize_spanish_text(message_text)
     clocks = _DATE_NUMBERS.sub(" ", normalized)
     candidates = list(_CLOCK_CANDIDATES.finditer(clocks))
     explicit = [m for m in candidates if m.group("prefix") or m.group("minute") is not None
                 or m.group("period")]
+    if require_explicit and not explicit:
+        return None
     selected = next(iter(explicit or candidates), None)
     if selected is None:
         hour = next((value for word, value in SPANISH_HOURS.items()

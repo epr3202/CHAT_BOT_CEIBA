@@ -462,6 +462,7 @@ async def booking_event_context(
         conversation.state, conversation.pending_action, conversation.bot_enabled,
     ):
         return None
+    # Eligible claim/apply/prepare loads lead + event, then refreshes event with FOR UPDATE.
     event = await active_event(session, await active_lead(session, conversation))
     if event is not None:
         event = await session.get(
@@ -513,10 +514,11 @@ async def handle_fixed_price_booking(
     detail = f"Nueva solicitud de reserva para {format_event_type(event.event_type)}."
     if decision.resolved_date is not None:
         old = date_snapshot(event)
-        event.event_date = None if decision.needs_confirmation else decision.resolved_date
-        event.event_month = None
-        event.event_date_type = "UNKNOWN" if decision.needs_confirmation else "EXACT"
-        event.event_date_raw = orchestration_input.message_text[:200]
+        if not decision.needs_confirmation:
+            event.event_date = decision.resolved_date
+            event.event_month = None
+            event.event_date_type = "EXACT"
+        event.event_date_raw = decision.matched_text
         audit_domain_change(
             session, "EVENT_DATE_CAPTURED", "event", old, date_snapshot(event),
             "Fecha solicitada para reserva; confirmación humana si es relativa o contradictoria",
@@ -1266,6 +1268,7 @@ async def handle_waiting_for_appointment_date(
     set_pending_action(conversation, "SELECT_VISIT_TIME")
     selected = interpret_visit_time(
         orchestration_input.message_text, [slot.start_time for slot in availability.slots],
+        require_explicit=True,
     )
     if selected.accepted:
         await handle_waiting_for_appointment_selection(

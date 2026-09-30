@@ -2237,8 +2237,13 @@ ni acciones pendientes propuestas por el clasificador.
 
 La derivación usa `RESERVATION_CONFIRMATION` y `handoff_response_code` para seleccionar
 `RESP-HANDOFF-001`/`RESP-HANDOFF-002`. La fecha pertenece a `Event`, nunca a `visit_draft`.
-Una fecha relativa conserva su expresión en `event_date_raw`, con `event_date` nula y
-`event_date_type = UNKNOWN`; el detalle del handoff incluye «pendiente de confirmación».
+Una fecha relativa o con día de semana contradictorio guarda solo la expresión detectada
+en `event_date_raw`, sin modificar `event_date`, `event_date_type` ni `event_month`
+existentes; el detalle del handoff incluye «pendiente de confirmación».
+
+Con `COLLECT_CATALOG_EVENT_TYPE`, una etiqueta reconocida se resuelve mediante el
+atajo `CATALOG_LABEL_MATCH`, sin clasificador ni fila `ai_execution`. Conserva el
+handler de catálogo, sus plantillas y el resultado de la resolución del tipo.
 
 ## 38.3 Cierre de cita y turno conversacional
 
