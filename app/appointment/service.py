@@ -24,7 +24,11 @@ from app.calendar.adapter import (
     CalendarUnavailableError,
     EventNotFoundError,
 )
-from app.conversation.presentation import format_date_natural
+from app.conversation.presentation import (
+    event_type_display_name,
+    format_date_natural,
+    visit_reason_summary,
+)
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.models import Event
@@ -133,7 +137,7 @@ def build_visit_description(
     values: tuple[tuple[str, str | int | None], ...] = (
         ("Nombre del cliente", customer_name),
         ("Teléfono", phone_number),
-        ("Tipo de evento", event_type),
+        ("Tipo de evento", event_type_display_name(event_type)),
         ("Invitados del evento", event_guest_count),
         ("Asistentes a la visita", visit_attendee_count),
         ("Motivo de la visita", visit_reason),
@@ -379,7 +383,7 @@ class VisitSchedulingService:
         }
         normalized_reason = (visit_reason or "").strip()
         if normalized_reason:
-            variables["event_type"] = normalized_reason
+            variables["event_type"] = visit_reason_summary(normalized_reason)
         return VisitServiceResult(
             response_code=(
                 "RESP-VISIT-CONFIRM-001"

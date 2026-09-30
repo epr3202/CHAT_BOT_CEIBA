@@ -1476,7 +1476,7 @@ async def handle_waiting_for_appointment_selection(
         )
         return
 
-    draft["visit_reason"] = normalize_visit_reason(orchestration_input.message_text)
+    draft["visit_reason"] = orchestration_input.message_text
     conversation.visit_draft = draft
     if not (orchestration_input.customer.full_name or "").strip():
         draft["return_to"] = "VISIT_CONFIRMATION_SUMMARY"
@@ -2030,11 +2030,6 @@ def requests_attendee_exception(message_text: str) -> bool:
     return any(token in normalized for token in ("excepción", "excepcion", "más", "mas"))
 
 
-def normalize_visit_reason(message_text: str) -> str:
-    normalized = message_text.strip()
-    if normalized.casefold().startswith("para "):
-        return normalized[5:].strip()
-    return normalized
 
 
 def direct_customer_name_entity(

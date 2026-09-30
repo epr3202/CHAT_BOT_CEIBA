@@ -272,7 +272,10 @@ async def test_r7_reason_summary_uses_label_and_retains_original(
     assert conversation.visit_draft["visit_reason"] == reason
     assert (await harness.rows(Event))[0].event_type == "ROMANTIC_DINNER"
     bodies = await harness.bodies()
-    assert "una boda" in bodies[-1] and "tu celebración" not in bodies[-1]
+    assert bodies[-1] == await render_response(harness.db, "RESP-VISIT-CONFIRM-001", {
+        "visit_date": "7 de octubre de 2026", "visit_time": "08:00",
+        "visit_attendee_count": "3", "event_type": "una boda",
+    })
     await harness.send(CONFIRM, intent="CONFIRM")
     await harness.assert_completed()
     appointment = (await harness.rows(Appointment))[0]

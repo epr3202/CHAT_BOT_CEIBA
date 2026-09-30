@@ -60,6 +60,29 @@ def format_event_type(event_type: str | None) -> str:
     return EVENT_TYPE_LABELS[event_type]
 
 
+def event_type_display_name(event_type: str | None) -> str | None:
+    if event_type is None:
+        return None
+    label = EVENT_TYPE_LABELS.get(event_type)
+    if not label:
+        logger.warning("unknown_event_type_display_name", event_type=event_type)
+        return None
+    label = re.sub(r"^(?:un|una|el|la|los|las)\s+", "", label.strip(), flags=re.IGNORECASE)
+    return label[:1].upper() + label[1:]
+
+
+def visit_reason_summary(visit_reason: str) -> str:
+    """Recognize an affirmative event label for display without rewriting stored intent."""
+    normalized = normalize_catalog_event_type_label(visit_reason)
+    label = re.sub(
+        r"^(?:si\b[,\s]*)?(?:es\s+)?(?:para\s+)?(?:(?:un|una)\s+)?", "", normalized,
+    )
+    for event_type, aliases in CATALOG_EVENT_TYPE_LABELS.items():
+        if label in {normalize_catalog_event_type_label(alias) for alias in aliases}:
+            return format_event_type(event_type)
+    return visit_reason
+
+
 def format_date_natural(value: date) -> str:
     return f"{value.day} de {MONTH_NAMES[value.month]} de {value.year}"
 
