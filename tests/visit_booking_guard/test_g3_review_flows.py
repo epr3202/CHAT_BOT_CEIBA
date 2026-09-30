@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from structlog.testing import capture_logs
 
 from app.ai.models import AIExecution
 from app.appointment.models import Appointment
@@ -47,10 +48,16 @@ async def test_g3_c1_bare_hour_still_works_in_time_selection(harness: Harness) -
 async def test_g3_c2_reason_prefix_is_display_only(harness: Harness, reason: str) -> None:
     await harness.seed(state="WAITING_FOR_APPOINTMENT_SELECTION", pending="COLLECT_VISIT_REASON",
                        draft=time_draft(visit_time="08:00", attendee_count=3))
-    await harness.send(reason)
+    with capture_logs() as logs:
+        await harness.send(reason)
     await harness.assert_completed()
     assert (await harness.conversation()).visit_draft["visit_reason"] == reason
-    assert "pensando en conocer el salón" in (await harness.bodies())[-1]
+    body = (await harness.bodies())[-1]
+    assert "pensando en tu celebración" in body
+    assert "conocer el salón" not in body
+    assert any(log.get("event") == "event_type_presentation_fallback"
+               and log.get("log_level") == "warning"
+               and log.get("discarded_value") == reason for log in logs)
     await harness.send(CONFIRM, intent="CONFIRM")
     await harness.assert_completed()
     appointment = (await harness.rows(Appointment))[0]

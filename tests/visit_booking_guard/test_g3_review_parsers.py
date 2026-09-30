@@ -4,9 +4,10 @@ import inspect
 from datetime import date, time
 
 import pytest
+from structlog.testing import capture_logs
 
 from app.appointment.service import parse_visit_time_text, resolve_visit_date_text
-from app.conversation.presentation import present_variables
+from app.conversation.presentation import present_variables, visit_reason_summary
 from tests.visit_booking_guard.helpers import TODAY
 
 
@@ -30,13 +31,21 @@ def test_g3_c1_time_context_accepts_bare_hour() -> None:
     assert parse_visit_time_text("8", require_explicit=False) == time(8)
 
 
-@pytest.mark.parametrize("response_code", [None, "RESP-CATALOG-001", "RESP-VISIT-CONFIRM-001"])
-def test_g3_c2_free_reason_is_scoped_to_visit_confirmation(response_code: str | None) -> None:
-    expected = "conocer el salón" if response_code == "RESP-VISIT-CONFIRM-001" else "tu celebración"
-    assert present_variables({"event_type": "conocer el salón"}, response_code=response_code) == {
-        "event_type": expected,
-    }
-    assert present_variables({"event_type": "WEDDING"}, response_code=response_code) == {
+@pytest.mark.parametrize("reason", [
+    "para conocer el salón", "sí, es para conocer el salón", "es para conocer el salón",
+])
+def test_g3_c2_free_reason_is_scoped_to_visit_confirmation(reason: str) -> None:
+    summary = visit_reason_summary(reason)
+    assert summary == reason
+    with capture_logs() as logs:
+        variables = present_variables({"event_type": summary})
+    message = "pensando en {event_type}".format(**variables)
+    assert message == "pensando en tu celebración"
+    assert "conocer el salón" not in message
+    assert any(log.get("event") == "event_type_presentation_fallback"
+               and log.get("log_level") == "warning"
+               and log.get("discarded_value") == reason for log in logs)
+    assert present_variables({"event_type": "WEDDING"}) == {
         "event_type": "una boda",
     }
 
