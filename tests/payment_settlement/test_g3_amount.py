@@ -66,7 +66,7 @@ async def test_g3_c1_migration_0032_nullable_integer_full_downgrade(
 ):
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert "20260930_0032" in scripts.get_heads(), "C1: migration 0032 is required"
+    assert scripts.get_revision("20260930_0032") is not None, "C1: migration 0032 is required"
     revision = scripts.get_revision("20260930_0032")
     assert revision is not None, "C1: migration 0032 is required"
     assert revision.down_revision == "20260930_0031"
@@ -105,7 +105,8 @@ async def test_g3_c1_migration_0032_nullable_integer_full_downgrade(
         }
         await asyncio.to_thread(command.downgrade, config, "20260930_0031")
         assert await snapshot() == before
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20260930_0032")
         assert await snapshot() == after
+        await asyncio.to_thread(command.upgrade, config, "head")
     finally:
         await engine.dispose()
