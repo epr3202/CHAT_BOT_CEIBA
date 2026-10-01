@@ -702,6 +702,8 @@ function clearSession() {
   $("#planRows").replaceChildren();
   $("#reservationRows").replaceChildren();
   $("#reservationDetails").replaceChildren();
+  $("#reservationEvidences").replaceChildren();
+  $("#reservationScheduleForm").reset();
   $("#reservationDetail").hidden = true;
   $("#reservationCancelForm").reset();
   $("#manualReservationForm").reset();
@@ -1525,6 +1527,13 @@ async function loadReservations() {
   const params = new URLSearchParams();
   const status = $("#reservationStatusFilter").value;
   if (status) params.set("status", status);
+  try {
+    if ($("#reservationFromFilter").value) params.set("from", bogotaDateTimeToISO($("#reservationFromFilter").value, "00:00"));
+    if ($("#reservationToFilter").value) {
+      const finalMinute = new Date(bogotaDateTimeToISO($("#reservationToFilter").value, "23:59"));
+      params.set("to", new Date(finalMinute.getTime() + 59999).toISOString());
+    }
+  } catch (error) { managementFeedback("reservationsFeedback", error.message, true); return; }
   managementFeedback("reservationsFeedback", "Cargando reservas…");
   try {
     const reservations = await managementRequest(`/api/admin/reservations?${params}`);
@@ -1543,16 +1552,24 @@ function renderReservations() {
   const body = $("#reservationRows");
   body.replaceChildren();
   if (!state.reservations.length) {
-    emptyTable(body, 5, "No hay reservas con este filtro.");
+    emptyTable(body, 7, "No hay reservas con este filtro.");
     return;
   }
   for (const reservation of state.reservations) {
     const row = document.createElement("tr");
-    for (const value of [reservation.customer_name || "Sin nombre", reservation.plan_name || "Sin plan",
-      formatDate(reservation.starts_at), label("reservationStatus", reservation.status)]) {
+    for (const value of [reservation.customer_name || reservation.customer_phone || "Sin nombre", reservation.plan_name || "Sin plan",
+      formatDate(reservation.starts_at), label("reservationStatus", reservation.status),
+      `${formatCOP(reservation.amount_paid_cop)} / ${formatCOP(reservation.missing_cop)}`,
+      label("calendarStatus", reservation.calendar_status)]) {
       const cell = document.createElement("td");
       cell.append(value);
       row.append(cell);
+    }
+    if (reservation.conversation_id === null) {
+      const badge = document.createElement("span");
+      badge.className = "pill neutral manualBadge";
+      badge.textContent = "Manual";
+      row.firstElementChild.append(badge);
     }
     const actions = document.createElement("td");
     actions.append(actionButton("Ver detalle", () => openReservationDetail(reservation.reservation_id)));
@@ -1567,6 +1584,9 @@ async function openReservationDetail(id) {
   state.reservationDetail = null;
   $("#reservationDetail").hidden = false;
   $("#reservationDetails").replaceChildren();
+  $("#reservationEvidences").replaceChildren();
+  $("#reservationScheduleForm").hidden = true;
+  $("#retryReservationCalendar").hidden = true;
   $("#reservationCancelForm").hidden = true;
   managementFeedback("reservationDetailFeedback", "Cargando detalle…");
   try {
@@ -1587,10 +1607,14 @@ function renderReservationDetail(reservation) {
   const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
   details.replaceChildren();
   for (const [title, value] of [
-    ["Cliente", reservation.customer_name || "Sin nombre"], ["Plan", reservation.plan_name || "Sin plan"],
+    ["Cliente", reservation.customer_name || reservation.customer_phone || "Sin nombre"], ["Plan", reservation.plan_name || "Sin plan"],
+    ["Origen", reservation.conversation_id === null ? "Manual" : "Conversación"],
     ["Estado", label("reservationStatus", reservation.status)], ["Inicio", formatDate(reservation.starts_at)],
     ["Fin", formatDate(reservation.ends_at)], ["Precio", cop.format(reservation.price_cop)],
     ["Pagado", cop.format(reservation.amount_paid_cop)],
+    ["Anticipo", formatCOP(reservation.deposit_amount_cop)],
+    ["Faltante para el anticipo", formatCOP(reservation.missing_cop)],
+    ["Calendario", label("calendarStatus", reservation.calendar_status)],
     ["Modalidad de pago", reservation.payment_kind ? label("paymentKind", reservation.payment_kind) : "Sin modalidad"],
     ["Vencimiento del saldo", formatDate(reservation.balance_due_at)],
   ]) {
@@ -1602,7 +1626,174 @@ function renderReservationDetail(reservation) {
   }
   const form = $("#reservationCancelForm");
   form.reset();
-  form.hidden = !["PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED"].includes(reservation.status);
+  const writable = state.agent?.role === "ADMIN" && ["PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED"].includes(reservation.status);
+  form.hidden = !writable;
+  const schedule = $("#reservationScheduleForm");
+  schedule.hidden = !writable;
+  if (writable) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date(reservation.starts_at)).map(p => [p.type, p.value]));
+    $("#reservationScheduleDate").value = `${parts.year}-${parts.month}-${parts.day}`;
+    $("#reservationScheduleTime").value = `${parts.hour}:${parts.minute}`;
+  }
+  $("#retryReservationCalendar").hidden = state.agent?.role !== "ADMIN" || reservation.status !== "RESERVED" || reservation.calendar_status !== "NONE";
+  const evidences = $("#reservationEvidences");
+  evidences.replaceChildren();
+  if (!reservation.evidences?.length) setEmpty(evidences, "Esta reserva no tiene comprobantes.");
+  for (const evidence of reservation.evidences || []) {
+    evidences.append(createEvidenceCard(evidence, "reservationDetailFeedback",
+      (decision, note, amount, button, card) => settleReservationEvidence(reservation.reservation_id, evidence.id, decision, note, amount, button, card)));
+  }
+}
+
+function createEvidenceCard(evidence, feedbackId, review) {
+  const card = document.createElement("article");
+  card.className = "paymentEvidenceCard";
+  const details = document.createElement("div");
+  details.className = "paymentEvidenceDetails";
+  const title = document.createElement("strong");
+  title.textContent = `Comprobante #${evidence.id}`;
+  const status = document.createElement("span");
+  status.append(label("reviewStatus", evidence.status || evidence.review_status));
+  const amount = document.createElement("span");
+  amount.textContent = `Monto: ${formatCOP(evidence.amount_cop)}`;
+  const date = document.createElement("span");
+  date.textContent = formatDate(evidence.created_at);
+  details.append(title, status, amount, date);
+  card.append(details);
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  if (evidence.download_status === "DOWNLOADED") {
+    actions.append(actionButton("Descargar", event => downloadEvidence(evidence.id, event.currentTarget, card, feedbackId)));
+  }
+  if ((evidence.status || evidence.review_status) === "PENDING_REVIEW" && state.agent?.role === "ADMIN") {
+    const amountLabel = document.createElement("label");
+    amountLabel.textContent = "Monto verificado (COP)";
+    const input = document.createElement("input");
+    input.type = "number"; input.min = "1"; input.max = "2147483647"; input.step = "1"; input.inputMode = "numeric";
+    amountLabel.append(input);
+    const noteLabel = document.createElement("label");
+    noteLabel.textContent = "Nota de revisión";
+    const note = document.createElement("textarea");
+    note.maxLength = 255; note.rows = 2;
+    note.placeholder = "Opcional al aceptar; obligatoria al rechazar";
+    noteLabel.append(note);
+    card.append(amountLabel, noteLabel);
+    actions.append(
+      actionButton("Aceptar", event => review("accept", note.value, input.value, event.currentTarget, card), "primary"),
+      actionButton("Rechazar", event => review("reject", note.value, input.value, event.currentTarget, card), "danger"),
+    );
+  }
+  card.append(actions);
+  return card;
+}
+
+function evidenceReviewBody(decision, note, amount, feedbackId) {
+  const body = {};
+  if (note.trim()) body.note = note.trim();
+  if (decision === "reject" && !body.note) {
+    managementFeedback(feedbackId, "Escribe el motivo del rechazo en la nota de revisión.", true);
+    return null;
+  }
+  if (decision === "accept") {
+    const value = Number(amount);
+    if (!Number.isInteger(value) || value <= 0 || value > 2147483647) {
+      managementFeedback(feedbackId, "Escribe un monto verificado en pesos, mayor que cero y sin decimales.", true);
+      return null;
+    }
+    body.amount_cop = value;
+  }
+  return body;
+}
+
+function settlementMessage(result) {
+  if (result.result === "PARTIAL") return `Abono registrado, faltan ${formatCOP(result.missing_cop)}.`;
+  if (result.result === "RESERVED") return result.calendar_synced === false
+    ? `Confirmada; falta sincronizar calendario. ${result.detail || ""}`.trim()
+    : "Reserva confirmada. Calendario sincronizado.";
+  return labels.settlementResult[result.result] || "Comprobante revisado.";
+}
+
+async function settleReservationEvidence(id, evidenceId, decision, note, amount, button, card) {
+  if (state.agent?.role !== "ADMIN") return;
+  const body = evidenceReviewBody(decision, note, amount, "reservationDetailFeedback");
+  if (!body) return;
+  const request = state.reservationDetailRequest;
+  await managementAction(button, card, decision === "accept" ? "Aceptando…" : "Rechazando…", "reservationDetailFeedback",
+    async current => {
+      const result = await managementRequest(`/api/admin/payment-evidence/${evidenceId}/${decision}`, { method: "POST", body: JSON.stringify(body) });
+      if (!current() || request !== state.reservationDetailRequest) return;
+      await reloadReservationAfterMutation(id, result.reservation, current, request);
+      if (!current() || request !== state.reservationDetailRequest) return;
+      managementFeedback("reservationDetailFeedback", settlementMessage(result));
+      await loadReservations();
+    }, "No se pudo revisar el comprobante");
+}
+
+async function reloadReservationAfterMutation(id, updated, current, request) {
+  if (updated) renderReservationDetail({ ...state.reservationDetail, ...updated });
+  try {
+    const fresh = await managementRequest(`/api/admin/reservations/${id}`);
+    if (current() && request === state.reservationDetailRequest) renderReservationDetail(fresh);
+  } catch (error) {
+    // The mutation succeeded; preserve its result even when a later read fails.
+    if (current() && request === state.reservationDetailRequest) logEvent(`La operación se completó; no se pudo actualizar el detalle: ${error.message}`);
+  }
+}
+
+async function scheduleReservation(event) {
+  event.preventDefault();
+  if (state.agent?.role !== "ADMIN" || !state.reservationDetail) return;
+  const reservation = state.reservationDetail;
+  const form = $("#reservationScheduleForm");
+  if (!form.reportValidity()) return;
+  let starts_at;
+  try { starts_at = bogotaDateTimeToISO($("#reservationScheduleDate").value, $("#reservationScheduleTime").value); }
+  catch (error) { managementFeedback("reservationDetailFeedback", error.message, true); return; }
+  const request = state.reservationDetailRequest;
+  await managementAction($("#scheduleReservation"), form, "Reprogramando…", "reservationDetailFeedback", async current => {
+    const result = await managementRequest(`/api/admin/reservations/${reservation.reservation_id}/schedule`, { method: "PATCH", body: JSON.stringify({ starts_at }) });
+    if (!current() || request !== state.reservationDetailRequest) return;
+    await reloadReservationAfterMutation(reservation.reservation_id, result, current, request);
+    if (!current() || request !== state.reservationDetailRequest) return;
+    managementFeedback("reservationDetailFeedback", result.calendar_synced === false
+      ? `Reserva reprogramada. Confirmada; falta sincronizar calendario. ${result.detail || ""}` : "Reserva reprogramada.");
+    await loadReservations();
+  }, "No se pudo reprogramar la reserva");
+}
+
+async function retryReservationCalendar(event) {
+  if (state.agent?.role !== "ADMIN" || !state.reservationDetail) return;
+  const reservation = state.reservationDetail;
+  const request = state.reservationDetailRequest;
+  await managementAction(event.currentTarget, $("#reservationCalendarActions"), "Sincronizando…", "reservationDetailFeedback", async current => {
+    const result = await managementRequest(`/api/admin/reservations/${reservation.reservation_id}/sync-calendar`, { method: "POST" });
+    if (!current() || request !== state.reservationDetailRequest) return;
+    await reloadReservationAfterMutation(reservation.reservation_id, result, current, request);
+    if (!current() || request !== state.reservationDetailRequest) return;
+    managementFeedback("reservationDetailFeedback", result.calendar_synced === false
+      ? `Confirmada; falta sincronizar calendario. ${result.detail || ""}` : "Calendario sincronizado.", result.calendar_synced === false);
+    await loadReservations();
+  }, "No se pudo sincronizar el calendario");
+}
+
+async function downloadEvidence(id, button, card, feedbackId) {
+  await managementAction(button, card, "Descargando…", feedbackId, async current => {
+    const response = await fetch(`/api/admin/payment-evidence/${id}/download`, { headers: sessionHeaders() });
+    if (!response.ok) {
+      const payload = (response.headers.get("content-type") || "").includes("application/json") ? await response.json() : await response.text();
+      throw new Error(backendErrorText(payload?.detail || payload));
+    }
+    const blob = await response.blob();
+    if (!current()) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = `comprobante-${id}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, "No se pudo descargar el comprobante");
 }
 
 async function cancelReservation(event) {
@@ -1626,7 +1817,9 @@ async function cancelReservation(event) {
     });
     if (request !== state.reservationDetailRequest) return;
     renderReservationDetail(updated);
-    managementFeedback("reservationDetailFeedback", "Reserva cancelada.");
+    managementFeedback("reservationDetailFeedback", updated.calendar_synced === false
+      ? "Reserva cancelada; falta retirar el evento del calendario."
+      : "Reserva cancelada.", updated.calendar_synced === false);
     await loadReservations();
   } catch (error) {
     if (request === state.reservationDetailRequest) {
@@ -1932,6 +2125,13 @@ function bindUi() {
     $("#reservationDetail").hidden = true;
     loadReservations();
   });
+  for (const selector of ["#reservationFromFilter", "#reservationToFilter"]) $(selector).addEventListener("change", () => {
+    state.reservationDetailRequest += 1;
+    $("#reservationDetail").hidden = true;
+    loadReservations();
+  });
+  $("#reservationScheduleForm").addEventListener("submit", scheduleReservation);
+  $("#retryReservationCalendar").addEventListener("click", retryReservationCalendar);
   $("#reservationCancelForm").addEventListener("submit", cancelReservation);
   $("#closeReservationDetail").addEventListener("click", () => {
     state.reservationDetailRequest += 1;

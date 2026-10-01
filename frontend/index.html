@@ -308,11 +308,13 @@
           <div class="managementForm">
             <label for="reservationStatusFilter">Estado</label>
             <select id="reservationStatusFilter"><option value="">Todos</option></select>
+            <label>Desde<input id="reservationFromFilter" type="date" /></label>
+            <label>Hasta<input id="reservationToFilter" type="date" /></label>
           </div>
           <p id="reservationsFeedback" role="status" aria-live="polite" hidden></p>
           <div class="tableScroll">
             <table class="agentsTable">
-              <thead><tr><th>Cliente</th><th>Plan</th><th>Inicio</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Cliente</th><th>Plan</th><th>Inicio (Bogotá)</th><th>Estado</th><th>Pagado / faltante del anticipo</th><th>Calendario</th><th>Acciones</th></tr></thead>
               <tbody id="reservationRows"></tbody>
             </table>
           </div>
@@ -324,6 +326,15 @@
           </div>
           <p id="reservationDetailFeedback" role="status" aria-live="polite" hidden></p>
           <dl id="reservationDetails" class="resetCounts" aria-live="polite"></dl>
+          <div id="reservationCalendarActions" class="actions"><button id="retryReservationCalendar" type="button" hidden>Reintentar calendario</button></div>
+          <h3>Comprobantes</h3>
+          <div id="reservationEvidences" class="cardList"></div>
+          <form id="reservationScheduleForm" class="managementForm bookingForm" hidden>
+            <label>Nueva fecha<input id="reservationScheduleDate" type="date" required /></label>
+            <label>Nueva hora<input id="reservationScheduleTime" type="time" required step="60" /></label>
+            <p>Fecha y hora de Bogotá.</p>
+            <div class="actions"><button id="scheduleReservation" type="submit">Reprogramar</button></div>
+          </form>
           <form id="reservationCancelForm" class="managementForm" hidden>
             <label>Motivo
               <textarea id="reservationCancelNote" maxlength="255" required></textarea>

@@ -64,6 +64,9 @@ body.loggedOut .sidebar {
   grid-column: 1 / -1;
 }
 
+.manualBadge { display: inline-block; margin: 6px 0 0 8px; }
+.paymentEvidenceCard label { display: grid; gap: 6px; }
+
 [aria-live] {
   white-space: pre-wrap;
 }
