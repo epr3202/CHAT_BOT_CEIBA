@@ -34,6 +34,7 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/admin/catalogs/",
         "/api/admin/payment-evidence",
         "/api/admin/payment-evidence/",
+        "/api/admin/payment-evidence/{id}/prereview",
         "/api/admin/plans",
         "/api/admin/plans/",
         "/api/admin/reservations",
@@ -55,6 +56,7 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/admin/catalogs/",
         "/admin/payment-evidence",
         "/admin/payment-evidence/",
+        "/admin/payment-evidence/{id}/prereview",
         "/admin/plans",
         "/admin/plans/",
         "/admin/reservations",
@@ -82,6 +84,14 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         if not any(path == allowed or path.startswith(allowed) for allowed in allowed_paths)
     }
     assert unexpected == set()
+
+
+def test_payment_prereview_is_proxied_and_carries_human_proposal_id() -> None:
+    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
+    assert "/prereview" in app_js
+    assert "review_id" in app_js
+    assert 'path.startsWith("/api/admin/payment-evidence/")' in server
 
 
 def test_frontend_server_keeps_webhook_secret_out_of_logs() -> None:

@@ -45,6 +45,10 @@ try {
       {starts_at: "2030-10-11T17:00:00Z"}],
     ["POST", "/api/admin/reservations/test-reservation/sync-calendar", undefined],
     ["POST", "/api/admin/reservations/test-reservation/cancel", {note: "Cliente cancela"}],
+    ["GET", "/api/admin/payment-evidence/test-evidence", undefined],
+    ["POST", "/api/admin/payment-evidence/test-evidence/prereview", undefined],
+    ["POST", "/api/admin/payment-evidence/test-evidence/accept",
+      {amount_cop: 125000, review_id: "44444444-4444-4444-8444-444444444444"}],
   ];
   for (const [method, path, payload] of routes) {
     const body = payload ? JSON.stringify(payload) : undefined;
