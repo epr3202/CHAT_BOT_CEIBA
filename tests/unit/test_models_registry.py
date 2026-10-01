@@ -29,6 +29,7 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
         "message_provider_status",
         "outbox",
         "payment_evidence",
+        "payment_evidence_review",
         "plan",
         "quote_request",
         "reservation",
