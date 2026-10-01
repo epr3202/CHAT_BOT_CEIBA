@@ -68,8 +68,12 @@ class Settings(BaseSettings):
     calendar_adapter: Literal["fake", "google"] = Field(default="fake", alias="CALENDAR_ADAPTER")
     google_service_account_file: str = Field(default="", alias="GOOGLE_SERVICE_ACCOUNT_FILE")
 
-    # B1b-1 backend only; the conversation gate is reserved for B1b-2.
+    # Opt-in booking conversation; approved templates and complete bank data are required.
     self_service_booking_enabled: bool = Field(default=False, alias="SELF_SERVICE_BOOKING_ENABLED")
+    booking_bank_name: str = Field(default="", alias="BOOKING_BANK_NAME")
+    booking_account_type: str = Field(default="", alias="BOOKING_ACCOUNT_TYPE")
+    booking_account_number: str = Field(default="", alias="BOOKING_ACCOUNT_NUMBER")
+    booking_account_holder: str = Field(default="", alias="BOOKING_ACCOUNT_HOLDER")
     booking_exclusivity_keyword: str = Field(
         default="exclusividad", alias="BOOKING_EXCLUSIVITY_KEYWORD", min_length=1
     )

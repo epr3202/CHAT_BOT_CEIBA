@@ -7,12 +7,14 @@ from typing import Any
 
 import structlog
 
+from app.config.settings import Settings
 from app.conversation.catalog_event_type import (
     CATALOG_EVENT_TYPE_LABELS,
     normalize_catalog_event_type_label,
 )
 from app.conversation.services_catalog import compose_requested_services_summary
 from app.event.models import EVENT_TYPES
+from app.plan.models import Plan
 
 logger = structlog.get_logger(__name__)
 
@@ -99,6 +101,34 @@ class VariablePresentationError(ValueError):
 
 
 VariablePresenter = Callable[[Any], str]
+
+
+def _present_cop(value: Any) -> str:
+    if type(value) is not int or value < 0:
+        raise ValueError("Expected a nonnegative integer COP amount")
+    return "$" + f"{value:,}".replace(",", ".")
+
+
+def _present_plan_name(value: Any) -> str:
+    if not isinstance(value, Plan):
+        raise TypeError("Expected a plan loaded from the catalog")
+    return _normalized_text(value.name)
+
+
+def _present_plan_options(value: Any) -> str:
+    if not isinstance(value, (tuple, list)) or not value:
+        raise ValueError("Expected active catalog plans")
+    if any(not isinstance(plan, Plan) or not plan.active for plan in value):
+        raise TypeError("Expected active catalog plans")
+    plans = sorted(value, key=lambda plan: (plan.sort_order, plan.code))
+    return "\n".join(f"{index}. {_present_plan_name(plan)}"
+                     for index, plan in enumerate(plans, start=1))
+
+
+def _present_bank(value: Any, field: str) -> str:
+    if not isinstance(value, Settings):
+        raise TypeError("Expected bank settings, never customer text")
+    return _normalized_text(getattr(value, field))
 
 
 def _normalized_text(value: Any) -> str:
@@ -246,6 +276,18 @@ def _present_event_type(value: Any) -> str:
 
 
 VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
+    "plan_options": _present_plan_options,
+    "plan_name": _present_plan_name,
+    "booking_date": _present_date,
+    "booking_time": _present_time,
+    "total_amount": _present_cop,
+    "deposit_amount": _present_cop,
+    "missing_amount": _present_cop,
+    "balance_due_date": _present_date,
+    "bank_name": lambda value: _present_bank(value, "booking_bank_name"),
+    "account_type": lambda value: _present_bank(value, "booking_account_type"),
+    "account_number": lambda value: _present_bank(value, "booking_account_number"),
+    "account_holder": lambda value: _present_bank(value, "booking_account_holder"),
     "adult_guest_count": _present_count,
     "advisor_name": _normalized_text,
     "appointment_options": _present_appointment_options,
