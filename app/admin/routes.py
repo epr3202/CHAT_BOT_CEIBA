@@ -1098,22 +1098,6 @@ async def settle_payment_evidence(
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         row_id = row.reservation_id if row else None
-        session.add(
-            AuditEvent(
-                actor=actor,
-                action="PAYMENT_EVIDENCE_SETTLED",
-                entity="payment_evidence",
-                old_value={"evidence_id": evidence_id, "review_status": "PENDING_REVIEW"},
-                new_value={
-                    "evidence_id": evidence_id,
-                    "decision": evidence.review_status,
-                    "agent_id": agent_id,
-                    "result": kind,
-                },
-                reason=body.note or "Comprobante aceptado por asesor",
-                request_id=rid,
-            )
-        )
         await session.flush()
         payload = dict(
             id=evidence.id,
