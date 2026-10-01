@@ -27,7 +27,7 @@ class InvalidBookingPlan(ValueError):
 
 async def create_pending_reservation(
     session: AsyncSession, *, lead: Lead, event: Event, plan: Plan,
-    conversation: Conversation, customer: Customer, starts_at: datetime,
+    conversation: Conversation | None, customer: Customer, starts_at: datetime,
     actor: str, request_id: UUID | str | None,
 ) -> Reservation:
     """Persist the caller's selected plan/date without checking or holding availability.
@@ -45,7 +45,8 @@ async def create_pending_reservation(
     starts_at = starts_at.astimezone(UTC)
     reservation = Reservation(
         reservation_id=uuid4(), lead_id=lead.lead_id, event_id=event.event_id,
-        plan_id=plan.plan_id, conversation_id=conversation.id, customer_id=customer.id,
+        plan_id=plan.plan_id, conversation_id=conversation.id if conversation else None,
+        customer_id=customer.id,
         starts_at=starts_at, ends_at=starts_at + timedelta(minutes=plan.duration_minutes),
         price_cop=plan.price_cop, amount_paid_cop=0, status="PAYMENT_PENDING",
         calendar_status="NONE", hold_expires_at=None,

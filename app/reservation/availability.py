@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Literal
 from unicodedata import combining, normalize
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -92,6 +93,7 @@ def validate_booking_window(
 async def fetch_booking_context(
     session: AsyncSession, *, plan: Plan, starts_at: datetime, ends_at: datetime,
     calendar: CalendarAdapter, settings: Settings,
+    exclude_reservation_id: UUID | None = None,
 ) -> BookingAvailability:
     """Own a short read transaction, release it, then read Calendar.
 
@@ -113,6 +115,8 @@ async def fetch_booking_context(
             select(Reservation).options(joinedload(Reservation.plan)).where(
                 Reservation.status == "RESERVED", Reservation.starts_at < ends_at,
                 Reservation.ends_at > starts_at,
+                *([Reservation.reservation_id != exclude_reservation_id]
+                  if exclude_reservation_id else []),
             ).order_by(Reservation.starts_at, Reservation.reservation_id)
         ))
         # Freeze the read objects before commit, including expire_on_commit=True sessions.
@@ -124,6 +128,8 @@ async def fetch_booking_context(
         if plan in session:
             session.expunge(plan)
     events = await calendar.list_events(starts_at, ends_at, ids)
+    if exclude_reservation_id:
+        events = [event for event in events if event.event_id != exclude_reservation_id.hex]
     return evaluate_booking_availability(
         plan=plan, starts_at=starts_at, ends_at=ends_at, calendar_events=events,
         reservations=reservations, exclusivity_keyword=settings.booking_exclusivity_keyword,

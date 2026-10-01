@@ -5,7 +5,7 @@ from app.reservation.models import Reservation
 
 RESERVATION_TRANSITIONS: dict[str, frozenset[str]] = {
     "PAYMENT_PENDING": frozenset({"PAYMENT_REVIEW", "EXPIRED", "CANCELLED"}),
-    "PAYMENT_REVIEW": frozenset({"RESERVED", "CANCELLED"}),
+    "PAYMENT_REVIEW": frozenset({"PAYMENT_PENDING", "RESERVED", "CANCELLED"}),
     "RESERVED": frozenset({"CANCELLED"}),
     "EXPIRED": frozenset(),
     "CANCELLED": frozenset(),
