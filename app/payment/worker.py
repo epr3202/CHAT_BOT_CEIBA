@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 import structlog
-from sqlalchemy import or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.audit.models import AuditEvent
@@ -21,7 +21,8 @@ from app.channel.media import (
     normalize_sha256,
 )
 from app.config.settings import Settings
-from app.payment.models import PaymentEvidence
+from app.payment.models import PaymentEvidence, PaymentEvidenceReview
+from app.payment.review import prereview_evidence
 
 logger = structlog.get_logger(__name__)
 
@@ -48,6 +49,44 @@ class EvidenceClaim:
 def evidence_backoff_seconds(attempts: int, max_backoff_seconds: int) -> int:
     """Use the same bounded exponential schedule as the outbox worker."""
     return min(2**attempts, max_backoff_seconds)
+
+
+async def process_payment_prereview_once(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    *,
+    settings: Settings,
+    now: datetime | None = None,
+) -> int:
+    if not settings.payment_review_ai_enabled:
+        return 0
+    attempts = (
+        select(func.count())
+        .select_from(PaymentEvidenceReview)
+        .where(PaymentEvidenceReview.evidence_id == PaymentEvidence.id)
+        .correlate(PaymentEvidence)
+        .scalar_subquery()
+    )
+    terminal = exists().where(
+        PaymentEvidenceReview.evidence_id == PaymentEvidence.id,
+        PaymentEvidenceReview.status.in_(("COMPLETED", "SKIPPED")),
+    )
+    async with sessionmaker() as session, session.begin():
+        evidence = await session.scalar(
+            select(PaymentEvidence)
+            .where(
+                PaymentEvidence.download_status.in_(("DOWNLOADED", "FAILED_PERMANENT")),
+                PaymentEvidence.review_status == "PENDING_REVIEW",
+                ~terminal,
+                attempts < settings.payment_review_max_attempts,
+            )
+            .order_by(PaymentEvidence.created_at, PaymentEvidence.id)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        if evidence is None:
+            return 0
+        await prereview_evidence(session, evidence, settings=settings, now=now or datetime.now(UTC))
+    return 1
 
 
 async def process_payment_evidence_once(

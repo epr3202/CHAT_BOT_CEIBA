@@ -620,7 +620,7 @@ async def _run_payment_evidence_loop(
     sessionmaker: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
-    from app.payment.worker import process_payment_evidence_once
+    from app.payment.worker import process_payment_evidence_once, process_payment_prereview_once
 
     async with httpx.AsyncClient(timeout=15.0) as http_client:
         while True:
@@ -630,6 +630,7 @@ async def _run_payment_evidence_loop(
                     settings=settings,
                     http_client=http_client,
                 )
+                processed += await process_payment_prereview_once(sessionmaker, settings=settings)
                 logger.info("payment_evidence_poll_completed", processed=processed)
             except Exception:
                 logger.exception("payment_evidence_poll_failed")
