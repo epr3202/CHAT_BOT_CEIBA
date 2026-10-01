@@ -68,7 +68,8 @@ from app.event.models import EVENT_TYPES, Event
 from app.handoff.models import Handoff
 from app.lead.models import Lead
 from app.orchestrator.service import enqueue_template
-from app.payment.models import PaymentEvidence
+from app.payment.models import PaymentEvidence, PaymentEvidenceReview
+from app.payment.review import latest_review, prereview_evidence, review_payload
 from app.plan.models import Plan
 from app.reservation.availability import (
     BookingBlocker,
@@ -398,6 +399,7 @@ class PaymentEvidenceAcceptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     amount_cop: int = Field(gt=0, le=2147483647, strict=True)
     note: str | None = Field(None, max_length=255)
+    review_id: UUID | None = None
 
 
 class PaymentEvidencePayload(BaseModel):
@@ -413,6 +415,7 @@ class PaymentEvidencePayload(BaseModel):
     reservation_id: UUID | None
     amount_cop: int | None
     created_at: datetime
+    review: dict | None = None
 
 
 class PaymentEvidenceReviewPayload(BaseModel):
@@ -625,6 +628,7 @@ async def get_reservation(
                     "amount_cop": e.amount_cop,
                     "download_status": e.download_status,
                     "created_at": e.created_at,
+                    "review": review_payload(await latest_review(session, e.id)),
                 }
                 for e in evidences
             ]
@@ -955,9 +959,58 @@ async def list_payment_evidence(
             reservation_id=evidence.reservation_id,
             amount_cop=evidence.amount_cop,
             created_at=evidence.created_at,
+            review=review_payload(await latest_review(session, evidence.id)),
         )
         for evidence, customer in rows.all()
     ]
+
+
+@router.get("/payment-evidence/{evidence_id}")
+async def payment_evidence_detail(
+    evidence_id: int,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> PaymentEvidencePayload:
+    await authenticated_admin(session, authorization)
+    evidence = await session.get(PaymentEvidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(404, "El comprobante no existe.")
+    customer = await session.get(Customer, evidence.customer_id)
+    return PaymentEvidencePayload(
+        id=evidence.id, conversation_id=evidence.conversation_id,
+        customer_id=evidence.customer_id, customer_name=customer.full_name,
+        customer_phone=customer.phone_number, mime_type=evidence.mime_type,
+        download_status=evidence.download_status, review_status=evidence.review_status,
+        size_bytes=evidence.size_bytes, reservation_id=evidence.reservation_id,
+        amount_cop=evidence.amount_cop, created_at=evidence.created_at,
+        review=review_payload(await latest_review(session, evidence.id)),
+    )
+
+
+@router.post("/payment-evidence/{evidence_id}/prereview")
+async def retry_payment_prereview(
+    evidence_id: int,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> dict:
+    await authenticated_admin(session, authorization)
+    settings = get_settings()
+    if not settings.payment_review_ai_enabled:
+        raise HTTPException(409, "La pre-revisión está desactivada.")
+    await session.rollback()
+    async with session.begin():
+        evidence = await session.get(PaymentEvidence, evidence_id, with_for_update=True)
+        if evidence is None:
+            raise HTTPException(404, "El comprobante no existe.")
+        if evidence.review_status != "PENDING_REVIEW":
+            raise HTTPException(409, "El comprobante ya fue revisado por un asesor.")
+        if evidence.download_status not in {"DOWNLOADED", "FAILED_PERMANENT"}:
+            raise HTTPException(409, "El comprobante aún no está disponible.")
+        review = await prereview_evidence(session, evidence, settings=settings,
+            now=datetime.now(UTC), force=True, request_id=request_id)
+        payload = review_payload(review)
+    return {"id": evidence_id, "review": payload}
 
 
 @router.get("/payment-evidence/{evidence_id}/download")
@@ -1076,6 +1129,13 @@ async def settle_payment_evidence(
         if evidence.review_status != "PENDING_REVIEW":
             raise HTTPException(409, "El comprobante ya fue revisado.")
         evidence.reviewed_by_agent_id = agent_id
+        proposal = None
+        if accepting and body.review_id is not None:
+            proposal = await session.get(PaymentEvidenceReview, body.review_id)
+            if proposal is None or proposal.evidence_id != evidence.id:
+                raise HTTPException(422, "La propuesta no pertenece a este comprobante.")
+            if proposal.status != "COMPLETED":
+                raise HTTPException(422, "La propuesta no tiene una extracción completada.")
         try:
             if accepting:
                 result = await accept_payment(
@@ -1086,6 +1146,7 @@ async def settle_payment_evidence(
                     note=body.note,
                     request_id=rid,
                     calendar_blockers=blockers,
+                    review=proposal,
                 )
                 row, kind, missing, blockers = (
                     result.reservation,

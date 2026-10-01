@@ -18,7 +18,7 @@ from app.calendar.adapter import (
 )
 from app.config.settings import Settings, get_settings
 from app.customer.models import Customer
-from app.payment.models import PaymentEvidence
+from app.payment.models import PaymentEvidence, PaymentEvidenceReview
 from app.plan.models import Plan
 from app.reservation.availability import BookingBlocker, evaluate_booking_availability
 from app.reservation.booking import deposit_amount
@@ -50,7 +50,17 @@ def payment_audit(
     note: str | None,
     request_id: str,
     amount_cop: int | None = None,
+    review: PaymentEvidenceReview | None = None,
 ) -> None:
+    proposal = {} if review is None else {
+        "review_id": str(review.review_id),
+        "suggested_amount_cop": review.suggested_amount_cop,
+        "amount_differs_from_suggestion": amount_cop != review.suggested_amount_cop,
+    }
+    reason = ("aceptado con propuesta de IA" if review else "aceptado manual") \
+        if evidence.review_status == "ACCEPTED" else (note or "Comprobante rechazado por asesor")
+    if note and evidence.review_status == "ACCEPTED":
+        reason = f"{reason}: {note}"[:255]
     session.add(
         AuditEvent(
             actor=actor,
@@ -62,8 +72,9 @@ def payment_audit(
                 "review_status": evidence.review_status,
                 "amount_cop": amount_cop,
                 "note": note,
+                **proposal,
             },
-            reason=note or "Comprobante aceptado por asesor",
+            reason=reason,
             request_id=request_id,
         )
     )
@@ -78,6 +89,7 @@ async def accept_payment(
     note: str | None,
     request_id: str,
     calendar_blockers: list[BookingBlocker],
+    review: PaymentEvidenceReview | None = None,
 ) -> SettlementResult:
     if type(amount_cop) is not int or amount_cop <= 0:
         raise ValueError("El monto debe ser un entero positivo.")
@@ -86,6 +98,8 @@ async def accept_payment(
     # The caller locks evidence too; guard repeated direct service calls.
     if evidence.review_status != "PENDING_REVIEW":
         raise ValueError("El comprobante ya fue revisado.")
+    if review is not None and (review.evidence_id != evidence.id or review.status != "COMPLETED"):
+        raise ValueError("La propuesta no corresponde a este comprobante.")
     reservation = None
     if evidence.reservation_id is not None:
         await lock_booking_changes(session)
@@ -103,7 +117,8 @@ async def accept_payment(
     evidence.reviewed_at = datetime.now(UTC)
     evidence.review_note = note
     payment_audit(
-        session, evidence, actor=actor, note=note, request_id=request_id, amount_cop=amount_cop
+        session, evidence, actor=actor, note=note, request_id=request_id,
+        amount_cop=amount_cop, review=review
     )
     if reservation is None:
         return SettlementResult("NO_RESERVATION", None, blockers=[])
