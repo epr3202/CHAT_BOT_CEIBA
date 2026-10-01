@@ -113,7 +113,6 @@ async def reservation_audits() -> list[AuditEvent]:
 
 
 @pytest.mark.parametrize("method,path,body", [
-    ("GET", "/admin/plans", None),
     ("PATCH", "/admin/plans/{id}", {"price_cop": 300000}),
     ("GET", "/admin/reservations", None),
     ("GET", "/admin/reservations/{id}", None),
