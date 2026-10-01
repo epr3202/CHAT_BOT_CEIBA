@@ -1160,24 +1160,16 @@ async def notify_payment_after_commit(
     kind: str,
     request_id: str,
 ) -> str:
-    # Legacy unlinked evidence keeps its approved human notification. Linked
-    # booking copy will become available with the separately tested B1b-2 flow.
+    from app.reservation.notifications import notify_booking_payment
+
     sm = request.app.state.db_sessionmaker
     async with sm() as session, session.begin():
         evidence = await session.get(PaymentEvidence, evidence_id)
         if evidence.reservation_id is not None:
-            session.add(
-                AuditEvent(
-                    actor="SYSTEM",
-                    action="NOTIFICATION_SKIPPED",
-                    entity="payment_evidence",
-                    old_value=None,
-                    new_value={"evidence_id": evidence_id, "result": kind},
-                    reason="Plantillas de reserva pendientes de publicación B1b-2",
-                    request_id=request_id,
-                )
+            return await notify_booking_payment(
+                session, sm, evidence=evidence, kind=kind,
+                settings=get_settings(), request_id=request_id,
             )
-            return "DEFERRED"
         code = "RESP-PAYMENT-004" if evidence.review_status == "ACCEPTED" else "RESP-PAYMENT-005"
         latest = await session.scalar(
             select(KnowledgeEntry)

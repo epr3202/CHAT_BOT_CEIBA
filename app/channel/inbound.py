@@ -322,7 +322,7 @@ async def classify_message(
     confidence_entity_rescued = False
     if classification is None:
         classification = deterministic_booking_or_catalog_classification(
-            persisted.message_text, persisted.context,
+            persisted.message_text, persisted.context, settings,
         )
         if classification is not None:
             decision_source = "DETERMINISTIC"
@@ -482,6 +482,30 @@ async def route_non_text_in_session(
             )
         )
         return True
+
+    if settings.self_service_booking_enabled and payment_media_fields(message) is not None:
+        from app.ai.schemas import IntentClassification
+        from app.orchestrator.service import OrchestrationInput, create_handoff_and_pause
+        from app.reservation.models import Reservation
+
+        booking = await session.scalar(select(Reservation.reservation_id).where(
+            Reservation.conversation_id == conversation.id,
+            Reservation.status == "PAYMENT_PENDING",
+        ).limit(1))
+        if booking is not None:
+            await create_handoff_and_pause(
+                session, settings, sessionmaker,
+                OrchestrationInput(conversation, customer, message, caption or "", request_id),
+                IntentClassification(
+                    primary_intent="PAYMENT_MESSAGE", sub_intent=None, confidence=0,
+                    requested_action="CREATE_HANDOFF", needs_confirmation=False, needs_human=True,
+                    handoff_reason="PAYMENT_REVIEW", priority="URGENT",
+                    reasoning_code="BOOKING_EVIDENCE",
+                ),
+                reason="PAYMENT_REVIEW", priority="URGENT",
+                response_code_override="RESP-BOOKING-EVIDENCE-001",
+            )
+            return True
 
     if persisted.message_type in media_types and caption:
         return False

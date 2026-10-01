@@ -40,6 +40,7 @@ ALLOWED_TRANSITIONS: dict[ConversationState, frozenset[ConversationState]] = {
             ConversationState.COLLECTING_EVENT_DATA,
             ConversationState.ANSWERING_INFORMATION,
             ConversationState.QUOTE_REQUEST_READY,
+            ConversationState.BOT_ACTIVE,
             ConversationState.WAITING_FOR_APPOINTMENT_DATE,
             ConversationState.WAITING_FOR_HUMAN,
             ConversationState.RESOLVED,

@@ -23,6 +23,7 @@ from app.appointment.service import (
 )
 from app.audit.models import AuditEvent
 from app.calendar.adapter import get_calendar_adapter
+from app.catalog.models import CatalogSend
 from app.catalog.service import (
     CatalogCaptionTooLong,
     CatalogRequestOutcome,
@@ -63,7 +64,9 @@ from app.conversation.entity_validation import (
 from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.fixed_price_booking import (
+    BOOKING_ACTIONS,
     FIXED_PRICE_BOOKING_REASON,
+    SELF_SERVICE_BOOKING_REASON,
     booking_guard_eligible,
     is_fixed_price_booking,
 )
@@ -277,6 +280,15 @@ async def _orchestrate_inbound_message(
 
     if (
         orchestration_input.decision_source == "DETERMINISTIC"
+        and classification.reasoning_code == SELF_SERVICE_BOOKING_REASON
+    ):
+        from app.orchestrator.booking_flow import handle_booking_start
+
+        await handle_booking_start(session, settings, knowledge_sessionmaker, orchestration_input)
+        return
+
+    if (
+        orchestration_input.decision_source == "DETERMINISTIC"
         and classification.reasoning_code == FIXED_PRICE_BOOKING_REASON
     ):
         await handle_fixed_price_booking(
@@ -294,6 +306,12 @@ async def _orchestrate_inbound_message(
         await route_classification(
             session, settings, knowledge_sessionmaker, orchestration_input, classification
         )
+        return
+
+    if conversation.pending_action in BOOKING_ACTIONS:
+        from app.orchestrator.booking_flow import handle_booking_step
+
+        await handle_booking_step(session, settings, knowledge_sessionmaker, orchestration_input)
         return
 
     _, envelope_errors = decode_entities(classification)
@@ -468,22 +486,44 @@ async def booking_event_context(
         event = await session.get(
             Event, event.event_id, with_for_update=True, populate_existing=True,
         )
-    return {"event_id": str(event.event_id), "event_type": event.event_type} if event else None
+    if event is None:
+        return None
+    catalog_sent = await session.scalar(select(CatalogSend.catalog_send_id).join(
+        Outbox, Outbox.id == CatalogSend.outbound_message_id,
+    ).where(CatalogSend.lead_id == event.lead_id, Outbox.status == "SENT").limit(1))
+    return {"event_id": str(event.event_id), "event_type": event.event_type,
+            "catalog_sent": "yes" if catalog_sent is not None else None}
 
 
 def deterministic_booking_or_catalog_classification(
     message_text: str, context: dict[str, Any],
+    settings: Settings | None = None,
 ) -> IntentClassification | None:
     # Precedence: pending_action routes → D1 guard → CATALOG_CAPTURE/type resolution → LLM.
     facts = context.get("booking_event") or {}
+    if context.get("pending_action") in BOOKING_ACTIONS:
+        return IntentClassification(
+            primary_intent="UNKNOWN", sub_intent=None, confidence=0, requested_action=None,
+            needs_confirmation=False, needs_human=False, handoff_reason=None, priority="NORMAL",
+            reasoning_code="BOOKING_STEP",
+        )
+    self_service = settings is not None and settings.self_service_booking_enabled
+    explicit_date = resolve_visit_date_text(
+        message_text, today=current_bogota_datetime().date(), require_absolute_confirmation=True,
+    ) if self_service and facts.get("catalog_sent") == "yes" else None
     if booking_guard_eligible(
         context.get("state"), context.get("pending_action"), context.get("bot_enabled", True),
-    ) and is_fixed_price_booking(message_text, facts.get("event_type")):
+    ) and (is_fixed_price_booking(message_text, facts.get("event_type")) or (
+        self_service and facts.get("event_type") in FIXED_PRICE_EVENT_TYPES
+        and explicit_date is not None and explicit_date.resolved_date is not None
+        and explicit_date.interpretation == "EXACTA"
+    )):
         return IntentClassification(
             primary_intent="HUMAN_REQUEST", sub_intent=None, confidence=0, needs_human=True,
             needs_confirmation=False, priority="NORMAL",
             handoff_reason="RESERVATION_CONFIRMATION", requested_action="CREATE_HANDOFF",
-            reasoning_code=FIXED_PRICE_BOOKING_REASON,
+            reasoning_code=(SELF_SERVICE_BOOKING_REASON if self_service
+                            else FIXED_PRICE_BOOKING_REASON),
         )
     if context.get("pending_action") == CATALOG_CAPTURE_ACTION and (
         resolve_catalog_event_type_label(message_text) is not None
@@ -3710,6 +3750,7 @@ async def create_handoff_and_pause(
 ) -> None:
     conversation = orchestration_input.conversation
     conversation.visit_draft = None
+    conversation.booking_draft = None
     handoff, response_code = await create_handoff(
         session,
         conversation,
@@ -3756,11 +3797,14 @@ async def enqueue_template(
     *,
     notice_case: Handoff | None = None,
     payment_decision: PaymentEvidence | None = None,
+    strict: bool = False,
 ) -> None:
     rendered_code = response_code
     try:
         body = await render_response(knowledge_sessionmaker, response_code, variables)
     except KnowledgeRenderError:
+        if strict:
+            raise
         logger.error("approved_response_render_failed", response_code=response_code)
         body = await render_response(knowledge_sessionmaker, "RESP-AI-ERROR-001", {})
         rendered_code = "RESP-AI-ERROR-001"
@@ -3769,7 +3813,10 @@ async def enqueue_template(
     context = automatic_context(conversation, "TEMPLATE")
     if notice_case is not None and rendered_code in TRANSFER_RESPONSE_CODES:
         context = await handoff_context(session, conversation, notice_case)
-    elif payment_decision is not None and rendered_code in {"RESP-PAYMENT-004", "RESP-PAYMENT-005"}:
+    elif payment_decision is not None and rendered_code in {
+        "RESP-PAYMENT-004", "RESP-PAYMENT-005", "RESP-BOOKING-CONFIRMED-001",
+        "RESP-BOOKING-PARTIAL-001", "RESP-BOOKING-REJECTED-001",
+    }:
         context = payment_review_context(payment_decision)
     session.add(
         Outbox(

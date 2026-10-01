@@ -10,6 +10,10 @@ from app.conversation.catalog_event_type import (
 )
 
 FIXED_PRICE_BOOKING_REASON = "FIXED_PRICE_BOOKING_REQUEST"
+SELF_SERVICE_BOOKING_REASON = "SELF_SERVICE_BOOKING"
+BOOKING_ACTIONS = frozenset({
+    "SELECT_BOOKING_PLAN", "SELECT_BOOKING_DATETIME", "SELECT_BOOKING_TIME", "CONFIRM_BOOKING",
+})
 BOOKING_EXPRESSIONS = frozenset({
     "agendar", "reservar", "separar", "apartar", "programar", "cuadrar", "quiero la fecha",
 })
