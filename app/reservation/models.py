@@ -43,7 +43,9 @@ class Reservation(Base):
         UUID(as_uuid=True), ForeignKey("plan.plan_id"), nullable=False
     )
     plan: Mapped[Plan] = relationship(lazy="raise")
-    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversation.id"), nullable=False)
+    conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("conversation.id"), nullable=True,
+    )
     customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PAYMENT_PENDING")
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
