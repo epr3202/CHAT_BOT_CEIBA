@@ -15,7 +15,8 @@ from app.payment.models import PaymentEvidence
 from app.plan.models import Plan
 from app.reservation.models import Reservation
 from tests.integration.helpers import whatsapp_message_payload
-from tests.visit_booking_guard.helpers import BOGOTA, PHONE, Harness
+from tests.unit.test_ai_client import valid_classification
+from tests.visit_booking_guard.helpers import BOGOTA, PHONE, ROMANTIC_INFO, Harness
 
 START = datetime(2026, 10, 7, 19, tzinfo=BOGOTA)
 TEMPLATES = {
@@ -38,6 +39,34 @@ def code(name: str) -> str:
 
 async def selected_plan(harness: Harness) -> Plan:
     return next(p for p in await harness.rows(Plan) if p.code == "RITUAL_CORAZON")
+
+
+async def send_catalog_information(harness: Harness) -> None:
+    harness.turn += 1
+    harness.codes.clear()
+    harness.ai_result = dict(
+        valid_classification(),
+        primary_intent="GENERAL_INFORMATION",
+        confidence=0.95,
+        requested_action=None,
+        extracted_entities=[
+            {
+                "entity": "event_type",
+                "raw_value": "citas romanticas",
+                "normalized_value": "ROMANTIC_DINNER",
+                "quality_status": "PROVIDED",
+                "confidence": 0.95,
+                "needs_confirmation": False,
+            }
+        ],
+    )
+    payload = json.loads(
+        whatsapp_message_payload(
+            f"g2.189.{harness.turn}", phone=PHONE.lstrip("+"), text=ROMANTIC_INFO
+        )
+    )
+    await process_whatsapp_webhook(payload, harness.db)
+    await harness.assert_completed()
 
 
 async def to_confirmation(harness: Harness) -> None:

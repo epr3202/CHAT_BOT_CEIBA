@@ -23,12 +23,13 @@ from tests.booking_conversation.helpers import (
     draft_of,
     review_fixture,
     selected_plan,
+    send_catalog_information,
     send_evidence,
     to_confirmation,
 )
 from tests.integration.helpers import login_headers
 from tests.test_fix2a_catalog_capture_adversarial import seed_catalog
-from tests.visit_booking_guard.helpers import BOOK_ABSOLUTE, ROMANTIC_INFO, Harness
+from tests.visit_booking_guard.helpers import BOOK_ABSOLUTE, Harness
 
 
 @pytest.mark.parametrize("enabled", [True, False])
@@ -227,6 +228,7 @@ async def test_b_r8_notifications(harness: Harness, api: AsyncClient, result: st
             in (await harness.rows(Handoff))[0].summary
         )
     else:
+        assert harness.codes, "No se encoló la notificación esperada"
         assert harness.codes[-1] == code("CONFIRMED" if result == "RESERVED" else result)
         body = (await harness.bodies())[-1]
         assert "{" not in body
@@ -311,7 +313,7 @@ def test_b_r10_seed_literals_and_lineage() -> None:
 async def test_b_r11_literal_e2e(harness: Harness, api: AsyncClient, tmp_path: Path) -> None:
     await harness.seed()
     await seed_catalog(harness.db, tmp_path, event_type="ROMANTIC_DINNER", send_mode="PROACTIVE")
-    await harness.send(ROMANTIC_INFO, intent="GENERAL_INFORMATION")
+    await send_catalog_information(harness)
     from app.channel.models import Outbox
 
     assert any(row.catalog_asset_id is not None for row in await harness.rows(Outbox))
