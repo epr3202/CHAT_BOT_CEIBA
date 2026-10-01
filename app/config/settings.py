@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     payment_evidence_retention_days: int = Field(
         default=365, alias="PAYMENT_EVIDENCE_RETENTION_DAYS", ge=1
     )
+    payment_review_ai_enabled: bool = Field(default=False, alias="PAYMENT_REVIEW_AI_ENABLED")
+    payment_review_confidence_ok: float = Field(
+        default=0.80, alias="PAYMENT_REVIEW_CONFIDENCE_OK", ge=0, le=1
+    )
+    payment_review_confidence_min: float = Field(
+        default=0.50, alias="PAYMENT_REVIEW_CONFIDENCE_MIN", ge=0, le=1
+    )
+    payment_review_max_attempts: int = Field(
+        default=2, alias="PAYMENT_REVIEW_MAX_ATTEMPTS", ge=1, le=2
+    )
+    openrouter_model_vision: str = Field(
+        default="google/gemini-2.5-flash-lite", alias="OPENROUTER_MODEL_VISION", min_length=1
+    )
     google_calendar_id: str = Field(default="", alias="GOOGLE_CALENDAR_ID")
     google_freebusy_calendar_ids: str = Field(default="", alias="GOOGLE_FREEBUSY_CALENDAR_IDS")
     calendar_adapter: Literal["fake", "google"] = Field(default="fake", alias="CALENDAR_ADAPTER")
@@ -88,6 +101,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_booking_settings(self) -> Settings:
+        if self.payment_review_confidence_min > self.payment_review_confidence_ok:
+            raise ValueError("PAYMENT_REVIEW_CONFIDENCE_MIN must not exceed CONFIDENCE_OK")
         if self.booking_hours_start >= self.booking_hours_end:
             raise ValueError("BOOKING_HOURS_START must precede BOOKING_HOURS_END on the same day")
         if not self.booking_exclusivity_keyword.strip():
