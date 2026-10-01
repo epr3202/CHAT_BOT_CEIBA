@@ -2577,3 +2577,35 @@ Los datos bancarios provienen de settings; nunca se envía una plantilla incompl
 El horario depende de BOOKING_HOURS_START/END (12:00–21:00 Bogotá por defecto);
 queda pendiente definir si 21:00 es fin o última hora de inicio. Se configura por
 entorno, sin cambiar el motor de ventana.
+# B2-3 — Pre-revisión asistida de comprobantes (2026-10-01)
+
+La IA puede extraer y proponer un monto leído del comprobante. Esto no calcula
+precios ni confirma pagos: el backend compara los campos con reglas deterministas
+y el asesor confirma expresamente el monto y la aceptación. BR-AI-005 permanece
+vigente. La pre-revisión nunca cambia la reserva ni envía texto libre al cliente.
+
+El worker solo procesa imágenes descargadas con el flag habilitado. Cada intento
+inserta una fila inmutable en payment_evidence_review y un audit SYSTEM
+PAYMENT_EVIDENCE_PREREVIEWED, sin PII del remitente. COMPLETED no se repite
+automáticamente; FAILED admite como máximo dos intentos. ADMIN puede iniciar un
+nuevo intento. Descargas FAILED_PERMANENT y formatos no imagen quedan SKIPPED.
+
+AMOUNT compara el monto positivo con el anticipo pendiente de la reserva usando
+el porcentaje y redondeo BOOKING existentes; sin reserva es UNKNOWN; abono parcial
+es WARN y no puede producir ACCEPT. CURRENCY acepta COP o dato ausente. ACCOUNT
+compara últimos cuatro dígitos, sin enviar la cuenta configurada al modelo. DATE
+admite desde creación de la solicitud menos dos días hasta hoy en Bogotá más un
+día; fecha anterior genera WARN y futuro mayor a un día FAIL. REFERENCE detecta
+duplicados entre las últimas extracciones completadas de comprobantes aceptados,
+normalizando mayúsculas y separadores. CONFIDENCE usa 0.80/0.50 por defecto.
+
+ACCOUNT FAIL o REFERENCE FAIL propone REJECT. ACCEPT exige todos OK, permitiendo
+UNKNOWN solo en DATE y REFERENCE; los demás casos proponen REVIEW. El asesor
+puede elegir otra decisión o monto; la aceptación registra review_id, monto
+sugerido y si se apartó de la sugerencia. La aceptación sin propuesta se audita
+como manual. La revisión muestra solo iniciales del remitente.
+
+La extracción no detecta falsificaciones, no acredita recepción de fondos y no
+sustituye la verificación bancaria humana. Conciliación bancaria: fase B2-4,
+fuera de esta entrega. Los comprobantes y datos bancarios pueden ser manipulados;
+las instrucciones incrustadas son datos, nunca instrucciones del sistema.

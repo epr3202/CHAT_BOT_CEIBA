@@ -1912,6 +1912,29 @@ general de reservas en `data-matrix.md` §19 y los flujos generales de cancelaci
 para eventos grandes, pendiente de implementación. No forman parte del CHECK ni
 del servicio de B1a; la administración B1a cancela directamente según D2.
 
+## 27.1.1 B2-3 — propuestas de lectura de comprobantes
+
+La pre-revisión no añade estados a la conversación ni transiciones de reserva.
+La reserva permanece PAYMENT_REVIEW y el comprobante PENDING_REVIEW hasta el
+clic humano en aceptar o rechazar. COMPLETED, FAILED y SKIPPED son estados del
+intento de extracción, no estados de conversación ni confirmaciones de pago.
+ACCEPT, REVIEW y REJECT son sugerencias privadas para el asesor.
+
+PAYMENT_REVIEW_AI_ENABLED=false conserva el flujo manual. El worker procesa
+imágenes DOWNLOADED con máximo dos intentos automáticos; un COMPLETED se
+deduplica por evidence_id bajo bloqueo de fila. Reintentar por ADMIN inserta un
+nuevo intento sin editar el anterior. Descarga FAILED_PERMANENT o PDF → SKIPPED.
+
+Listado y detalle de comprobantes y detalle de reserva muestran la última
+pre-revisión, con iniciales del remitente, campos, checks y monto sugerido.
+«Aceptar propuesta» carga el monto y vincula review_id; «Aceptar» exige una
+acción humana adicional y ejecuta las reglas B2-1 existentes. La aceptación
+audita «aceptado con propuesta de IA» o «aceptado manual»; una diferencia de monto
+queda registrada. REJECT prellena la nota de cuenta o referencia sin rechazar
+automáticamente. No hay mensajes nuevos ni texto libre al cliente. El bot sigue
+pausado durante el handoff. La lectura no detecta falsificaciones; B2-4 abordará
+conciliación bancaria.
+
 ## 27.2 Diseño general para eventos grandes — pendiente de implementación
 
 ### Estados

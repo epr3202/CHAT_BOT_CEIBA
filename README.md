@@ -422,3 +422,67 @@ reservas manuales sin conversación: vincularlas antes, sin eliminar pagos ni au
 Pendiente de Leandro: aprobación de las propuestas, valores bancarios y si 21:00
 es fin del servicio o última hora de inicio. BOOKING_HOURS_END configura el fin
 de ventana; el motor existente comprueba la duración completa.
+
+B2-3 (0033) añade pre-revisión asistida de imágenes de comprobantes. Está apagada
+por defecto: `PAYMENT_REVIEW_AI_ENABLED=false`. Al activarla, el worker lee imágenes
+JPEG, PNG y WebP descargadas y registra propuestas inmutables; PDFs y descargas
+fallidas permanentes requieren revisión manual (`SKIPPED`). Una propuesta nunca
+acepta un pago, modifica una reserva ni genera mensajes al cliente. El asesor
+verifica el archivo y confirma con el formulario existente. «Aceptar propuesta»
+prellena el monto; el clic posterior en «Aceptar» envía el `review_id` auditado.
+ADMIN puede reintentar con `POST /admin/payment-evidence/{id}/prereview`.
+
+| Variable | Default | Uso |
+| --- | --- | --- |
+| `PAYMENT_REVIEW_AI_ENABLED` | `false` | Habilita worker y reintento ADMIN |
+| `OPENROUTER_MODEL_VISION` | `google/gemini-2.5-flash-lite` | Modelo con entrada de imágenes |
+| `PAYMENT_REVIEW_CONFIDENCE_OK` | `0.80` | Confianza alta |
+| `PAYMENT_REVIEW_CONFIDENCE_MIN` | `0.50` | Confianza media |
+| `PAYMENT_REVIEW_MAX_ATTEMPTS` | `2` | Intentos automáticos por comprobante; máximo 2 |
+
+Se usa `OPENROUTER_TIMEOUT_SECONDS`; cada intento hace una llamada y un parseo
+estricto, sin reintentos internos. Cada reintento humano agrega otra fila.
+El modelo default acepta imágenes según [OpenRouter](https://openrouter.ai/google/gemini-2.5-flash-lite/)
+y [Google](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite).
+La imagen viaja como `image_url` con data URL base64. No se envían el monto
+esperado ni los datos de la cuenta configurada.
+
+Privacidad: las imágenes se envían a OpenRouter y al proveedor que atienda el
+modelo. Revisar sus condiciones de retención antes de habilitar la función.
+No se registran imágenes, base64, respuestas crudas ni nombres del remitente en
+logs o `ai_execution`; los campos extraídos se guardan en la revisión privada.
+La API muestra solo iniciales del remitente; el audit contiene códigos de checks,
+propuesta e identificadores, sin PII del remitente. Esto no detecta falsificaciones.
+La conciliación bancaria pertenece a B2-4.
+
+Evaluación local: crear fuera del repositorio, o en `receipt-eval-data/` (ignorada),
+un set de 30–50 comprobantes reales anonimizados y un `labels.jsonl`. Incluir Nequi,
+Bancolombia, Daviplata y PSE, imágenes nítidas y borrosas, recortes y texto adicional.
+Anonimizar nombres, teléfonos, identificaciones, cuentas completas y referencias
+sin eliminar los últimos cuatro dígitos necesarios para las etiquetas; revisar
+visualmente cada archivo y etiquetar antes de consultar el modelo.
+Ejemplo de línea (todos los datos son sintéticos):
+
+```json
+{"evidence":"nequi-01.png","amount_cop":125000,"transaction_date":"2026-10-01","reference":"TX-123","destination_account_last4":"1234","bank":"Nequi"}
+```
+
+Ejecutar `.venv/bin/python -m scripts.eval_receipts /ruta/local/set --now 2026-10-01T15:00:00Z`.
+Para una matriz útil de sugerencias, añadir `--reservation-json /ruta/reserva.json`
+con `price_cop`, `amount_paid_cop`, `created_at` ISO con zona; opcionalmente
+`--previous-references /ruta/referencias.json` (array de referencias ya aceptadas).
+Las filas de la matriz provienen de aplicar las reglas a las etiquetas y las
+columnas de aplicarlas a la extracción; no son una medición de autenticidad.
+Sin reserva, AMOUNT es UNKNOWN y no habrá ACCEPT. Los errores se cuentan como
+FAILED y como fallos de exactitud en los campos etiquetados. El reporte contiene
+exactitud por campo y matriz, sin imágenes ni extracciones individuales.
+
+CI renderiza ocho imágenes sintéticas con Pillow y mockea OpenRouter con respx.
+Esto prueba payload, parser, verificaciones y aislamiento, incluida una imagen
+con instrucciones maliciosas; no demuestra precisión real ni resistencia del
+modelo a inyección. La precisión real se mide con el set local anterior.
+
+Verificación: `pytest tests/payment_prereview -q`,
+`npm --prefix tests/frontend test -- test_d_payment_prereview.spec.mjs` y
+`make migrate-cycle`. El downgrade 0033 elimina la tabla de propuestas y su
+telemetría RECEIPT_EXTRACTION; conserva pagos, reservas y audits append-only.
