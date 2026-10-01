@@ -284,6 +284,7 @@ async function reviewPaymentEvidence(evidenceId, decision, note, amount, button,
   if (state.agent?.role !== "ADMIN") return;
   const body = evidenceReviewBody(decision, note, amount, "paymentEvidenceFeedback");
   if (!body) return;
+  if (decision === "accept" && card.dataset.reviewId) body.review_id = card.dataset.reviewId;
   await managementAction(button, card, decision === "accept" ? "Aceptando…" : "Rechazando…", "paymentEvidenceFeedback",
     async current => {
       const result = await managementRequest(`/api/admin/payment-evidence/${evidenceId}/${decision}`, {
@@ -1633,6 +1634,7 @@ function createEvidenceCard(evidence, feedbackId, review) {
   date.textContent = formatDate(evidence.created_at);
   details.append(title, status, amount, date);
   card.append(details);
+  if (evidence.review) card.append(createPrereviewBlock(evidence.review));
   const actions = document.createElement("div");
   actions.className = "actions";
   if (evidence.download_status === "DOWNLOADED") {
@@ -1651,6 +1653,24 @@ function createEvidenceCard(evidence, feedbackId, review) {
     note.placeholder = "Opcional al aceptar; obligatoria al rechazar";
     noteLabel.append(note);
     card.append(amountLabel, noteLabel);
+    if (evidence.review?.status === "COMPLETED") {
+      if (evidence.review.suggestion === "REJECT") {
+        const failed = evidence.review.checks?.find(check =>
+          ["ACCOUNT", "REFERENCE"].includes(check.code) && check.result === "FAIL");
+        note.value = failed?.code === "ACCOUNT" ? "Cuenta destino no coincide" : "Referencia ya usada";
+      } else if (Number.isInteger(evidence.review.suggested_amount_cop) && evidence.review.suggested_amount_cop > 0) {
+        actions.append(actionButton("Aceptar propuesta", () => {
+          input.value = evidence.review.suggested_amount_cop;
+          card.dataset.reviewId = evidence.review.review_id;
+          input.focus();
+          managementFeedback(feedbackId, "Monto propuesto cargado. Verifica el comprobante y pulsa Aceptar para confirmar.");
+        }));
+      }
+    }
+    if (evidence.download_status === "DOWNLOADED") {
+      actions.append(actionButton(evidence.review ? "Reintentar pre-revisión" : "Solicitar pre-revisión",
+        event => retryEvidencePrereview(evidence, event.currentTarget, card, feedbackId)));
+    }
     actions.append(
       actionButton("Aceptar", event => review("accept", note.value, input.value, event.currentTarget, card), "primary"),
       actionButton("Rechazar", event => review("reject", note.value, input.value, event.currentTarget, card), "danger"),
@@ -1658,6 +1678,64 @@ function createEvidenceCard(evidence, feedbackId, review) {
   }
   card.append(actions);
   return card;
+}
+
+function createPrereviewBlock(review) {
+  const block = document.createElement("section");
+  block.className = "receiptPrereview";
+  const heading = document.createElement("strong");
+  heading.textContent = "Pre-revisión";
+  block.append(heading);
+  const message = document.createElement("p");
+  if (review.status !== "COMPLETED") {
+    message.textContent = review.status === "FAILED"
+      ? "No se pudo leer el comprobante. Puedes reintentar o revisarlo manualmente."
+      : "Este comprobante requiere revisión manual.";
+    block.append(message);
+    return block;
+  }
+  message.textContent = ({ ACCEPT: "Sugerencia: aceptar", REVIEW: "Sugerencia: revisar", REJECT: "Sugerencia: rechazar" })[review.suggestion]
+    || "Sugerencia: revisar";
+  block.append(message);
+  const names = { amount_cop: "Monto", currency: "Moneda", transaction_date: "Fecha de transacción",
+    transaction_time: "Hora", reference: "Referencia", bank: "Banco", destination_account_last4: "Cuenta destino (últimos 4)",
+    sender_name: "Iniciales del remitente", confidence: "Confianza de lectura", notes: "Observaciones" };
+  const fields = document.createElement("dl");
+  for (const [key, name] of Object.entries(names)) {
+    const term = document.createElement("dt"); term.textContent = name;
+    const value = document.createElement("dd");
+    const raw = review.extracted?.[key];
+    value.textContent = raw == null ? "No leído" : key === "amount_cop" ? formatCOP(raw)
+      : key === "confidence" ? `${Math.round(raw * 100)} %` : String(raw);
+    fields.append(term, value);
+  }
+  block.append(fields);
+  const checks = document.createElement("ul");
+  const codes = { AMOUNT: "Monto", CURRENCY: "Moneda", ACCOUNT: "Cuenta destino", DATE: "Fecha", REFERENCE: "Referencia", CONFIDENCE: "Confianza" };
+  const results = { OK: "✓ Correcto", WARN: "⚠ Atención", FAIL: "✕ No coincide", UNKNOWN: "? Sin datos" };
+  for (const check of review.checks || []) {
+    const item = document.createElement("li");
+    item.textContent = `${codes[check.code] || "Verificación"}: ${results[check.result] || "Sin datos"}. ${check.detail || ""}`;
+    checks.append(item);
+  }
+  const notice = document.createElement("p");
+  notice.textContent = "La lectura no detecta falsificaciones. La confirmación del pago requiere revisión humana.";
+  block.append(checks, notice);
+  return block;
+}
+
+async function retryEvidencePrereview(evidence, button, card, feedbackId) {
+  const reservationId = feedbackId === "reservationDetailFeedback" ? state.reservationDetail?.reservation_id : null;
+  const request = state.reservationDetailRequest;
+  await managementAction(button, card, "Leyendo comprobante…", feedbackId, async current => {
+    const result = await managementRequest(`/api/admin/payment-evidence/${evidence.id}/prereview`, { method: "POST" });
+    if (!current() || reservationId && request !== state.reservationDetailRequest) return;
+    if (reservationId) await openReservationDetail(reservationId);
+    else await loadPaymentEvidence();
+    if (!current()) return;
+    managementFeedback(feedbackId, result.review?.status === "COMPLETED" ? "Pre-revisión completada."
+      : "No se pudo leer el comprobante. Revisa el archivo manualmente.", result.review?.status === "FAILED");
+  }, "No se pudo completar la pre-revisión");
 }
 
 function evidenceReviewBody(decision, note, amount, feedbackId) {
@@ -1690,6 +1768,7 @@ async function settleReservationEvidence(id, evidenceId, decision, note, amount,
   if (state.agent?.role !== "ADMIN") return;
   const body = evidenceReviewBody(decision, note, amount, "reservationDetailFeedback");
   if (!body) return;
+  if (decision === "accept" && card.dataset.reviewId) body.review_id = card.dataset.reviewId;
   const request = state.reservationDetailRequest;
   await managementAction(button, card, decision === "accept" ? "Aceptando…" : "Rechazando…", "reservationDetailFeedback",
     async current => {

@@ -968,3 +968,7 @@ code {
     justify-content: flex-start;
   }
 }
+.receiptPrereview { padding: 1rem; border: 1px solid var(--line, #ddd); border-radius: 8px; }
+.receiptPrereview dl { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem 1rem; }
+.receiptPrereview dd { margin: 0; overflow-wrap: anywhere; }
+.receiptPrereview ul { padding-left: 1.25rem; }
