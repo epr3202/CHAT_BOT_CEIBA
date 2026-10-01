@@ -99,6 +99,7 @@ async def accept_payment(
         if reservation is None or reservation.status != "PAYMENT_REVIEW":
             raise ValueError("La reserva no está pendiente de revisión de pago.")
     evidence.review_status = "ACCEPTED"
+    evidence.amount_cop = amount_cop
     evidence.reviewed_at = datetime.now(UTC)
     evidence.review_note = note
     payment_audit(

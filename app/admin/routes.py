@@ -227,6 +227,7 @@ class ReservationPayload(BaseModel):
     customer_id: int
     plan_name: str | None = None
     customer_name: str | None = None
+    customer_phone: str | None = None
     status: ReservationStatus
     starts_at: datetime
     ends_at: datetime
@@ -409,6 +410,8 @@ class PaymentEvidencePayload(BaseModel):
     download_status: str
     review_status: str
     size_bytes: int | None
+    reservation_id: UUID | None
+    amount_cop: int | None
     created_at: datetime
 
 
@@ -495,7 +498,7 @@ async def list_reservations(
     if from_at is not None and to_at is not None and from_at > to_at:
         raise HTTPException(status_code=422, detail="Desde no puede ser posterior a Hasta.")
     query = (
-        select(Reservation, Plan.name, Customer.full_name)
+        select(Reservation, Plan.name, Customer.full_name, Customer.phone_number)
         .join(Plan, Plan.plan_id == Reservation.plan_id)
         .join(Customer, Customer.id == Reservation.customer_id)
         .order_by(Reservation.starts_at, Reservation.reservation_id)
@@ -510,8 +513,13 @@ async def list_reservations(
     return [
         ReservationPayload.model_validate(reservation).model_copy(update={
             "plan_name": plan_name, "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "deposit_amount_cop": deposit_amount(reservation.price_cop),
+            "missing_cop": max(
+                0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop,
+            ),
         })
-        for reservation, plan_name, customer_name in rows
+        for reservation, plan_name, customer_name, customer_phone in rows
     ]
 
 
@@ -521,13 +529,15 @@ async def reservation_payload(
 ) -> ReservationPayload:
     await session.refresh(reservation)
     plan_name = await session.scalar(select(Plan.name).where(Plan.plan_id == reservation.plan_id))
-    customer_name = await session.scalar(
-        select(Customer.full_name).where(Customer.id == reservation.customer_id)
-    )
+    customer = (await session.execute(
+        select(Customer.full_name, Customer.phone_number)
+        .where(Customer.id == reservation.customer_id)
+    )).one()
     return ReservationPayload.model_validate(reservation).model_copy(
         update={
             "plan_name": plan_name,
-            "customer_name": customer_name,
+            "customer_name": customer.full_name,
+            "customer_phone": customer.phone_number,
             "deposit_amount_cop": deposit_amount(reservation.price_cop),
             "missing_cop": max(
                 0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop
@@ -603,23 +613,14 @@ async def get_reservation(
             .order_by(PaymentEvidence.created_at, PaymentEvidence.id)
         )
     )
-    ledger = list(
-        await session.scalars(
-            select(AuditEvent).where(
-                AuditEvent.action == "PAYMENT_EVIDENCE_ACCEPTED",
-            )
-        )
-    )
-    amounts = {
-        entry.new_value["evidence_id"]: entry.new_value.get("amount_cop") for entry in ledger
-    }
     return payload.model_copy(
         update={
             "evidences": [
                 {
                     "id": e.id,
                     "status": e.review_status,
-                    "amount_cop": amounts.get(e.id),
+                    "amount_cop": e.amount_cop,
+                    "download_status": e.download_status,
                     "created_at": e.created_at,
                 }
                 for e in evidences
@@ -948,6 +949,8 @@ async def list_payment_evidence(
             download_status=evidence.download_status,
             review_status=evidence.review_status,
             size_bytes=evidence.size_bytes,
+            reservation_id=evidence.reservation_id,
+            amount_cop=evidence.amount_cop,
             created_at=evidence.created_at,
         )
         for evidence, customer in rows.all()
@@ -1114,6 +1117,7 @@ async def settle_payment_evidence(
         await session.flush()
         payload = dict(
             id=evidence.id,
+            amount_cop=evidence.amount_cop,
             review_status=evidence.review_status,
             reviewed_by_agent_id=agent_id,
             reviewed_at=evidence.reviewed_at,

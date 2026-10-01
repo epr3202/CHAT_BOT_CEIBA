@@ -80,6 +80,7 @@ class PaymentEvidence(Base):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    amount_cop: Mapped[int | None] = mapped_column(Integer, nullable=True)
     lead_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("lead.lead_id"), nullable=True, index=True
     )
