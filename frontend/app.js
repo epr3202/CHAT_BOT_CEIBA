@@ -47,6 +47,7 @@ const state = {
   unassignedCatalogs: [],
   catalogEditor: null,
   paymentEvidence: [],
+  paymentEvidenceRequest: 0,
   agents: [],
   plans: [],
   planWrites: new Set(),
@@ -222,116 +223,80 @@ async function requestJson(path, options = {}) {
 async function loadPaymentEvidence() {
   const container = $("#paymentEvidenceList");
   if (state.agent?.role !== "ADMIN") {
-    setEmpty(container, "Inicia sesion como administrador para revisar comprobantes.");
+    setEmpty(container, "Inicia sesión como administrador para revisar comprobantes.");
     return;
   }
-  setEmpty(container, "Cargando comprobantes...");
+  const request = ++state.paymentEvidenceRequest;
+  const token = state.sessionToken;
+  const refresh = $("#refreshPaymentEvidence");
+  refresh.disabled = true;
+  refresh.textContent = "Cargando…";
+  setEmpty(container, "Cargando comprobantes…");
   try {
-    state.paymentEvidence = await requestJson("/api/admin/payment-evidence", {
-      headers: sessionHeaders(),
-    });
+    const evidences = await managementRequest("/api/admin/payment-evidence");
+    if (request !== state.paymentEvidenceRequest || token !== state.sessionToken) return;
+    state.paymentEvidence = evidences;
     renderPaymentEvidence();
   } catch (error) {
-    setEmpty(container, `No se pudieron cargar los comprobantes: ${error.message}`);
+    if (request === state.paymentEvidenceRequest && token === state.sessionToken) {
+      managementFeedback("paymentEvidenceFeedback", `No se pudieron cargar los comprobantes: ${error.message}`, true);
+      setEmpty(container, "No se pudo cargar la lista. Usa Actualizar para reintentar.");
+    }
+  } finally {
+    if (request === state.paymentEvidenceRequest) {
+      refresh.disabled = false;
+      refresh.textContent = "Actualizar";
+    }
   }
+}
+
+function reservationLink(id) {
+  return actionButton("Ver reserva", async () => {
+    if (state.agent?.role !== "ADMIN") return;
+    selectView("reservations");
+    await openReservationDetail(id);
+  });
 }
 
 function renderPaymentEvidence() {
   const container = $("#paymentEvidenceList");
   container.replaceChildren();
   if (!state.paymentEvidence.length) {
-    setEmpty(container, "No hay comprobantes pendientes de revision.");
+    setEmpty(container, "No hay comprobantes pendientes de revisión.");
     return;
   }
   for (const evidence of state.paymentEvidence) {
-    const card = document.createElement("article");
-    card.className = "paymentEvidenceCard";
-    const details = document.createElement("div");
-    details.className = "paymentEvidenceDetails";
+    const card = createEvidenceCard(evidence, "paymentEvidenceFeedback",
+      (decision, note, amount, button, scope) => reviewPaymentEvidence(evidence.id, decision, note, amount, button, scope));
     const title = document.createElement("strong");
-    title.textContent = evidence.customer_name || evidence.customer_phone;
+    title.textContent = evidence.customer_name || evidence.customer_phone || "Sin nombre";
     const meta = document.createElement("span");
-    meta.textContent = `Evidencia #${evidence.id} · Conversación ${evidence.conversation_id} · ${evidence.mime_type}`;
-    const downloadStatus = document.createElement("span");
-    downloadStatus.className = "pill neutral";
-    downloadStatus.replaceChildren(label("downloadStatus", evidence.download_status));
-    const reviewStatus = document.createElement("span");
-    reviewStatus.className = "pill neutral";
-    reviewStatus.replaceChildren(label("reviewStatus", evidence.review_status));
-    const created = document.createElement("span");
-    created.textContent = formatDate(evidence.created_at);
-    details.append(title, meta, reviewStatus, downloadStatus, created);
-
-    const note = document.createElement("textarea");
-    note.rows = 2;
-    note.maxLength = 255;
-    note.placeholder = "Nota de revision para auditoria";
-    const amountLabel = document.createElement("label");
-    amountLabel.textContent = "Monto verificado (COP)";
-    const amount = document.createElement("input");
-    amount.type = "number";
-    amount.min = "1";
-    amount.max = "2147483647";
-    amount.step = "1";
-    amount.inputMode = "numeric";
-    amountLabel.append(amount);
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    if (evidence.download_status === "DOWNLOADED") {
-      actions.append(actionButton("Descargar", () => downloadPaymentEvidence(evidence.id)));
-    }
-    actions.append(
-      actionButton("Aceptar", () => reviewPaymentEvidence(evidence.id, "accept", note.value, amount.value), "primary"),
-      actionButton("Rechazar", () => reviewPaymentEvidence(evidence.id, "reject", note.value), "danger"),
-    );
-    card.append(details, amountLabel, note, actions);
+    meta.textContent = evidence.mime_type || "";
+    const status = document.createElement("span");
+    status.append(label("downloadStatus", evidence.download_status));
+    $(".paymentEvidenceDetails", card).prepend(title, meta, status);
+    if (evidence.reservation_id) $(".actions", card).append(reservationLink(evidence.reservation_id));
     container.append(card);
   }
 }
 
-async function downloadPaymentEvidence(evidenceId) {
-  try {
-    const response = await fetch(`/api/admin/payment-evidence/${evidenceId}/download`, {
-      headers: sessionHeaders(),
-    });
-    if (!response.ok) throw new Error((await response.text()) || `Error de solicitud (${response.status})`);
-    const blobUrl = URL.createObjectURL(await response.blob());
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = `comprobante-${evidenceId}`;
-    link.click();
-    URL.revokeObjectURL(blobUrl);
-  } catch (error) {
-    logEvent(`No se pudo descargar el comprobante: ${error.message}`);
-  }
-}
-
-async function reviewPaymentEvidence(evidenceId, decision, note, amount) {
-  if (decision === "reject" && !note.trim()) {
-    logEvent("Escribe una nota antes de revisar el comprobante.");
-    return;
-  }
-  const body = {};
-  if (note.trim()) body.note = note.trim();
-  if (decision === "accept") {
-    const verifiedAmount = Number(amount);
-    if (!Number.isInteger(verifiedAmount) || verifiedAmount <= 0 || verifiedAmount > 2147483647) {
-      logEvent("Escribe un monto verificado en pesos, mayor que cero y sin decimales.");
-      return;
-    }
-    body.amount_cop = verifiedAmount;
-  }
-  try {
-    const result = await requestJson(`/api/admin/payment-evidence/${evidenceId}/${decision}`, {
-      method: "POST",
-      headers: sessionHeaders(),
-      body: JSON.stringify(body),
-    });
-    logEvent(`Evidencia #${evidenceId} revisada: `, label("notification", result.customer_notification), ".");
-    await loadPaymentEvidence();
-  } catch (error) {
-    logEvent(`No se pudo revisar el comprobante: ${error.message}`);
-  }
+async function reviewPaymentEvidence(evidenceId, decision, note, amount, button, card) {
+  if (state.agent?.role !== "ADMIN") return;
+  const body = evidenceReviewBody(decision, note, amount, "paymentEvidenceFeedback");
+  if (!body) return;
+  await managementAction(button, card, decision === "accept" ? "Aceptando…" : "Rechazando…", "paymentEvidenceFeedback",
+    async current => {
+      const result = await managementRequest(`/api/admin/payment-evidence/${evidenceId}/${decision}`, {
+        method: "POST", body: JSON.stringify(body),
+      });
+      if (!current()) return;
+      await loadPaymentEvidence();
+      if (!current()) return;
+      managementFeedback("paymentEvidenceFeedback", settlementMessage(result));
+      const actions = $("#paymentEvidenceResultActions");
+      actions.replaceChildren();
+      if (result.reservation?.reservation_id) actions.append(reservationLink(result.reservation.reservation_id));
+    }, "No se pudo revisar el comprobante");
 }
 
 async function loadCatalogCategories() {
@@ -688,6 +653,7 @@ function clearSession() {
   sessionStorage.removeItem(sessionTokenStorageKey);
   state.adminCases = [];
   state.paymentEvidence = [];
+  state.paymentEvidenceRequest += 1;
   state.catalogCategories = [];
   state.unassignedCatalogs = [];
   state.catalogEditor = null;
@@ -703,13 +669,14 @@ function clearSession() {
   $("#reservationRows").replaceChildren();
   $("#reservationDetails").replaceChildren();
   $("#reservationEvidences").replaceChildren();
+  $("#paymentEvidenceResultActions").replaceChildren();
   $("#reservationScheduleForm").reset();
   $("#reservationDetail").hidden = true;
   $("#reservationCancelForm").reset();
   $("#manualReservationForm").reset();
   $("#manualReservationPlan").replaceChildren();
   $("#refreshPlans").disabled = false;
-  for (const id of ["plansFeedback", "reservationsFeedback", "reservationDetailFeedback", "manualReservationFeedback"]) {
+  for (const id of ["plansFeedback", "reservationsFeedback", "reservationDetailFeedback", "manualReservationFeedback", "paymentEvidenceFeedback"]) {
     managementFeedback(id, "");
   }
   $("#agentRows").replaceChildren();
