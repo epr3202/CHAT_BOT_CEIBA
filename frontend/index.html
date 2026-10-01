@@ -43,6 +43,9 @@
         <button class="navItem" data-view="reservations" data-admin-only="true" title="Reservas" hidden>
           <span class="icon" aria-hidden="true">▦</span><span>Reservas</span>
         </button>
+        <button class="navItem" data-view="manualReservations" data-agent-only="true" title="Crear reserva" hidden>
+          <span class="icon" aria-hidden="true">+</span><span>Crear reserva</span>
+        </button>
         <button class="navItem" data-view="tools" data-admin-only="true" title="Herramientas" hidden>
           <span class="icon">⚙</span><span>Herramientas</span>
         </button>
@@ -280,6 +283,23 @@
       </section>
 
       <section class="view" id="reservations" hidden>
+        <section class="panel" id="manualReservationPanel">
+          <div class="panelHeader"><h2>Crear reserva manual</h2><button id="reloadManualPlans" type="button">Actualizar planes</button></div>
+          <p>La disponibilidad es orientativa. La fecha se asegura cuando un administrador valida el anticipo.</p>
+          <p id="manualReservationFeedback" role="status" aria-live="polite" hidden></p>
+          <form id="manualReservationForm" class="managementForm bookingForm">
+            <label>Teléfono<input id="manualReservationPhone" type="tel" required pattern="\+?[1-9][0-9]{7,14}" placeholder="+573001112233" /></label>
+            <label>Nombre<input id="manualReservationName" maxlength="128" autocomplete="name" /></label>
+            <div><label for="manualReservationPlan">Plan</label><select id="manualReservationPlan" required><option value="">Selecciona un plan</option></select></div>
+            <label>Fecha<input id="manualReservationDate" type="date" required /></label>
+            <label>Hora<input id="manualReservationTime" type="time" required step="60" /></label>
+            <p>Fecha y hora de Bogotá.</p>
+            <div class="actions">
+              <button id="verifyManualReservation" type="button">Verificar disponibilidad</button>
+              <button id="createManualReservation" class="primary" type="submit">Crear</button>
+            </div>
+          </form>
+        </section>
         <section class="panel">
           <div class="panelHeader">
             <h2>Reservas</h2>
@@ -314,6 +334,8 @@
           </form>
         </section>
       </section>
+
+      <section class="view" id="manualReservations" hidden></section>
 
       <section class="view" id="handoffs">
         <section class="panel">

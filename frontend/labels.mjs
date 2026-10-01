@@ -33,6 +33,22 @@ export const labels = {
     RESERVED: "Reservada", EXPIRED: "Vencida", CANCELLED: "Cancelada",
   },
   paymentKind: { DEPOSIT: "Abono", FULL: "Pago total" },
+  calendarStatus: { NONE: "Sin sincronizar", CONFIRMED: "Sincronizado" },
+  bookingBlocker: {
+    CALENDAR_EXCLUSIVE: "Evento exclusivo en calendario",
+    RESERVED_EXCLUSIVE: "Reserva exclusiva confirmada", RESERVED_CONFLICT: "Reserva confirmada",
+  },
+  settlementResult: {
+    RESERVED: "Reserva confirmada", PARTIAL: "Abono registrado",
+    CONFLICT: "Franja ya reservada; reprograma o cancela",
+    REJECTED: "Comprobante rechazado", NO_RESERVATION: "Comprobante aceptado",
+  },
+  bookingWindow: {
+    TIMEZONE_REQUIRED: "La fecha debe incluir zona horaria.", INVALID_RANGE: "La hora final debe ser posterior al inicio.",
+    CROSSES_MIDNIGHT: "La experiencia debe terminar el mismo día.",
+    OUTSIDE_HOURS: "La experiencia está fuera del horario permitido.",
+    MIN_LEAD_DAYS: "La fecha no cumple la anticipación mínima.",
+  },
   downloadStatus: {
     PENDING: "Pendiente", DOWNLOADED: "Descargado", FAILED_RETRYABLE: "Fallo temporal",
     FAILED_PERMANENT: "Fallo permanente",
@@ -73,7 +89,7 @@ export const labels = {
     BUTTON: "Botón", REACTION: "Reacción", UNKNOWN: "Tipo desconocido", UNSUPPORTED: "Tipo no soportado",
   },
   channel: { WHATSAPP: "WhatsApp" },
-  notification: { ENQUEUED: "mensaje al cliente encolado", DEFERRED: "notificación al cliente diferida" },
+  notification: { ENQUEUED: "mensaje al cliente encolado", DEFERRED: "notificación al cliente diferida", SKIPPED: "notificación al cliente omitida" },
 };
 
 for (const dictionary of Object.values(labels)) Object.freeze(dictionary);
@@ -99,6 +115,58 @@ export function formatDate(value) {
   return date.toLocaleString("es-CO", {
     dateStyle: "short", timeStyle: "short", timeZone: "America/Bogota",
   });
+}
+
+export function formatCOP(value) {
+  return Number.isSafeInteger(value) && value >= 0
+    ? `$${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(value)}` : "Sin monto";
+}
+
+// Interpret form inputs in the business timezone, independently of the browser timezone.
+export function bogotaDateTimeToISO(date, time) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+    throw new Error("Selecciona una fecha y hora válidas.");
+  }
+  const wall = new Date(`${date}T${time}:00.000Z`);
+  if (!Number.isFinite(wall.getTime()) || wall.toISOString().slice(0, 16) !== `${date}T${time}`) {
+    throw new Error("Selecciona una fecha y hora válidas.");
+  }
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(wall).map(p => [p.type, p.value]));
+  const represented = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+    Number(parts.hour), Number(parts.minute), Number(parts.second));
+  return new Date(wall.getTime() - (represented - wall.getTime())).toISOString();
+}
+
+export function bookingBlockersText(blockers = []) {
+  return blockers.map(blocker => {
+    const kind = labels.bookingBlocker[blocker.kind] || "Bloqueo de agenda";
+    const reference = blocker.ref ? ` (referencia ${blocker.ref})` : "";
+    const interval = blocker.starts_at ? ` · ${formatDate(blocker.starts_at)}${blocker.ends_at ? ` – ${formatDate(blocker.ends_at)}` : ""}` : "";
+    return `Franja ocupada: ${kind}${reference}${interval}`;
+  }).join("\n");
+}
+
+export function backendErrorText(detail) {
+  if (Array.isArray(detail)) return detail.map(item => {
+    if (typeof item?.msg === "string") {
+      // FastAPI validation messages may be English; retain Spanish backend messages.
+      if (item.msg.startsWith("Value error, ")) return item.msg.slice("Value error, ".length);
+      return /^(Input |Field required|String should |Extra inputs )/.test(item.msg)
+        ? "Revisa los datos del formulario." : item.msg;
+    }
+    return backendErrorText(item);
+  }).join("; ");
+  if (detail && typeof detail === "object") {
+    const message = typeof detail.message === "string" ? detail.message : "";
+    const blockers = Array.isArray(detail.blockers) ? bookingBlockersText(detail.blockers) : "";
+    const reason = labels.bookingWindow[detail.window?.reason || detail.reason] || "";
+    return [message, reason, blockers].filter(Boolean).join("\n") || "No se pudo completar la solicitud.";
+  }
+  return typeof detail === "string" && detail ? detail : "No se pudo completar la solicitud.";
 }
 
 // Translate only the structured fields/prefixes produced by app/handoff/service.py

@@ -1,4 +1,7 @@
-import { labels, label, formatDate, summaryContent } from "./labels.mjs";
+import {
+  labels, label, formatDate, summaryContent, formatCOP, bogotaDateTimeToISO,
+  bookingBlockersText, backendErrorText,
+} from "./labels.mjs";
 
 const sessionTokenStorageKey = "ceiba.sessionToken";
 const legacyAdminTokenStorageKey = "ceiba.adminToken";
@@ -51,6 +54,7 @@ const state = {
   reservationDetail: null,
   reservationListRequest: 0,
   reservationDetailRequest: 0,
+  manualPlansRequest: 0,
   resetPreview: null,
   resetBusy: false,
   visibleConversationIds: new Set(),
@@ -149,8 +153,13 @@ function renderAuthState() {
   $$(".navItem").forEach((button) => {
     button.hidden = !authenticated
       || (button.dataset.adminOnly === "true" && state.agent?.role !== "ADMIN")
+      || (button.dataset.agentOnly === "true" && state.agent?.role !== "AGENT")
       || (button.dataset.view === "simulator" && !simulationVisible());
   });
+  const manualContainer = state.agent?.role === "AGENT" ? $("#manualReservations") : $("#reservations");
+  if ($("#manualReservationPanel").parentElement !== manualContainer) {
+    manualContainer.prepend($("#manualReservationPanel"));
+  }
   const selected = $$(".navItem").find((button) =>
     button.dataset.view === state.currentView && !button.hidden
   );
@@ -175,7 +184,8 @@ function selectView(view) {
   if (view === "paymentEvidence") loadPaymentEvidence();
   if (view === "agents") loadAgents();
   if (view === "plans") loadPlans();
-  if (view === "reservations") loadReservations();
+  if (view === "reservations") { loadReservations(); loadManualPlans(); }
+  if (view === "manualReservations") loadManualPlans();
 }
 
 async function requestJson(path, options = {}) {
@@ -191,8 +201,12 @@ async function requestJson(path, options = {}) {
   const payload = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
     let detail = typeof payload === "object" && payload !== null ? payload.detail || JSON.stringify(payload) : payload;
-    if (Array.isArray(detail)) detail = detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
-    if (detail && typeof detail === "object") detail = JSON.stringify(detail);
+    if (path.startsWith("/api/admin/reservations") || path.startsWith("/api/admin/payment-evidence")) {
+      detail = backendErrorText(detail);
+    } else {
+      if (Array.isArray(detail)) detail = detail.map(item => item.msg || JSON.stringify(item)).join("; ");
+      if (detail && typeof detail === "object") detail = JSON.stringify(detail);
+    }
     if (response.status === 401) {
       clearSession();
       applyAuthState();
@@ -684,13 +698,16 @@ function clearSession() {
   state.reservationDetail = null;
   state.reservationListRequest += 1;
   state.reservationDetailRequest += 1;
+  state.manualPlansRequest += 1;
   $("#planRows").replaceChildren();
   $("#reservationRows").replaceChildren();
   $("#reservationDetails").replaceChildren();
   $("#reservationDetail").hidden = true;
   $("#reservationCancelForm").reset();
+  $("#manualReservationForm").reset();
+  $("#manualReservationPlan").replaceChildren();
   $("#refreshPlans").disabled = false;
-  for (const id of ["plansFeedback", "reservationsFeedback", "reservationDetailFeedback"]) {
+  for (const id of ["plansFeedback", "reservationsFeedback", "reservationDetailFeedback", "manualReservationFeedback"]) {
     managementFeedback(id, "");
   }
   $("#agentRows").replaceChildren();
@@ -1269,8 +1286,9 @@ async function refreshAll() {
     await Promise.all([loadCatalogCategories(), loadPaymentEvidence()]);
     if (state.currentView === "agents") await loadAgents();
     if (state.currentView === "plans") await loadPlans();
-    if (state.currentView === "reservations") await loadReservations();
+    if (state.currentView === "reservations") await Promise.all([loadReservations(), loadManualPlans()]);
   }
+  if (state.currentView === "manualReservations") await loadManualPlans();
 }
 
 function feedback(id, message, error = false) {
@@ -1304,6 +1322,97 @@ function emptyTable(body, columns, message) {
   cell.textContent = message;
   row.append(cell);
   body.append(row);
+}
+
+// Reuse the same loading/error behavior for every reservation form.
+async function managementAction(button, scope, busyText, feedbackId, operation, failureText) {
+  if (!state.sessionToken || button.disabled || scope.dataset.busy === "true") return;
+  const token = state.sessionToken;
+  const controls = $$("input, select, textarea, button", scope);
+  const disabled = controls.map(control => control.disabled);
+  const caption = button.textContent;
+  scope.dataset.busy = "true";
+  scope.setAttribute("aria-busy", "true");
+  controls.forEach(control => { control.disabled = true; });
+  button.textContent = busyText;
+  managementFeedback(feedbackId, "");
+  try {
+    await operation(() => token === state.sessionToken);
+  } catch (error) {
+    if (token === state.sessionToken) managementFeedback(feedbackId, `${failureText}: ${error.message}`, true);
+  } finally {
+    controls.forEach((control, index) => { control.disabled = disabled[index]; });
+    button.textContent = caption;
+    scope.dataset.busy = "false";
+    scope.setAttribute("aria-busy", "false");
+  }
+}
+
+async function loadManualPlans() {
+  if (!state.agent || $("#manualReservationForm").dataset.busy === "true") return;
+  const request = ++state.manualPlansRequest;
+  const token = state.sessionToken;
+  const select = $("#manualReservationPlan");
+  const previous = select.value;
+  select.disabled = true;
+  managementFeedback("manualReservationFeedback", "Cargando planes…");
+  try {
+    const plans = await managementRequest("/api/admin/plans");
+    if (request !== state.manualPlansRequest || token !== state.sessionToken) return;
+    select.replaceChildren(new Option("Selecciona un plan", ""));
+    for (const plan of plans.filter(plan => plan.active)) select.append(new Option(plan.name, plan.plan_id));
+    if (plans.some(plan => plan.active && plan.plan_id === previous)) select.value = previous;
+    managementFeedback("manualReservationFeedback", plans.some(plan => plan.active) ? "" : "No hay planes activos.");
+  } catch (error) {
+    if (request === state.manualPlansRequest && token === state.sessionToken) {
+      managementFeedback("manualReservationFeedback", `No se pudieron cargar los planes: ${error.message}`, true);
+    }
+  } finally {
+    if (request === state.manualPlansRequest) select.disabled = false;
+  }
+}
+
+function manualReservationData() {
+  const form = $("#manualReservationForm");
+  if (!form.reportValidity()) return null;
+  const name = $("#manualReservationName").value.trim();
+  return {
+    phone: $("#manualReservationPhone").value.trim(), ...(name ? { full_name: name } : {}),
+    plan_id: $("#manualReservationPlan").value,
+    starts_at: bogotaDateTimeToISO($("#manualReservationDate").value, $("#manualReservationTime").value),
+  };
+}
+
+async function verifyManualReservation() {
+  let data;
+  try { data = manualReservationData(); }
+  catch (error) { managementFeedback("manualReservationFeedback", error.message, true); return; }
+  if (!data) return;
+  await managementAction($("#verifyManualReservation"), $("#manualReservationForm"), "Verificando…",
+    "manualReservationFeedback", async current => {
+      const params = new URLSearchParams({ plan_id: data.plan_id, starts_at: data.starts_at });
+      const result = await managementRequest(`/api/admin/reservations/availability?${params}`);
+      if (!current()) return;
+      const message = result.available ? `Disponible. Anticipo: ${formatCOP(result.deposit_amount_cop)}.`
+        : [labels.bookingWindow[result.window?.reason], bookingBlockersText(result.blockers),
+          `Anticipo: ${formatCOP(result.deposit_amount_cop)}.`].filter(Boolean).join("\n");
+      managementFeedback("manualReservationFeedback", message, !result.available);
+    }, "No se pudo verificar la disponibilidad");
+}
+
+async function createManualReservation(event) {
+  event.preventDefault();
+  let data;
+  try { data = manualReservationData(); }
+  catch (error) { managementFeedback("manualReservationFeedback", error.message, true); return; }
+  if (!data) return;
+  await managementAction($("#createManualReservation"), $("#manualReservationForm"), "Creando…",
+    "manualReservationFeedback", async current => {
+      const result = await managementRequest("/api/admin/reservations", { method: "POST", body: JSON.stringify(data) });
+      if (!current()) return;
+      managementFeedback("manualReservationFeedback", `Reserva creada. Anticipo: ${formatCOP(result.deposit_amount_cop)}. La fecha se confirma al validar el pago.`);
+      if (state.agent?.role === "ADMIN") await loadReservations();
+    }, "No se pudo crear la reserva");
 }
 
 async function loadPlans() {
@@ -1814,6 +1923,10 @@ function bindUi() {
   $("#refreshAgents").addEventListener("click", loadAgents);
   $("#refreshPlans").addEventListener("click", loadPlans);
   $("#refreshReservations").addEventListener("click", loadReservations);
+  $("#manualReservationForm").addEventListener("submit", createManualReservation);
+  $("#verifyManualReservation").addEventListener("click", verifyManualReservation);
+  $("#reloadManualPlans").addEventListener("click", loadManualPlans);
+  $("#manualReservationForm").addEventListener("input", () => managementFeedback("manualReservationFeedback", ""));
   $("#reservationStatusFilter").addEventListener("change", () => {
     state.reservationDetailRequest += 1;
     $("#reservationDetail").hidden = true;

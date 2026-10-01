@@ -55,6 +55,19 @@ body.loggedOut .sidebar {
   margin-top: 18px;
 }
 
+.bookingForm {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.bookingForm .actions,
+.bookingForm p {
+  grid-column: 1 / -1;
+}
+
+[aria-live] {
+  white-space: pre-wrap;
+}
+
 .tableScroll {
   overflow-x: auto;
   margin-top: 18px;
