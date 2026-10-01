@@ -235,6 +235,11 @@ const server = createServer(async (request, response) => {
       await proxy(request, response, path.replace("/api", ""));
       return;
     }
+    if (path === "/api/admin/plans" || path.startsWith("/api/admin/plans/")
+        || path === "/api/admin/reservations" || path.startsWith("/api/admin/reservations/")) {
+      await proxy(request, response, `${path.replace("/api", "")}${requestUrl.search}`);
+      return;
+    }
     if (path.startsWith("/api/admin/agents/")) {
       await proxy(request, response, path.replace("/api", ""));
       return;
