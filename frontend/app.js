@@ -250,18 +250,27 @@ function renderPaymentEvidence() {
 
     const note = document.createElement("textarea");
     note.rows = 2;
-    note.maxLength = 500;
+    note.maxLength = 255;
     note.placeholder = "Nota de revision para auditoria";
+    const amountLabel = document.createElement("label");
+    amountLabel.textContent = "Monto verificado (COP)";
+    const amount = document.createElement("input");
+    amount.type = "number";
+    amount.min = "1";
+    amount.max = "2147483647";
+    amount.step = "1";
+    amount.inputMode = "numeric";
+    amountLabel.append(amount);
     const actions = document.createElement("div");
     actions.className = "actions";
     if (evidence.download_status === "DOWNLOADED") {
       actions.append(actionButton("Descargar", () => downloadPaymentEvidence(evidence.id)));
     }
     actions.append(
-      actionButton("Aceptar", () => reviewPaymentEvidence(evidence.id, "accept", note.value), "primary"),
+      actionButton("Aceptar", () => reviewPaymentEvidence(evidence.id, "accept", note.value, amount.value), "primary"),
       actionButton("Rechazar", () => reviewPaymentEvidence(evidence.id, "reject", note.value), "danger"),
     );
-    card.append(details, note, actions);
+    card.append(details, amountLabel, note, actions);
     container.append(card);
   }
 }
@@ -283,16 +292,26 @@ async function downloadPaymentEvidence(evidenceId) {
   }
 }
 
-async function reviewPaymentEvidence(evidenceId, decision, note) {
-  if (!note.trim()) {
+async function reviewPaymentEvidence(evidenceId, decision, note, amount) {
+  if (decision === "reject" && !note.trim()) {
     logEvent("Escribe una nota antes de revisar el comprobante.");
     return;
+  }
+  const body = {};
+  if (note.trim()) body.note = note.trim();
+  if (decision === "accept") {
+    const verifiedAmount = Number(amount);
+    if (!Number.isInteger(verifiedAmount) || verifiedAmount <= 0 || verifiedAmount > 2147483647) {
+      logEvent("Escribe un monto verificado en pesos, mayor que cero y sin decimales.");
+      return;
+    }
+    body.amount_cop = verifiedAmount;
   }
   try {
     const result = await requestJson(`/api/admin/payment-evidence/${evidenceId}/${decision}`, {
       method: "POST",
       headers: sessionHeaders(),
-      body: JSON.stringify({ note: note.trim() }),
+      body: JSON.stringify(body),
     });
     logEvent(`Evidencia #${evidenceId} revisada: `, label("notification", result.customer_notification), ".");
     await loadPaymentEvidence();
