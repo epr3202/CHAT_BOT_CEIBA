@@ -557,9 +557,24 @@ async def run_worker() -> None:
                 _run_outbox_loop(sessionmaker, sender, settings),
                 _run_inbox_loop(sessionmaker, settings),
                 _run_payment_evidence_loop(sessionmaker, settings),
+                _run_reservation_expiration_loop(sessionmaker),
             )
         finally:
             await engine.dispose()
+
+
+async def _run_reservation_expiration_loop(
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    from app.reservation.settlement import expire_pending_reservations
+
+    while True:
+        try:
+            count = await expire_pending_reservations(sessionmaker, datetime.now(UTC))
+            logger.info("reservation_expiration_completed", expired=count)
+        except Exception:
+            logger.exception("reservation_expiration_failed")
+        await asyncio.sleep(3600)
 
 
 async def _run_inbox_loop(
