@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.config.database import Base
@@ -110,3 +111,43 @@ class PaymentEvidence(Base):
         if value not in REVIEW_STATUSES:
             raise ValueError(f"Invalid payment evidence review status: {value}")
         return value
+
+
+class PaymentEvidenceReview(Base):
+    """Immutable proposal history: every retry inserts a fresh attempt."""
+
+    __tablename__ = "payment_evidence_review"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('COMPLETED', 'FAILED', 'SKIPPED')",
+            name="ck_payment_evidence_review_attempt_status",
+        ),
+        CheckConstraint(
+            "suggestion IN ('ACCEPT', 'REVIEW', 'REJECT')",
+            name="ck_payment_evidence_review_suggestion",
+        ),
+        CheckConstraint("attempt_number > 0", name="ck_payment_evidence_review_attempt_number"),
+        CheckConstraint(
+            "suggested_amount_cop IS NULL OR suggested_amount_cop > 0",
+            name="ck_payment_evidence_review_amount",
+        ),
+        Index("ix_payment_evidence_review_evidence_id", "evidence_id"),
+    )
+
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("payment_evidence.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    extracted: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    checks: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    suggestion: Mapped[str] = mapped_column(String(16), nullable=False)
+    suggested_amount_cop: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ai_execution_id: Mapped[int | None] = mapped_column(ForeignKey("ai_execution.id"))
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
