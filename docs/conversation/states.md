@@ -2804,8 +2804,11 @@ Su aprobación implica que:
 ## 27.3 B1b-2 — flujo BOOKING bajo feature flag
 
 SELF_SERVICE_BOOKING_ENABLED=false conserva #34: intención de reserva de precio
-fijo → captura de fecha en Event → handoff. Activo: misma intención, o fecha
-explícita después de un catálogo enviado, → decisión SELF_SERVICE_BOOKING sin LLM.
+fijo → captura de fecha en Event → handoff. Activo: misma intención, o fecha EXACTA
+después de un catálogo enviado acompañada de hora explícita en el mismo mensaje,
+→ decisión SELF_SERVICE_BOOKING sin LLM. Una fecha informativa sin expresión de
+reserva ni hora explícita (por ejemplo «el 7 de octubre es nuestro aniversario»)
+continúa al clasificador LLM; la fecha sola no dispara la reserva.
 
 No se agregan estados: COLLECTING_EVENT_DATA aloja booking_draft; BOT_ACTIVE es
 la conversación con solicitud de pago pendiente; WAITING_FOR_HUMAN representa

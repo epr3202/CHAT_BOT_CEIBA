@@ -18,6 +18,7 @@ from app.appointment.service import (
     VisitSchedulingService,
     VisitServiceResult,
     interpret_visit_time,
+    parse_visit_time_text,
     resolve_visit_date_text,
     validate_visit_attendees,
 )
@@ -517,6 +518,7 @@ def deterministic_booking_or_catalog_classification(
         self_service and facts.get("event_type") in FIXED_PRICE_EVENT_TYPES
         and explicit_date is not None and explicit_date.resolved_date is not None
         and explicit_date.interpretation == "EXACTA"
+        and parse_visit_time_text(message_text, require_explicit=True) is not None
     )):
         return IntentClassification(
             primary_intent="HUMAN_REQUEST", sub_intent=None, confidence=0, needs_human=True,
