@@ -298,7 +298,8 @@ def test_b_r10_seed_literals_and_lineage() -> None:
         assert key in CONDITIONAL_DRAFT_CODES and key in entries
         assert entries[key].status == "DRAFT" and entries[key].answer_template == literal
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert scripts.get_current_head() == "20260930_0031"
+    assert scripts.get_current_head() == "20260930_0032"
+    assert scripts.get_revision("20260930_0032").down_revision == "20260930_0031"
     assert scripts.get_revision("20260930_0031").down_revision == "20260930_0030"
     expected = {
         "SELECT_BOOKING_PLAN",
