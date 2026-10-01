@@ -1837,7 +1837,10 @@ acumula el pago y audita el monto y la nota. La aceptación produce exactamente
 `PAYMENT_EVIDENCE_ACCEPTED` en settlement y `PAYMENT_EVIDENCE_REVIEWED` después de
 la notificación, con result y customer_notification. El rechazo conserva
 `PAYMENT_EVIDENCE_REJECTED` y `PAYMENT_EVIDENCE_REVIEWED`; no se emite un evento
-SETTLED adicional. Un abono inferior al anticipo
+SETTLED adicional. `NOTIFICATION_SKIPPED` pertenece a la entidad `conversation`,
+con `conversation_id` y `evidence_id` en el valor nuevo: conserva el diagnóstico
+de notificación sin sumar un tercer audit de `payment_evidence`. Los audits
+históricos permanecen intactos. Un abono inferior al anticipo
 regresa de `PAYMENT_REVIEW` a `PAYMENT_PENDING`; el rechazo hace la misma transición
 sin incrementar el dinero. La evidencia revisada no se puede aceptar de nuevo.
 

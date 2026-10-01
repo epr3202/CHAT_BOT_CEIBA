@@ -22,15 +22,19 @@ BOGOTA = ZoneInfo("America/Bogota")
 
 
 def skipped(
-    session: AsyncSession, evidence_id: int, kind: str, reason: str, request_id: str
+    session: AsyncSession, evidence: PaymentEvidence, kind: str, reason: str, request_id: str
 ) -> None:
     session.add(
         AuditEvent(
             actor="SYSTEM",
             action="NOTIFICATION_SKIPPED",
-            entity="payment_evidence",
+            entity="conversation",
             old_value=None,
-            new_value={"evidence_id": evidence_id, "result": kind},
+            new_value={
+                "evidence_id": evidence.id,
+                "conversation_id": evidence.conversation_id,
+                "result": kind,
+            },
             reason=reason,
             request_id=request_id,
         )
@@ -52,11 +56,11 @@ async def notify_booking_payment(
     if row is None or row.conversation_id is None:
         return "DEFERRED"
     if not settings.self_service_booking_enabled:
-        skipped(session, evidence.id, kind, "Reserva autoservicio deshabilitada", request_id)
+        skipped(session, evidence, kind, "Reserva autoservicio deshabilitada", request_id)
         return "DEFERRED"
     if row.conversation_id != evidence.conversation_id or row.customer_id != evidence.customer_id:
         skipped(
-            session, evidence.id, kind, "La evidencia no corresponde a la conversación", request_id
+            session, evidence, kind, "La evidencia no corresponde a la conversación", request_id
         )
         return "DEFERRED"
     customer = await session.get(Customer, row.customer_id, with_for_update=True)
@@ -64,7 +68,7 @@ async def notify_booking_payment(
     message = await session.get(Message, evidence.message_id)
     plan = await session.get(Plan, row.plan_id)
     if customer is None or conversation is None or message is None or plan is None:
-        skipped(session, evidence.id, kind, "Referencias de notificación incompletas", request_id)
+        skipped(session, evidence, kind, "Referencias de notificación incompletas", request_id)
         return "DEFERRED"
     if kind == "CONFLICT":
         conversation.booking_draft = None
@@ -91,7 +95,7 @@ async def notify_booking_payment(
                 strict=True,
             )
         except KnowledgeRenderError as exc:
-            skipped(session, evidence.id, kind, exc.reason.value, request_id)
+            skipped(session, evidence, kind, exc.reason.value, request_id)
             return "DEFERRED"
         return "ENQUEUED"
     variables = {}
@@ -114,7 +118,7 @@ async def notify_booking_payment(
     elif kind == "REJECTED":
         response_code = "RESP-BOOKING-REJECTED-001"
     else:
-        skipped(session, evidence.id, kind, "Resultado sin plantilla de reserva", request_id)
+        skipped(session, evidence, kind, "Resultado sin plantilla de reserva", request_id)
         return "DEFERRED"
     try:
         await core.enqueue_template(
@@ -129,6 +133,6 @@ async def notify_booking_payment(
             strict=True,
         )
     except KnowledgeRenderError as exc:
-        skipped(session, evidence.id, kind, exc.reason.value, request_id)
+        skipped(session, evidence, kind, exc.reason.value, request_id)
         return "DEFERRED"
     return "ENQUEUED"
