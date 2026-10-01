@@ -34,6 +34,16 @@ CONDITIONAL_DRAFT_CODES = {
     "RESP-PAYMENT-004",
     "RESP-PAYMENT-005",
     "RESP-RESERVATION-006",
+    "RESP-BOOKING-PLAN-001",
+    "RESP-BOOKING-DATETIME-001",
+    "RESP-BOOKING-TIME-001",
+    "RESP-BOOKING-UNAVAILABLE-001",
+    "RESP-BOOKING-CONFIRM-001",
+    "RESP-BOOKING-PAYMENT-001",
+    "RESP-BOOKING-EVIDENCE-001",
+    "RESP-BOOKING-CONFIRMED-001",
+    "RESP-BOOKING-PARTIAL-001",
+    "RESP-BOOKING-REJECTED-001",
 }
 
 
@@ -67,7 +77,7 @@ def extract_seed_entries(content: str) -> list[KnowledgeSeedEntry]:
         status = status_for_entry(code, template)
         if template is None:
             template = f"[REVISAR] Entrada sin texto aprobado enviable: {summary}."
-        elif status == "DRAFT":
+        elif status == "DRAFT" and not code.startswith("RESP-BOOKING-"):
             template = f"[REVISAR] {template}"
 
         entries.append(

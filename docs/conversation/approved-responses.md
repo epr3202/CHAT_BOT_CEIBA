@@ -2817,3 +2817,90 @@ Su aprobación implica que:
 * la IA no puede cambiar reglas;
 * la atención automática puede operar con contenido determinista;
 * el MVP está preparado para usar respuestas consistentes y auditables.
+
+# 62. Reserva autoservicio de precio fijo
+
+PROPUESTA — pendiente de aprobación de Leandro. Todos los códigos siguientes
+se siembran DRAFT y se publican por versión, nunca se aprueban automáticamente.
+
+## RESP-BOOKING-PLAN-001 — Plan de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> ¡Perfecto! Estas son nuestras experiencias disponibles:
+> {plan_options}
+> Cuéntame el número o el nombre de la que quieres reservar.
+
+---
+
+## RESP-BOOKING-DATETIME-001 — Datetime de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> ¿Para qué fecha y a qué hora te gustaría vivirla? Por ejemplo: 7 de octubre a las 7 pm.
+
+---
+
+## RESP-BOOKING-TIME-001 — Time de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> ¿A qué hora te gustaría? Atendemos entre las 12 del día y las 9 de la noche.
+
+---
+
+## RESP-BOOKING-UNAVAILABLE-001 — Unavailable de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> Esa fecha y hora no están disponibles en nuestra agenda. ¿Quieres proponerme otra?
+
+---
+
+## RESP-BOOKING-CONFIRM-001 — Confirm de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> Revisemos: {plan_name}, el {booking_date} a las {booking_time}. Valor {total_amount}; para asegurar la fecha se abona el 50 % ({deposit_amount}). ¿Deseas que registre tu reserva?
+
+---
+
+## RESP-BOOKING-PAYMENT-001 — Payment de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> ¡Listo! Tu fecha está disponible hoy y queda asegurada al recibir el abono de {deposit_amount}. Puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}. Cuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.
+
+---
+
+## RESP-BOOKING-EVIDENCE-001 — Evidence de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> ¡Gracias! Recibimos tu comprobante. Nuestro equipo lo revisará y te confirmo por aquí en cuanto quede validado.
+
+---
+
+## RESP-BOOKING-CONFIRMED-001 — Confirmed de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> ¡Tu reserva está confirmada! {plan_name}, el {booking_date} a las {booking_time}. Saldo pendiente: {missing_amount}, a más tardar el {balance_due_date}. ¡Nos vemos en La Ceiba!
+
+---
+
+## RESP-BOOKING-PARTIAL-001 — Partial de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> Registramos tu abono. Para asegurar la fecha faltan {missing_amount}; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.
+
+---
+
+## RESP-BOOKING-REJECTED-001 — Rejected de reserva
+
+PROPUESTA — pendiente de aprobación de Leandro.
+
+> No pudimos validar el comprobante que enviaste. ¿Puedes revisarlo y enviarlo de nuevo? Si tienes dudas, con gusto te comunico con un asesor.
+
+---
