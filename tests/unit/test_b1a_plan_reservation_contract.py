@@ -32,7 +32,9 @@ async def test_r1_all_25_reservation_transitions(old: str, new: str) -> None:
     request_id = str(uuid4())
     kwargs = {"actor": "Admin B1a", "reason": "Revisión humana", "request_id": request_id}
 
-    if (old, new) not in VALID_TRANSITIONS:
+    # B2: a rejected or partial payment returns the request to payment pending.
+    allowed = VALID_TRANSITIONS | {("PAYMENT_REVIEW", "PAYMENT_PENDING")}
+    if (old, new) not in allowed:
         with pytest.raises(error_type):
             await transition(session, reservation, new, **kwargs)
         assert reservation.status == old
