@@ -17,3 +17,16 @@ for (const decision of ["accept", "reject"]) {
   });
 }
 
+test("G3 la caída del proxy se muestra en español sin perder el monto", async ({ page }) => {
+  await panel(page);
+  await page.route("**/api/admin/payment-evidence/11/accept", route => route.fulfill({
+    status: 502, json: { detail: "fetch failed" },
+  }));
+  await page.locator('[data-view="paymentEvidence"]').click();
+  const card = page.locator("#paymentEvidenceList .paymentEvidenceCard");
+  await card.getByLabel("Monto verificado (COP)").fill("125000");
+  await card.getByRole("button", { name: "Aceptar", exact: true }).click();
+  await expect(page.locator("#paymentEvidenceFeedback")).toContainText("No se pudo conectar con el servidor");
+  await expect(page.locator("#paymentEvidenceFeedback")).not.toContainText("fetch failed");
+  await expect(card.getByLabel("Monto verificado (COP)")).toHaveValue("125000");
+});

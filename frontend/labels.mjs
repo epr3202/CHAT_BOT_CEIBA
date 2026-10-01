@@ -151,6 +151,10 @@ export function bookingBlockersText(blockers = []) {
 }
 
 export function backendErrorText(detail) {
+  if (typeof detail === "string" && /^(fetch failed|Failed to fetch|NetworkError|Load failed)$/i.test(detail)) {
+    return "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.";
+  }
+  if (detail === "Internal Server Error") return "El servidor no pudo completar la operación. Inténtalo de nuevo.";
   if (Array.isArray(detail)) return detail.map(item => {
     if (typeof item?.msg === "string") {
       // FastAPI validation messages may be English; retain Spanish backend messages.

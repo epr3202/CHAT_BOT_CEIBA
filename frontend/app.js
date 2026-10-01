@@ -1278,7 +1278,10 @@ async function managementRequest(path, options = {}) {
   try {
     return await requestJson(path, { ...options, headers: sessionHeaders() });
   } catch (error) {
-    if (error.status) throw error;
+    if (error.status) {
+      error.message = backendErrorText(error.message);
+      throw error;
+    }
     throw new Error("No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.");
   }
 }
