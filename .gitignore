@@ -14,3 +14,4 @@ docker-compose.override.yml.retired
 *.egg-info/
 catalogs/
 backups/
+receipt-eval-data/
