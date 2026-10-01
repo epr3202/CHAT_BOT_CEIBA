@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.channel.states import Channel
 from app.config.database import Base
-from app.conversation.pending_actions import validate_pending_action
+from app.conversation.pending_actions import PENDING_ACTIONS, validate_pending_action
 from app.conversation.states import ConversationState
 
 if TYPE_CHECKING:
@@ -51,6 +51,11 @@ class Conversation(Base):
             name="ck_conversation_state",
         ),
         CheckConstraint("channel IN ('WHATSAPP')", name="ck_conversation_channel"),
+        CheckConstraint(
+            "pending_action IS NULL OR pending_action IN ("
+            + ", ".join(f"'{value}'" for value in PENDING_ACTIONS) + ")",
+            name="ck_conversation_pending_action",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -66,6 +71,7 @@ class Conversation(Base):
     pending_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     pending_confirmation: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     visit_draft: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    booking_draft: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     last_question_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     active_lead_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("lead.lead_id"), index=True, nullable=True

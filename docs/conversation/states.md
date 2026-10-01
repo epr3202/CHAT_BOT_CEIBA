@@ -1379,6 +1379,10 @@ CONFIRM_EVENT_CANCELLATION
 WAIT_FOR_HUMAN
 WAIT_FOR_PAYMENT_REVIEW
 WAIT_FOR_RESERVATION_CONFIRMATION
+SELECT_BOOKING_PLAN
+SELECT_BOOKING_DATETIME
+SELECT_BOOKING_TIME
+CONFIRM_BOOKING
 ```
 
 ## 20.1 `COLLECT_CATALOG_EVENT_TYPE`
@@ -1881,13 +1885,13 @@ B1b-1 entregó backend y un GET ADMIN. B2-1 integra aceptación, acumulación y
 Calendar. B1b-2 habilita el flujo conversacional solo mediante
 `SELF_SERVICE_BOOKING_ENABLED`, apagado por defecto.
 
-La futura lectura en B1b-2 debe salir de la transacción del inbox usando
+La lectura en B1b-2 sale de la transacción del inbox usando
 `DeferredAgendaCall` / `AgendaResults` de `inbox_effects`: diferir la operación,
 cargar y separar el plan en una sesión independiente, llamar a
 `fetch_booking_context` con una sesión inactiva y reproducir su resultado.
 El helper termina su transacción de lectura y separa las reservas con sus planes
 antes de llamar a `list_events`; rechaza sesiones con transacciones o escrituras
-pendientes. El resultado es una instantánea, no un bloqueo; B2 debe revalidarlo.
+pendientes. El resultado es una instantánea, no un bloqueo; B2 lo revalida al aceptar.
 
 Esta matriz es la decisión específica autorizada para B1a frente al diseño
 general de reservas en `data-matrix.md` §19 y los flujos generales de cancelación.
@@ -2796,3 +2800,49 @@ Su aprobación implica que:
 * el bot no puede responder simultáneamente con un asesor;
 * las citas, pagos y reservas tienen estados independientes;
 * el MVP puede implementarse de manera determinista y auditable.
+
+## 27.3 B1b-2 — flujo BOOKING bajo feature flag
+
+SELF_SERVICE_BOOKING_ENABLED=false conserva #34: intención de reserva de precio
+fijo → captura de fecha en Event → handoff. Activo: misma intención, o fecha
+explícita después de un catálogo enviado, → decisión SELF_SERVICE_BOOKING sin LLM.
+
+No se agregan estados: COLLECTING_EVENT_DATA aloja booking_draft; BOT_ACTIVE es
+la conversación con solicitud de pago pendiente; WAITING_FOR_HUMAN representa
+la revisión del comprobante con handoff PAYMENT_REVIEW. Esta reutilización se
+corresponde con scope.md §6.2. Se permite COLLECTING_EVENT_DATA → BOT_ACTIVE al
+registrar la solicitud. Los estados de pago/reserva siguen perteneciendo a sus
+entidades, no a conversation.state.
+
+Secuencia de pending_action: SELECT_BOOKING_PLAN → SELECT_BOOKING_DATETIME →
+SELECT_BOOKING_TIME si falta hora → CONFIRM_BOOKING. El borrador consume fecha/hora
+del mensaje inicial antes de pedir plan. Números o nombres normalizados seleccionan
+un plan activo del event_type, orden sort_order/code; no se usa texto del cliente
+como variable. Fechas relativas o con weekday contradictorio requieren confirmación
+RESP-EVENT-DATA-003 dentro del paso DATETIME. La ventana usa ZoneInfo Bogotá.
+
+La llamada diferida booking_availability carga y separa Plan en una sesión propia,
+lee D3 y llama a Calendar sin transacción; AgendaResults reproduce solo el valor.
+Bloqueo: UNAVAILABLE, mantiene plan y vuelve a DATETIME. Libre: CONFIRM con importes
+de Plan; sí revalida y crea PAYMENT_PENDING, actor SYSTEM, limpia pending_action
+y booking_draft, pasa a BOT_ACTIVE y muestra PAYMENT solo con datos bancarios
+completos y plantilla aprobada. No: conserva plan y pide nueva fecha/hora.
+Si el precio/duración cambió, se muestra una nueva confirmación. Ningún paso crea
+evento externo ni bloquea la franja.
+
+Humano explícito interrumpe por el flujo existente. Respuesta no interpretable:
+repite el paso; segundo fallo consecutivo usa failed_understanding y handoff.
+Otra solicitud del mismo cliente con PAYMENT_PENDING/PAYMENT_REVIEW existente
+escala para evitar duplicados, incluso si la solicitud es manual o de otra
+conversación. Se comprueba al inicio y antes de crear la solicitud tras confirmar.
+Desactivar el flag con borrador activo también escala.
+
+La imagen/documento válido de una solicitud pendiente vincula la evidencia, pasa
+a PAYMENT_REVIEW y pausa la conversación; responde EVIDENCE como aviso autorizado
+del handoff. Mientras la conversación sigue pausada, no responde automáticamente
+a mensajes posteriores. Accept/reject puede emitir una notificación específica
+con prueba de la revisión humana del comprobante, incluso durante esa pausa.
+RESERVED → CONFIRMED, PARTIAL → PARTIAL, REJECTED → REJECTED. CONFLICT abre handoff
+con detalle franja ya reservada; requiere reprogramación. Sin conversation_id no
+notifica; plantilla no APPROVED o fallo de render → NOTIFICATION_SKIPPED sin romper
+la aceptación. El flag apagado no envía plantillas BOOKING.
