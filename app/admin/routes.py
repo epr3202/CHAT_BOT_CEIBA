@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import (
     APIRouter,
@@ -63,8 +64,9 @@ from app.conversation.models import Conversation, KnowledgeEntry
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
-from app.event.models import EVENT_TYPES
+from app.event.models import EVENT_TYPES, Event
 from app.handoff.models import Handoff
+from app.lead.models import Lead
 from app.orchestrator.service import enqueue_template
 from app.payment.models import PaymentEvidence
 from app.plan.models import Plan
@@ -74,9 +76,16 @@ from app.reservation.availability import (
     fetch_booking_context,
     validate_booking_window,
 )
-from app.reservation.booking import deposit_amount
+from app.reservation.booking import create_pending_reservation, deposit_amount
 from app.reservation.models import Reservation
 from app.reservation.service import InvalidReservationTransition, transition_reservation
+from app.reservation.settlement import (
+    accept_payment,
+    lock_booking_changes,
+    reject_payment,
+    release_reservation_calendar,
+    sync_reservation_calendar,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -214,7 +223,7 @@ class ReservationPayload(BaseModel):
     lead_id: UUID
     event_id: UUID
     plan_id: UUID
-    conversation_id: int
+    conversation_id: int | None
     customer_id: int
     plan_name: str | None = None
     customer_name: str | None = None
@@ -230,6 +239,12 @@ class ReservationPayload(BaseModel):
     calendar_status: str
     created_at: datetime
     updated_at: datetime
+
+    deposit_amount_cop: int | None = None
+    missing_cop: int | None = None
+    evidences: list[dict] = Field(default_factory=list)
+    calendar_synced: bool | None = None
+    detail: str | None = None
 
 
 class CancelReservationRequest(BaseModel):
@@ -374,7 +389,14 @@ class AppointmentDayPayload(BaseModel):
 
 
 class PaymentEvidenceReviewRequest(BaseModel):
-    note: str = Field(min_length=1, max_length=500)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    note: str = Field(min_length=1, max_length=255)
+
+
+class PaymentEvidenceAcceptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    amount_cop: int = Field(gt=0, le=2147483647, strict=True)
+    note: str | None = Field(None, max_length=255)
 
 
 class PaymentEvidencePayload(BaseModel):
@@ -494,15 +516,24 @@ async def list_reservations(
 
 
 async def reservation_payload(
-    session: AsyncSession, reservation: Reservation,
+    session: AsyncSession,
+    reservation: Reservation,
 ) -> ReservationPayload:
+    await session.refresh(reservation)
     plan_name = await session.scalar(select(Plan.name).where(Plan.plan_id == reservation.plan_id))
     customer_name = await session.scalar(
         select(Customer.full_name).where(Customer.id == reservation.customer_id)
     )
-    return ReservationPayload.model_validate(reservation).model_copy(update={
-        "plan_name": plan_name, "customer_name": customer_name,
-    })
+    return ReservationPayload.model_validate(reservation).model_copy(
+        update={
+            "plan_name": plan_name,
+            "customer_name": customer_name,
+            "deposit_amount_cop": deposit_amount(reservation.price_cop),
+            "missing_cop": max(
+                0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop
+            ),
+        }
+    )
 
 
 class BookingAvailabilityPayload(BaseModel):
@@ -562,37 +593,336 @@ async def get_reservation(
     reservation = await session.get(Reservation, reservation_id)
     if reservation is None:
         raise HTTPException(status_code=404, detail="La reserva no existe.")
-    return await reservation_payload(session, reservation)
+    payload = await reservation_payload(session, reservation)
+    evidences = list(
+        await session.scalars(
+            select(PaymentEvidence)
+            .where(
+                PaymentEvidence.reservation_id == reservation_id,
+            )
+            .order_by(PaymentEvidence.created_at, PaymentEvidence.id)
+        )
+    )
+    ledger = list(
+        await session.scalars(
+            select(AuditEvent).where(
+                AuditEvent.action == "PAYMENT_EVIDENCE_ACCEPTED",
+            )
+        )
+    )
+    amounts = {
+        entry.new_value["evidence_id"]: entry.new_value.get("amount_cop") for entry in ledger
+    }
+    return payload.model_copy(
+        update={
+            "evidences": [
+                {
+                    "id": e.id,
+                    "status": e.review_status,
+                    "amount_cop": amounts.get(e.id),
+                    "created_at": e.created_at,
+                }
+                for e in evidences
+            ]
+        }
+    )
+
+
+class BookingScheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    starts_at: datetime
+
+    @model_validator(mode="after")
+    def require_zone(self) -> BookingScheduleRequest:
+        if self.starts_at.utcoffset() is None:
+            raise ValueError("La fecha requiere zona horaria.")
+        return self
+
+
+class ManualReservationRequest(BookingScheduleRequest):
+    phone: str = Field(pattern=r"^\+?[1-9]\d{7,14}$")
+    full_name: str | None = Field(None, min_length=1, max_length=128)
+    plan_id: UUID
+    note: str | None = Field(None, max_length=255)
+
+
+async def admin_booking_context(
+    session: AsyncSession,
+    plan_id: UUID,
+    starts_at: datetime,
+    *,
+    exclude: UUID | None = None,
+) -> tuple[Plan, datetime, list[BookingBlocker]]:
+    plan = await session.get(Plan, plan_id)
+    if plan is None:
+        raise HTTPException(404, "El plan no existe.")
+    if not plan.active:
+        raise HTTPException(422, "El plan está inactivo.")
+    ends_at = starts_at + timedelta(minutes=plan.duration_minutes)
+    session.expunge(plan)
+    await session.rollback()
+    settings = get_settings()
+    window = validate_booking_window(starts_at, ends_at, settings)
+    if not window.ok:
+        raise HTTPException(409, {"reason": window.reason, "blockers": []})
+    try:
+        context = await fetch_booking_context(
+            session,
+            plan=plan,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            calendar=get_calendar_adapter(settings),
+            settings=settings,
+            exclude_reservation_id=exclude,
+        )
+    except CalendarUnavailableError as exc:
+        raise HTTPException(503, "No se pudo consultar la disponibilidad.") from exc
+    if not context.available:
+        raise HTTPException(409, {"blockers": [asdict(b) for b in context.blockers]})
+    return plan, ends_at, context.blockers
+
+
+async def check_fresh_booking(
+    session: AsyncSession,
+    plan: Plan,
+    starts_at: datetime,
+    ends_at: datetime,
+    *,
+    exclude: UUID | None = None,
+) -> None:
+    from sqlalchemy.orm import joinedload
+
+    from app.reservation.availability import evaluate_booking_availability
+
+    await lock_booking_changes(session)
+    rows = list(
+        await session.scalars(
+            select(Reservation)
+            .options(joinedload(Reservation.plan))
+            .where(
+                Reservation.status == "RESERVED",
+                Reservation.starts_at < ends_at,
+                Reservation.ends_at > starts_at,
+                *([Reservation.reservation_id != exclude] if exclude else []),
+            )
+        )
+    )
+    availability = evaluate_booking_availability(
+        plan=plan,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        reservations=rows,
+        calendar_events=[],
+        exclusivity_keyword=get_settings().booking_exclusivity_keyword,
+    )
+    if not availability.available:
+        raise HTTPException(409, {"blockers": [asdict(b) for b in availability.blockers]})
+
+
+@router.post("/reservations")
+async def create_manual_reservation(
+    body: ManualReservationRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> ReservationPayload:
+    agent = await authenticated_agent(session, authorization)
+    actor = agent.name
+    plan, ends_at, _ = await admin_booking_context(session, body.plan_id, body.starts_at)
+    phone = "+" + body.phone.lstrip("+")
+    async with session.begin():
+        await check_fresh_booking(session, plan, body.starts_at, ends_at)
+        customer = await session.scalar(select(Customer).where(Customer.phone_number == phone))
+        if customer is None:
+            customer = Customer(phone_number=phone, full_name=body.full_name)
+            session.add(customer)
+            await session.flush()
+        conversation = await session.scalar(
+            select(Conversation)
+            .where(
+                Conversation.customer_id == customer.id,
+            )
+            .order_by(Conversation.id.desc())
+            .limit(1)
+        )
+        lead = Lead(customer_id=customer.id, channel="WHATSAPP", lead_status="QUALIFYING")
+        session.add(lead)
+        await session.flush()
+        event = Event(lead_id=lead.lead_id, event_type=plan.event_type)
+        session.add(event)
+        await session.flush()
+        row = await create_pending_reservation(
+            session,
+            lead=lead,
+            event=event,
+            plan=plan,
+            conversation=conversation,
+            customer=customer,
+            starts_at=body.starts_at,
+            actor=actor,
+            request_id=request_id or str(uuid4()),
+        )
+        if body.note:
+            session.add(
+                AuditEvent(
+                    actor=actor,
+                    action="RESERVATION_NOTE_RECORDED",
+                    entity="reservation",
+                    old_value=None,
+                    new_value={"reservation_id": str(row.reservation_id), "note": body.note},
+                    reason=body.note,
+                    request_id=request_id or str(uuid4()),
+                )
+            )
+        return await reservation_payload(session, row)
+
+
+@router.patch("/reservations/{reservation_id}/schedule")
+async def schedule_reservation(
+    reservation_id: UUID,
+    body: BookingScheduleRequest,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> ReservationPayload:
+    agent = await authenticated_admin(session, authorization)
+    actor = agent.name
+    row = await session.get(Reservation, reservation_id)
+    if row is None:
+        raise HTTPException(404, "La reserva no existe.")
+    if row.status in {"EXPIRED", "CANCELLED"}:
+        raise HTTPException(409, "La reserva está vencida o cancelada.")
+    plan_id = row.plan_id
+    plan, ends_at, _ = await admin_booking_context(
+        session, plan_id, body.starts_at, exclude=reservation_id
+    )
+    async with session.begin():
+        await lock_booking_changes(session)
+        row = await session.get(Reservation, reservation_id, with_for_update=True)
+        if row.status in {"EXPIRED", "CANCELLED"}:
+            raise HTTPException(409, "La reserva está vencida o cancelada.")
+        await check_fresh_booking(session, plan, body.starts_at, ends_at, exclude=reservation_id)
+        old_start, old_end = row.starts_at, row.ends_at
+        row.starts_at, row.ends_at = body.starts_at.astimezone(UTC), ends_at.astimezone(UTC)
+        if row.payment_kind == "DEPOSIT":
+            row.balance_due_at = row.starts_at - timedelta(days=1)
+        event = await session.get(Event, row.event_id)
+        event.event_date = row.starts_at.astimezone(ZoneInfo("America/Bogota")).date()
+        event.event_date_type = "EXACT"
+        event.event_month = event.event_date_raw = None
+        reserved = row.status == "RESERVED"
+        if reserved:
+            row.calendar_status = "NONE"
+        session.add(
+            AuditEvent(
+                actor=actor,
+                action="RESERVATION_RESCHEDULED",
+                entity="reservation",
+                old_value={
+                    "reservation_id": str(reservation_id),
+                    "starts_at": old_start.isoformat(),
+                    "ends_at": old_end.isoformat(),
+                },
+                new_value={
+                    "reservation_id": str(reservation_id),
+                    "starts_at": row.starts_at.isoformat(),
+                    "ends_at": row.ends_at.isoformat(),
+                    "event_date": event.event_date.isoformat(),
+                },
+                reason="Reprogramación administrativa",
+                request_id=request_id or str(uuid4()),
+            )
+        )
+    synced, detail = (
+        await calendar_sync_after_commit(request, reservation_id) if reserved else (None, None)
+    )
+    await session.refresh(row)
+    return (await reservation_payload(session, row)).model_copy(
+        update={"calendar_synced": synced, "detail": detail}
+    )
+
+
+async def calendar_sync_after_commit(
+    request: Request, reservation_id: UUID
+) -> tuple[bool, str | None]:
+    settings = get_settings()
+    try:
+        await sync_reservation_calendar(
+            reservation_id,
+            calendar=get_calendar_adapter(settings),
+            sessionmaker=request.app.state.db_sessionmaker,
+            settings=settings,
+        )
+    except (CalendarUnavailableError, ValueError):
+        return False, "La reserva está confirmada; falta sincronizar su evento en el calendario."
+    return True, None
+
+
+@router.post("/reservations/{reservation_id}/sync-calendar")
+async def retry_reservation_calendar(
+    reservation_id: UUID,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> ReservationPayload:
+    await authenticated_admin(session, authorization)
+    row = await session.get(Reservation, reservation_id)
+    if row is None:
+        raise HTTPException(404, "La reserva no existe.")
+    if row.status != "RESERVED" or row.calendar_status != "NONE":
+        raise HTTPException(409, "La reserva no requiere sincronización.")
+    await session.rollback()
+    synced, detail = await calendar_sync_after_commit(request, reservation_id)
+    row = await session.get(Reservation, reservation_id)
+    return (await reservation_payload(session, row)).model_copy(
+        update={"calendar_synced": synced, "detail": detail}
+    )
 
 
 @router.post("/reservations/{reservation_id}/cancel")
 async def cancel_reservation(
     reservation_id: UUID,
     body: CancelReservationRequest,
+    request: Request,
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
     request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
 ) -> ReservationPayload:
-    admin = await authenticated_admin(session, authorization)
-    actor = admin.name
+    agent = await authenticated_admin(session, authorization)
+    actor = agent.name
     await session.rollback()
     async with session.begin():
-        reservation = await session.get(Reservation, reservation_id, with_for_update=True)
-        if reservation is None:
-            raise HTTPException(status_code=404, detail="La reserva no existe.")
+        await lock_booking_changes(session)
+        row = await session.get(Reservation, reservation_id, with_for_update=True)
+        if row is None:
+            raise HTTPException(404, "La reserva no existe.")
+        release = row.status == "RESERVED" and row.external_calendar_id is not None
         try:
             await transition_reservation(
-                session, reservation, "CANCELLED", actor=actor, reason=body.note,
+                session,
+                row,
+                "CANCELLED",
+                actor=actor,
+                reason=body.note,
                 request_id=request_id or str(uuid4()),
             )
-        except InvalidReservationTransition as error:
-            raise HTTPException(
-                status_code=409, detail="La reserva está vencida o ya está cancelada."
-            ) from error
-        await session.flush()
-        await session.refresh(reservation)
-        payload = await reservation_payload(session, reservation)
-    return payload
+        except InvalidReservationTransition as exc:
+            raise HTTPException(409, "La reserva está vencida o ya está cancelada.") from exc
+    synced = True
+    if release:
+        settings = get_settings()
+        try:
+            await release_reservation_calendar(
+                reservation_id,
+                calendar=get_calendar_adapter(settings),
+                sessionmaker=request.app.state.db_sessionmaker,
+                settings=settings,
+            )
+        except CalendarUnavailableError:
+            synced = False
+    await session.refresh(row)
+    return (await reservation_payload(session, row)).model_copy(update={"calendar_synced": synced})
 
 
 @router.get("/payment-evidence")
@@ -667,19 +997,14 @@ async def download_payment_evidence(
 @router.post("/payment-evidence/{evidence_id}/accept")
 async def accept_payment_evidence(
     evidence_id: int,
-    body: PaymentEvidenceReviewRequest,
+    body: PaymentEvidenceAcceptRequest,
     request: Request,
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
-) -> PaymentEvidenceReviewPayload:
-    return await review_payment_evidence(
-        evidence_id,
-        "ACCEPTED",
-        "RESP-PAYMENT-004",
-        body.note,
-        request,
-        session,
-        authorization,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> dict:
+    return await settle_payment_evidence(
+        evidence_id, body, request, session, authorization, request_id, accepting=True
     )
 
 
@@ -690,109 +1015,188 @@ async def reject_payment_evidence(
     request: Request,
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
-) -> PaymentEvidenceReviewPayload:
-    return await review_payment_evidence(
-        evidence_id,
-        "REJECTED",
-        "RESP-PAYMENT-005",
-        body.note,
-        request,
-        session,
-        authorization,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> dict:
+    return await settle_payment_evidence(
+        evidence_id, body, request, session, authorization, request_id, accepting=False
     )
 
 
-async def review_payment_evidence(
+async def settle_payment_evidence(
     evidence_id: int,
-    decision: Literal["ACCEPTED", "REJECTED"],
-    response_code: Literal["RESP-PAYMENT-004", "RESP-PAYMENT-005"],
-    note: str,
+    body: PaymentEvidenceAcceptRequest | PaymentEvidenceReviewRequest,
     request: Request,
     session: AsyncSession,
     authorization: str | None,
-) -> PaymentEvidenceReviewPayload:
+    request_id: str | None,
+    *,
+    accepting: bool,
+) -> dict:
     agent = await authenticated_admin(session, authorization)
-    evidence = await session.get(PaymentEvidence, evidence_id, with_for_update=True)
+    agent_id, actor = agent.id, agent.name
+    evidence = await session.get(PaymentEvidence, evidence_id)
     if evidence is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Payment evidence not found",
-        )
+        raise HTTPException(404, "El comprobante no existe.")
     if evidence.review_status != "PENDING_REVIEW":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Payment evidence has already been reviewed",
+        raise HTTPException(409, "El comprobante ya fue revisado.")
+    blockers = []
+    if accepting and evidence.reservation_id:
+        row = await session.get(Reservation, evidence.reservation_id)
+        if row is not None and row.amount_paid_cop + body.amount_cop >= deposit_amount(
+            row.price_cop
+        ):
+            plan = await session.get(Plan, row.plan_id)
+            start, end = row.starts_at, row.ends_at
+            session.expunge(plan)
+            await session.rollback()
+            settings = get_settings()
+            try:
+                context = await fetch_booking_context(
+                    session,
+                    plan=plan,
+                    starts_at=start,
+                    ends_at=end,
+                    calendar=get_calendar_adapter(settings),
+                    settings=settings,
+                )
+            except CalendarUnavailableError as exc:
+                raise HTTPException(503, "No se pudo consultar la disponibilidad.") from exc
+            blockers = [b for b in context.blockers if b.kind == "CALENDAR_EXCLUSIVE"]
+    if session.in_transaction():
+        await session.rollback()
+    rid = request_id or str(uuid4())
+    async with session.begin():
+        evidence = await session.get(PaymentEvidence, evidence_id, with_for_update=True)
+        if evidence.review_status != "PENDING_REVIEW":
+            raise HTTPException(409, "El comprobante ya fue revisado.")
+        evidence.reviewed_by_agent_id = agent_id
+        try:
+            if accepting:
+                result = await accept_payment(
+                    session,
+                    evidence=evidence,
+                    amount_cop=body.amount_cop,
+                    actor=actor,
+                    note=body.note,
+                    request_id=rid,
+                    calendar_blockers=blockers,
+                )
+                row, kind, missing, blockers = (
+                    result.reservation,
+                    result.kind,
+                    result.missing_cop,
+                    result.blockers,
+                )
+            else:
+                row = await reject_payment(
+                    session, evidence=evidence, actor=actor, note=body.note, request_id=rid
+                )
+                kind, missing, blockers = "REJECTED", None, []
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        row_id = row.reservation_id if row else None
+        session.add(
+            AuditEvent(
+                actor=actor,
+                action="PAYMENT_EVIDENCE_SETTLED",
+                entity="payment_evidence",
+                old_value={"evidence_id": evidence_id, "review_status": "PENDING_REVIEW"},
+                new_value={
+                    "evidence_id": evidence_id,
+                    "decision": evidence.review_status,
+                    "agent_id": agent_id,
+                    "result": kind,
+                },
+                reason=body.note or "Comprobante aceptado por asesor",
+                request_id=rid,
+            )
         )
-    clean_note = note.strip()
-    if not clean_note:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Review note is required",
+        await session.flush()
+        payload = dict(
+            id=evidence.id,
+            review_status=evidence.review_status,
+            reviewed_by_agent_id=agent_id,
+            reviewed_at=evidence.reviewed_at,
         )
-
-    reviewed_at = datetime.now(UTC)
-    evidence.review_status = decision
-    evidence.reviewed_by_agent_id = agent.id
-    evidence.reviewed_at = reviewed_at
-    evidence.review_note = clean_note
-
-    latest_template = await session.scalar(
-        select(KnowledgeEntry)
-        .where(KnowledgeEntry.code == response_code)
-        .order_by(KnowledgeEntry.version.desc())
-        .limit(1)
+    synced, detail = (
+        await calendar_sync_after_commit(request, row_id) if kind == "RESERVED" else (None, None)
     )
-    customer_notification: Literal["ENQUEUED", "DEFERRED"] = "DEFERRED"
-    if latest_template is not None and latest_template.status == "APPROVED":
+    notification = await notify_payment_after_commit(request, evidence_id, kind, rid)
+    async with session.begin():
+        session.add(
+            AuditEvent(
+                actor=actor,
+                action="PAYMENT_EVIDENCE_REVIEWED",
+                entity="payment_evidence",
+                old_value={"evidence_id": evidence_id, "review_status": "PENDING_REVIEW"},
+                new_value={
+                    "evidence_id": evidence_id,
+                    "decision": payload["review_status"],
+                    "agent_id": agent_id,
+                    "result": kind,
+                    "customer_notification": notification,
+                },
+                reason=body.note or "Comprobante aceptado por asesor",
+                request_id=rid,
+            )
+        )
+    row = await session.get(Reservation, row_id) if row_id else None
+    return {
+        **payload,
+        "evidence": payload,
+        "reservation": await reservation_payload(session, row) if row else None,
+        "result": kind,
+        "missing_cop": missing,
+        "blockers": [asdict(b) for b in blockers],
+        "calendar_synced": synced,
+        "detail": detail,
+        "customer_notification": notification,
+    }
+
+
+async def notify_payment_after_commit(
+    request: Request,
+    evidence_id: int,
+    kind: str,
+    request_id: str,
+) -> str:
+    # Legacy unlinked evidence keeps its approved human notification. Linked
+    # booking copy will become available with the separately tested B1b-2 flow.
+    sm = request.app.state.db_sessionmaker
+    async with sm() as session, session.begin():
+        evidence = await session.get(PaymentEvidence, evidence_id)
+        if evidence.reservation_id is not None:
+            session.add(
+                AuditEvent(
+                    actor="SYSTEM",
+                    action="NOTIFICATION_SKIPPED",
+                    entity="payment_evidence",
+                    old_value=None,
+                    new_value={"evidence_id": evidence_id, "result": kind},
+                    reason="Plantillas de reserva pendientes de publicación B1b-2",
+                    request_id=request_id,
+                )
+            )
+            return "DEFERRED"
+        code = "RESP-PAYMENT-004" if evidence.review_status == "ACCEPTED" else "RESP-PAYMENT-005"
+        latest = await session.scalar(
+            select(KnowledgeEntry)
+            .where(KnowledgeEntry.code == code)
+            .order_by(KnowledgeEntry.version.desc())
+            .limit(1)
+        )
+        if latest is None or latest.status != "APPROVED":
+            return "DEFERRED"
         conversation = await session.get(Conversation, evidence.conversation_id)
         customer = await session.get(Customer, evidence.customer_id)
-        inbound_message = await session.get(Message, evidence.message_id)
-        if conversation is None or customer is None or inbound_message is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Payment evidence references are incomplete",
-            )
+        message = await session.get(Message, evidence.message_id)
         variables = (
-            {"rejection_reason_customer_safe": clean_note}
-            if decision == "REJECTED"
-            else {}
+            {"rejection_reason_customer_safe": evidence.review_note} if kind == "REJECTED" else {}
         )
         await enqueue_template(
-            session,
-            request.app.state.db_sessionmaker,
-            conversation,
-            customer,
-            inbound_message,
-            response_code,
-            variables,
-            payment_decision=evidence,
+            session, sm, conversation, customer, message, code, variables, payment_decision=evidence
         )
-        customer_notification = "ENQUEUED"
-
-    session.add(
-        AuditEvent(
-            actor=agent.name,
-            action="PAYMENT_EVIDENCE_REVIEWED",
-            entity="payment_evidence",
-            old_value={"evidence_id": evidence.id, "review_status": "PENDING_REVIEW"},
-            new_value={
-                "evidence_id": evidence.id,
-                "decision": decision,
-                "agent_id": agent.id,
-                "customer_notification": customer_notification,
-            },
-            reason="Payment evidence reviewed by an administrator",
-            request_id=None,
-        )
-    )
-    await session.commit()
-    return PaymentEvidenceReviewPayload(
-        id=evidence.id,
-        review_status=decision,
-        reviewed_by_agent_id=agent.id,
-        reviewed_at=reviewed_at,
-        customer_notification=customer_notification,
-    )
+        return "ENQUEUED"
 
 
 def payment_evidence_suffix(mime_type: str) -> str | None:
