@@ -334,7 +334,11 @@ Comandos útiles dentro del simulador:
 | `HUMAN_HOURS_DAYS` | No | `1,2,3,4,5` | Slice 1: dias de atencion humana, weekday Python |
 | `HUMAN_HOURS_START` | No | `08:00` | Slice 1: inicio de atencion humana |
 | `HUMAN_HOURS_END` | No | `16:00` | Slice 1: fin de atencion humana |
-| `SELF_SERVICE_BOOKING_ENABLED` | No | `false` | Reservado para B1b-2; sin uso en B1b-1 |
+| `SELF_SERVICE_BOOKING_ENABLED` | No | `false` | Habilita BOOKING determinista de precio fijo; requiere plantillas aprobadas |
+| `BOOKING_BANK_NAME` | No | vacío | Banco para instrucciones aprobadas |
+| `BOOKING_ACCOUNT_TYPE` | No | vacío | Tipo de cuenta |
+| `BOOKING_ACCOUNT_NUMBER` | No | vacío | Número de cuenta; obligatorio para enviar PAYMENT |
+| `BOOKING_ACCOUNT_HOLDER` | No | vacío | Titular de la cuenta |
 | `BOOKING_EXCLUSIVITY_KEYWORD` | No | `exclusividad` | D3: texto que bloquea en título o descripción de Calendar |
 | `BOOKING_HOURS_START` | No | `12:00` | Inicio permitido en Bogotá; **pendiente confirmación Leandro** |
 | `BOOKING_HOURS_END` | No | `21:00` | Fin permitido en Bogotá; **pendiente confirmación Leandro** |
@@ -389,3 +393,32 @@ Logs a revisar:
 
 Para intentos con firma inválida, revisar `audit_event` con acción
 `WHATSAPP_WEBHOOK_INVALID_SIGNATURE`.
+
+B2-1 / B1b-2 (0030 y 0031): las solicitudes no bloquean antes del pago. ADMIN
+acepta un comprobante con `amount_cop > 0` y nota opcional de hasta 255 caracteres;
+rechaza con nota obligatoria. Acumulado inferior al 50 % → PAYMENT_PENDING;
+alcanza el anticipo y D3 libre → RESERVED → Calendar después del commit. Calendar
+caído no revierte la reserva: reintento ADMIN en sync-calendar. Saldo un día antes,
+NULL para pago total. Dos planes no exclusivos pueden coincidir.
+
+ADMIN y AGENT pueden crear solicitudes manuales por teléfono sin conversación;
+POST /admin/reservations recibe phone, plan_id, starts_at con zona, full_name y note
+opcionales. ADMIN reprograma con PATCH /admin/reservations/{id}/schedule, cancela
+y reintenta Calendar. El detalle incluye evidencias, anticipo y faltante.
+El monto por evidencia se lee de la auditoría de aceptación. El panel pide el
+monto verificado al aceptar; la nota es opcional al aceptar y obligatoria al rechazar.
+
+El flujo autoservicio queda apagado por defecto. Para activarlo, Leandro publica
+por versión las diez propuestas RESP-BOOKING-* DRAFT y se configuran los cuatro
+datos bancarios. Si falta un dato, el bot escala y no envía instrucciones incompletas.
+SELF_SERVICE_BOOKING_ENABLED apagado conserva el handoff de #34. El worker expira
+cada hora las solicitudes PAYMENT_PENDING vencidas. Ejecución manual:
+`.venv/bin/python scripts/expire_reservations.py`.
+
+Las migraciones tienen downgrade de esquema completo. 0031 limpia los cuatro
+pending_action nuevos y elimina booking_draft. 0030 rechaza un downgrade con
+reservas manuales sin conversación: vincularlas antes, sin eliminar pagos ni auditoría.
+
+Pendiente de Leandro: aprobación de las propuestas, valores bancarios y si 21:00
+es fin del servicio o última hora de inicio. BOOKING_HOURS_END configura el fin
+de ventana; el motor existente comprueba la duración completa.

@@ -4314,3 +4314,32 @@ Su aprobación implica que:
 * los casos de seguridad están incluidos;
 * el MVP cuenta con criterios objetivos de calidad;
 * la Fase 0 queda documentalmente cerrada.
+
+## B2-1 y B1b-2 — contratos de reserva de precio fijo (30/9)
+
+| Caso | Entrada / condición | Resultado esperado |
+| --- | --- | --- |
+| A-R1 | Matriz de cinco estados, 25 combinaciones | REVIEW → PENDING permitido; restantes D2 conservadas |
+| A-R2 | Aceptación humana sin reserva, parcial, dos abonos, total, conflicto DB/Calendar | NO_RESERVATION, PARTIAL, DEPOSIT, FULL o CONFLICT; dinero auditado |
+| A-R3 | Rechazo vinculado o sin reserva | REJECTED; revisión de reserva vuelve a pendiente |
+| A-R4 | Sync/release, evento existente/ausente, proveedor caído | UUID hex, contenido de plan/cliente, reconciliación, NONE en fallo, auditoría |
+| A-R5 | CRUD administrativo y roles | Monto positivo, zona obligatoria, 409 de disponibilidad, AGENT 403 schedule/sync |
+| A-R6 | Solicitud pendiente pasada, revisión pasada, repetición | Solo pendiente expira, SYSTEM, idempotente |
+| A-R7 | Adapter espía | Ninguna llamada Calendar con transacción SQL abierta |
+| A-R8 | Migración 0030 | Nullable manual, downgrade, registry/frontend sin cambios |
+| B-R1 | Flag apagado/activo, lead romántico | Handoff previo / PLAN sin decisión LLM |
+| B-R2 | me gustria agendar para el miercoles 7 de octubre | Fecha consumida; plan y luego hora |
+| B-R3 | Número, nombre con tildes/mayúsculas; dos desconocidos | Plan del catálogo / handoff en segundo fallo |
+| B-R4 | Ventana inválida, relativa, weekday contradictorio, solo fecha | UNAVAILABLE, confirmación existente, TIME |
+| B-R5 | D3 bloqueada/libre | UNAVAILABLE conserva plan / CONFIRM con 250.000 y 125.000 |
+| B-R6 | Sí/no, banco completo/incompleto | Pendiente sin bloqueo / otra fecha / handoff sin frase incompleta |
+| B-R7 | Imagen con/sin caption; nueva solicitud pendiente | REVIEW y EVIDENCE / handoff sin duplicado |
+| B-R8 | Accept/reject y plantillas DRAFT, reserva manual | Notificación específica; skip audit; sin conversación no notifica |
+| B-R9 | Cinco planes activos y variables de origen cerrado | Orden de catálogo; COP sin decimales; sin texto libre |
+| B-R10 | Diez propuestas y 0031 | Literal DRAFT; pending_action, CHECK y docs alineados |
+| B-R11 | Guion 189: catálogo → fecha → plan → hora → sí → pago → foto → admin | PAYMENT_REVIEW → RESERVED + Calendar + CONFIRMED |
+
+Los casos se ejecutan en tests/payment_settlement/ y tests/booking_conversation/.
+El guion de 19:00 usa BOOKING_HOURS_END=23:00 en tests: el plan semilla dura 180
+minutos y la ventana existente valida su final. No implica un cambio de horario
+de producción. Casos complementarios de G3 van en test_g3_*.py.

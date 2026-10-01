@@ -2698,3 +2698,24 @@ Su aprobación implica que:
 Implementación acotada de FL-015: el catálogo textual R4 se reconoce antes de IA y usa la transferencia vigente bajo R2. Casos ya humanos/deshabilitados permanecen silenciosos. Se conservan resumen existente y bandeja local; no se certifica notificación externa, atención efectiva ni todas las variantes de lenguaje del flujo funcional.
 
 [Contrato y validación R4](../remediation/r4-h05-explicit-human-2026-09-08/README.md).
+
+## BOOKING — precio fijo, B1b-2 / B2-1
+
+Flag activo y lead ROMANTIC_DINNER/PROPOSAL: intención determinista de reserva
+(o fecha explícita tras catálogo enviado) → consumir fecha/hora inicial → planes
+activos numerados → pedir fecha/hora que falte → confirmar fechas relativas o
+weekday contradictorio → ventana y D3 por llamada diferida fuera de transacción.
+
+Bloqueada → UNAVAILABLE y otra fecha conservando plan. Libre → CONFIRM con precio
+y 50 %. No → otra fecha; sí → reconsulta → PAYMENT_PENDING sin bloqueo, auditoría
+SYSTEM, limpia draft/acción y muestra instrucciones solo con banco completo.
+Comprobante válido → PAYMENT_REVIEW, EVIDENCE y pausa por handoff. ADMIN acepta
+monto: parcial → PAYMENT_PENDING/PARTIAL; suficiente + libre → RESERVED, commit,
+Calendar y CONFIRMED; conflicto → dinero registrado, revisión conservada y handoff
+para reprogramar. Rechazo → PAYMENT_PENDING/REJECTED.
+
+Un humano explícito interrumpe el flujo. Dos respuestas no interpretables o una
+solicitud duplicada escalan. Todas las frases son KnowledgeEntry APPROVED; seed
+DRAFT requiere aprobación de Leandro por versión. Notificación no renderizable:
+NOTIFICATION_SKIPPED, sin deshacer la decisión del asesor. Flag apagado conserva
+el flujo anterior con handoff y fecha solicitada registrada en Event.
