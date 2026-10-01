@@ -98,7 +98,10 @@ async def test_0027_preserves_history_and_quarantines_unproven_outputs(
             for model in [Outbox, Conversation]:
                 columns = await connection.run_sync(lambda c, table=model.__tablename__: (
                     inspect(c).get_columns(table)))
-                assert {c["name"] for c in columns} == set(model.__table__.c.keys())
+                historical_columns = set(model.__table__.c.keys())
+                if model is Conversation:
+                    historical_columns.remove("booking_draft")  # Added by 0031, after R9.
+                assert {c["name"] for c in columns} == historical_columns
                 for column in columns:
                     expected = model.__table__.c[column["name"]]
                     assert column["nullable"] == expected.nullable
@@ -112,6 +115,12 @@ async def test_0027_preserves_history_and_quarantines_unproven_outputs(
                 "SELECT automation_epoch FROM conversation",
             ))).scalars().all()
             assert len(epochs) == 1 and epochs[0] is not None
+        # Current ORM/consumer require the current schema; the 0027 historical
+        # preservation/reflection assertions above remain scoped to that revision.
+        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "head")
+        async with engine.connect() as connection:
+            columns = await connection.run_sync(lambda c: inspect(c).get_columns("conversation"))
+            assert {c["name"] for c in columns} == set(Conversation.__table__.c.keys())
         async with db() as session, session.begin():
             server_epoch = await session.scalar(text(
                 "INSERT INTO conversation (customer_id,channel,state,pending_fields,"

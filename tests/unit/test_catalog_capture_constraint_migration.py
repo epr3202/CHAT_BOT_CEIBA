@@ -23,9 +23,18 @@ def load_migration() -> ModuleType:
 def test_catalog_capture_constraint_lists_are_complete_and_reversible() -> None:
     migration = load_migration()
 
-    assert migration.PENDING_ACTIONS_AFTER == PENDING_ACTIONS
+    # 0019 remains frozen; 0031 extends its catalog with booking actions.
+    booking_path = Path("alembic/versions/20260930_0031_booking_draft.py")
+    booking_spec = importlib.util.spec_from_file_location("booking_constraint_0031", booking_path)
+    assert booking_spec is not None and booking_spec.loader is not None
+    booking = importlib.util.module_from_spec(booking_spec)
+    booking_spec.loader.exec_module(booking)
+    assert migration.PENDING_ACTIONS_AFTER == booking.BEFORE
+    assert booking.BEFORE + booking.ADDED == PENDING_ACTIONS
     assert migration.PENDING_ACTIONS_BEFORE == tuple(
-        action for action in PENDING_ACTIONS if action != "COLLECT_CATALOG_EVENT_TYPE"
+        action
+        for action in migration.PENDING_ACTIONS_AFTER
+        if action != "COLLECT_CATALOG_EVENT_TYPE"
     )
     assert migration.PENDING_ACTIONS_AFTER == (
         "NONE",

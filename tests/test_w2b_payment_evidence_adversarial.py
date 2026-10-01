@@ -1077,12 +1077,12 @@ async def test_tc_pay_016_review_transition_is_one_way_and_audited(
 
     first = await client.post(
         f"/admin/payment-evidence/{accepted.id}/accept",
-        json={"note": "Validado manualmente"},
+        json={"note": "Validado manualmente", "amount_cop": 100000},
         headers=headers,
     )
     second = await client.post(
         f"/admin/payment-evidence/{accepted.id}/accept",
-        json={"note": "Duplicado"},
+        json={"note": "Duplicado", "amount_cop": 100000},
         headers=headers,
     )
     rejection = await client.post(
@@ -1142,7 +1142,7 @@ async def test_tc_pay_017_customer_notification_tracks_seed_approval(
     headers = await login_headers(client, f"admin-notify-{template_status.lower()}")
     response = await client.post(
         f"/admin/payment-evidence/{evidence.id}/accept",
-        json={"note": "Revisión humana"},
+        json={"note": "Revisión humana", "amount_cop": 100000},
         headers=headers,
     )
     async with sessionmaker() as session:

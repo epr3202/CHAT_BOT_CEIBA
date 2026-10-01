@@ -15,7 +15,7 @@ from tests.integration.helpers import configure_test_database, ensure_test_datab
 async def test_r6_0029_only_event_plan_and_full_downgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_current_head() == "20260930_0029", "B1b-1: falta migración 0029"
+    assert scripts.get_revision("20260930_0029") is not None
     assert scripts.get_revision("20260930_0029").down_revision == "20260930_0028"
     url = configure_test_database(monkeypatch)
     await ensure_test_database_exists(url)
@@ -46,7 +46,7 @@ async def test_r6_0029_only_event_plan_and_full_downgrade(monkeypatch: pytest.Mo
             await connection.execute(text("CREATE SCHEMA public"))
         await asyncio.to_thread(command.upgrade, config, "20260930_0028")
         before = await snapshot()
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20260930_0029")
         after = await snapshot()
         assert {k: v for k, v in before.items() if k != "event"} == {
             k: v for k, v in after.items() if k != "event"
@@ -65,7 +65,7 @@ async def test_r6_0029_only_event_plan_and_full_downgrade(monkeypatch: pytest.Mo
         assert Event.__table__.c.plan_id.nullable
         await asyncio.to_thread(command.downgrade, config, "20260930_0028")
         assert await snapshot() == before
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20260930_0029")
         assert await snapshot() == after
     finally:
         await engine.dispose()

@@ -327,13 +327,18 @@ async def test_r5_evidence_reservation_fk_nullable_valid_and_invalid(client: Asy
 
 @pytest.mark.parametrize("action,status", [("accept", "ACCEPTED"), ("reject", "REJECTED")])
 async def test_r5_existing_review_without_reservation_is_unchanged(
-    client: AsyncClient, action: str, status: str,
+    client: AsyncClient,
+    action: str,
+    status: str,
 ) -> None:
     # Must be green on G2: do not depend on the new column/model being present.
     evidence = await seed_evidence()
     headers = await login_headers(client, "90000000")
-    response = await client.post(f"/admin/payment-evidence/{evidence.id}/{action}",
-                                 headers=headers, json={"note": "Revisión manual"})
+    response = await client.post(
+        f"/admin/payment-evidence/{evidence.id}/{action}",
+        headers=headers,
+        json={"note": "Revisión manual", **({"amount_cop": 50000} if action == "accept" else {})},
+    )
     assert response.status_code == 200, response.text
     async with app.state.db_sessionmaker() as session:
         saved = await session.get(PaymentEvidence, evidence.id)
@@ -341,28 +346,36 @@ async def test_r5_existing_review_without_reservation_is_unchanged(
         assert saved.review_note == "Revisión manual"
         assert saved.reviewed_by_agent_id is not None
         assert saved.reviewed_at is not None
-        audits = list(await session.scalars(select(AuditEvent).where(
-            AuditEvent.action == "PAYMENT_EVIDENCE_REVIEWED"
-        )))
+        audits = list(
+            await session.scalars(
+                select(AuditEvent).where(AuditEvent.action == "PAYMENT_EVIDENCE_REVIEWED")
+            )
+        )
         assert len(audits) == 1
-    repeated = await client.post(f"/admin/payment-evidence/{evidence.id}/{action}",
-                                 headers=headers, json={"note": "Reintento"})
+    repeated = await client.post(
+        f"/admin/payment-evidence/{evidence.id}/{action}",
+        headers=headers,
+        json={"note": "Reintento", **({"amount_cop": 50000} if action == "accept" else {})},
+    )
     assert repeated.status_code == 409
 
 
 @pytest.mark.parametrize("action", ["accept", "reject"])
-async def test_r5_review_does_not_transition_a_linked_reservation(
-    client: AsyncClient, action: str,
+async def test_r5_b2_review_returns_linked_reservation_to_pending(
+    client: AsyncClient,
+    action: str,
 ) -> None:
     row = await seed_reservation("PAYMENT_REVIEW")
     evidence = await seed_evidence(reservation_id=row.reservation_id)
-    response = await client.post(f"/admin/payment-evidence/{evidence.id}/{action}",
-                                 headers=await login_headers(client, "90000000"),
-                                 json={"note": "Revisión manual"})
+    response = await client.post(
+        f"/admin/payment-evidence/{evidence.id}/{action}",
+        headers=await login_headers(client, "90000000"),
+        json={"note": "Revisión manual", **({"amount_cop": 50000} if action == "accept" else {})},
+    )
     assert response.status_code == 200, response.text
     async with app.state.db_sessionmaker() as session:
         saved = await session.get(type(row), row.reservation_id)
-        assert saved.status == "PAYMENT_REVIEW"
-        assert saved.amount_paid_cop == 0
+        assert saved.status == "PAYMENT_PENDING"
+        assert saved.amount_paid_cop == (50000 if action == "accept" else 0)
         assert saved.calendar_status == "NONE"
-    assert await reservation_audits() == []
+    assert len(await reservation_audits()) == 1

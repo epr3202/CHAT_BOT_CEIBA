@@ -100,6 +100,9 @@ async def test_legacy_rows_upgrade_parity_recovery_and_downgrade(
         current = await snapshot(db)
         assert current == {**upgraded, "outbox": [
             {**row, **NEW_OUTBOX_COLUMNS} for row in upgraded["outbox"]]}
+        await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "head")
+        commands.append("upgrade head before the current consumer (booking_draft in 0031)")
+        assert await snapshot(db) == current
         assert await recover_stale_sending_outbox(db, T0 + timedelta(seconds=121), 120, 5, 300) == 1
         recovered = await snapshot(db)
         assert recovered["outbox"][1]["status"] == "REVIEW"
