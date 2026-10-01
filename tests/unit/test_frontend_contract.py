@@ -38,6 +38,9 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/api/admin/plans/",
         "/api/admin/reservations",
         "/api/admin/reservations/",
+        "/api/admin/reservations/availability",
+        "/api/admin/reservations/{id}/schedule",
+        "/api/admin/reservations/{id}/sync-calendar",
         "/api/webhook/simulate",
         "/health",
         "/admin/handoffs",
@@ -56,6 +59,9 @@ def test_frontend_uses_only_current_backend_surfaces() -> None:
         "/admin/plans/",
         "/admin/reservations",
         "/admin/reservations/",
+        "/admin/reservations/availability",
+        "/admin/reservations/{id}/schedule",
+        "/admin/reservations/{id}/sync-calendar",
         "/webhook",
     }
 
