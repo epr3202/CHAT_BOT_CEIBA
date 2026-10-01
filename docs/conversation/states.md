@@ -1832,7 +1832,12 @@ llamador es dueño de la transacción y del bloqueo de la fila.
 
 En **B2-1**, la aceptación exige un monto COP positivo y autoridad humana ADMIN
 (conserva el rol previo de accept/reject). La revisión bloquea la evidencia y la
-reserva, acumula el pago y audita el monto y la nota. Un abono inferior al anticipo
+reserva, escribe `payment_evidence.amount_cop` (integer nullable, migración 0032),
+acumula el pago y audita el monto y la nota. La aceptación produce exactamente
+`PAYMENT_EVIDENCE_ACCEPTED` en settlement y `PAYMENT_EVIDENCE_REVIEWED` después de
+la notificación, con result y customer_notification. El rechazo conserva
+`PAYMENT_EVIDENCE_REJECTED` y `PAYMENT_EVIDENCE_REVIEWED`; no se emite un evento
+SETTLED adicional. Un abono inferior al anticipo
 regresa de `PAYMENT_REVIEW` a `PAYMENT_PENDING`; el rechazo hace la misma transición
 sin incrementar el dinero. La evidencia revisada no se puede aceptar de nuevo.
 
@@ -1851,8 +1856,13 @@ la propia reserva/evento del cálculo D3. La cancelación ADMIN hace commit prim
 luego elimina el evento; evento ausente se tolera. Sin devolución automática.
 
 Las reservas manuales pueden tener `conversation_id=NULL` (0030). ADMIN y AGENT
-crean solicitudes por teléfono, plan y fecha con zona; solo ADMIN reprograma,
-cancela y sincroniza. El detalle incluye evidencias y montos de su auditoría.
+pueden consultar los planes activos y la disponibilidad para crearlas. AGENT no
+accede al listado/detalle de reservas ni revisa comprobantes; ADMIN conserva esas
+operaciones y la edición de planes. B2-2 presenta a AGENT solo el formulario manual.
+ADMIN y AGENT crean solicitudes por teléfono, plan y fecha con zona; solo ADMIN reprograma,
+cancela y sincroniza. El detalle incluye evidencias y sus montos persistidos,
+sin consultar audit_event. Los comprobantes históricos sin monto permanecen NULL;
+el panel los presenta como «Sin monto».
 Cada hora el worker expira únicamente `PAYMENT_PENDING` con `starts_at < now`,
 actor SYSTEM, motivo `Fecha vencida sin pago`; también se ejecuta con
 `scripts/expire_reservations.py`. PAYMENT_REVIEW no expira automáticamente.

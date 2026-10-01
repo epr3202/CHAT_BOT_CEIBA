@@ -448,8 +448,11 @@ async def list_plans(
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> list[PlanPayload]:
-    await authenticated_admin(session, authorization)
-    plans = await session.scalars(select(Plan).order_by(Plan.sort_order, Plan.code))
+    agent = await authenticated_agent(session, authorization)
+    query = select(Plan).order_by(Plan.sort_order, Plan.code)
+    if agent.role != "ADMIN":
+        query = query.where(Plan.active.is_(True))
+    plans = await session.scalars(query)
     return [PlanPayload.model_validate(plan) for plan in plans]
 
 
@@ -562,7 +565,7 @@ async def reservation_availability(
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> BookingAvailabilityPayload:
-    await authenticated_admin(session, authorization)
+    await authenticated_agent(session, authorization)
     if starts_at.utcoffset() is None:
         raise HTTPException(status_code=422, detail="La fecha debe incluir zona horaria.")
     plan = await session.get(Plan, plan_id)
