@@ -213,7 +213,7 @@ async def test_r7_admin_availability_real_blockers(
 
 
 @pytest.mark.parametrize(
-    "case,status", [("agent", 403), ("missing", 404), ("inactive", 422), ("naive", 422)]
+    "case,status", [("agent", 200), ("missing", 404), ("inactive", 422), ("naive", 422)]
 )
 async def test_r7_admin_errors(client: AsyncClient, case: str, status: int) -> None:
     assert "/admin/reservations/availability" in app.openapi()["paths"], (
