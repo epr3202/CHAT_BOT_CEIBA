@@ -1811,7 +1811,7 @@ reserva, independientes de los estados de conversación y de revisión de pagos.
 | Estado actual | PAYMENT_PENDING | PAYMENT_REVIEW | RESERVED | EXPIRED | CANCELLED |
 | --- | --- | --- | --- | --- | --- |
 | PAYMENT_PENDING | No | Sí | No | Sí | Sí |
-| PAYMENT_REVIEW | No | No | Sí | No | Sí |
+| PAYMENT_REVIEW | Sí | No | Sí | No | Sí |
 | RESERVED | No | No | No | No | Sí |
 | EXPIRED | No | No | No | No | No |
 | CANCELLED | No | No | No | No | No |
@@ -1826,18 +1826,32 @@ vacíos antes de modificar la reserva. Añade un `AuditEvent` con acción
 valores anterior/nuevo con `status` y `reservation_id`. No hace commit: el
 llamador es dueño de la transacción y del bloqueo de la fila.
 
-Las **guardas de negocio las aplica el llamador en B1b/B2**, incluyendo pago
-confirmado por un humano, importe requerido, disponibilidad y confirmación
-autorizada. Las guardas críticas descritas abajo siguen siendo obligatorias para
-los futuros flujos de negocio; G3 implementa persistencia y administración,
-sin habilitar creación de reservas desde el bot ni confirmación automática de
-pagos. Revisar un comprobante con accept/reject no cambia una reserva vinculada,
-su importe pagado ni su calendario en B1a.
+En **B2-1**, la aceptación exige un monto COP positivo y autoridad humana ADMIN
+(conserva el rol previo de accept/reject). La revisión bloquea la evidencia y la
+reserva, acumula el pago y audita el monto y la nota. Un abono inferior al anticipo
+regresa de `PAYMENT_REVIEW` a `PAYMENT_PENDING`; el rechazo hace la misma transición
+sin incrementar el dinero. La evidencia revisada no se puede aceptar de nuevo.
 
-En G3, la cancelación solo está disponible para ADMIN, requiere `note` no vacío,
-bloquea la fila y llama a `transition_reservation` con el nombre del administrador
-como actor y `note` como motivo. Una repetición devuelve HTTP 409 sin insertar una
-segunda auditoría. No ejecuta devolución ni cambios en calendarios externos.
+Cuando el acumulado alcanza el 50 %, se adquiere Calendar fuera de la transacción
+y se revalida D3 contra reservas frescas bajo un bloqueo transaccional común.
+Un conflicto conserva `PAYMENT_REVIEW` y registra el dinero recibido para que un
+asesor reprograme. Libre: `RESERVED`, tipo DEPOSIT o FULL; saldo exigible un día
+antes de `starts_at`, NULL para FULL. No hay bloqueo previo al pago.
+
+La confirmación tiene dos fases: commit de `RESERVED`, seguido de create/update
+Calendar por `reservation_id.hex` sin transacción abierta; una transacción corta
+registra identidad y `calendar_status=CONFIRMED`. El fallo deja la reserva confirmada
+con `calendar_status=NONE`, respuesta administrativa 200 y reintento ADMIN por
+`sync-calendar`. La reprogramación RESERVED actualiza por el mismo ID y excluye
+la propia reserva/evento del cálculo D3. La cancelación ADMIN hace commit primero,
+luego elimina el evento; evento ausente se tolera. Sin devolución automática.
+
+Las reservas manuales pueden tener `conversation_id=NULL` (0030). ADMIN y AGENT
+crean solicitudes por teléfono, plan y fecha con zona; solo ADMIN reprograma,
+cancela y sincroniza. El detalle incluye evidencias y montos de su auditoría.
+Cada hora el worker expira únicamente `PAYMENT_PENDING` con `starts_at < now`,
+actor SYSTEM, motivo `Fecha vencida sin pago`; también se ejecuta con
+`scripts/expire_reservations.py`. PAYMENT_REVIEW no expira automáticamente.
 
 En **B1b-1**, `create_pending_reservation` crea una solicitud `PAYMENT_PENDING`,
 copia precio y duración del plan activo y compatible con el evento, inicia
@@ -1858,15 +1872,14 @@ pendiente no modifica reservas. Recibir evidencia no incrementa el importe pagad
 **Decisión de producto B1b-1 (2026-09-30): nada se bloquea antes del pago.**
 `PAYMENT_PENDING` y `PAYMENT_REVIEW` son solicitudes, no franjas reservadas.
 Solo `RESERVED` bloquea según D3, después de que un asesor acepte comprobantes
-con acumulado de al menos 50 % en B2. No hay holds ni expiraciones programadas.
+con acumulado de al menos 50 % en B2. No hay holds; B2 expira solicitudes pendientes vencidas.
 Así se resuelve la duda de B1a sobre `scope.md` §17.4/§17.6: no se habilitan
 bloqueos temporales. La prohibición general de reserva sin pago confirmado
 continúa aplicándose a `RESERVED`, no a la fila pendiente de este contrato.
 
-B1b-1 entrega backend y un GET de verificación ADMIN; no modifica orquestador,
-plantillas, frontend ni escribe en Calendar. `SELF_SERVICE_BOOKING_ENABLED=false`
-queda reservado para B1b-2, sin uso en este slice. Accept/reject administrativo
-sigue sin confirmar la reserva ni acumular pagos; esa integración corresponde a B2.
+B1b-1 entregó backend y un GET ADMIN. B2-1 integra aceptación, acumulación y
+Calendar. B1b-2 habilita el flujo conversacional solo mediante
+`SELF_SERVICE_BOOKING_ENABLED`, apagado por defecto.
 
 La futura lectura en B1b-2 debe salir de la transacción del inbox usando
 `DeferredAgendaCall` / `AgendaResults` de `inbox_effects`: diferir la operación,

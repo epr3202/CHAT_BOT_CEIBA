@@ -2562,3 +2562,18 @@ Su aprobación implica que:
 * las excepciones son humanas;
 * el backend será responsable de validar operaciones;
 * la IA se limita a interpretar, extraer, resumir y redactar.
+
+## Decisión B2-1 de precio fijo — Emerson y Leandro, 2026-09-30
+
+La aceptación humana de un comprobante registra un monto COP positivo. Solo al
+alcanzar el anticipo del 50 % y revalidar D3 se confirma RESERVED; PAYMENT_PENDING
+y PAYMENT_REVIEW no bloquean ninguna franja. Dos planes no exclusivos pueden
+coincidir. Un conflicto conserva la revisión y el dinero registrado; requiere
+intervención humana. El rechazo o abono parcial regresa a PAYMENT_PENDING.
+
+El saldo de planes de precio fijo vence `starts_at − 1 día`, NULL si se pagó todo.
+Calendar se sincroniza tras el commit de negocio, con reintento explícito si falla.
+Los datos bancarios provienen de settings; nunca se envía una plantilla incompleta.
+El horario depende de BOOKING_HOURS_START/END (12:00–21:00 Bogotá por defecto);
+queda pendiente definir si 21:00 es fin o última hora de inicio. Se configura por
+entorno, sin cambiar el motor de ventana.
