@@ -189,6 +189,7 @@ async def intercept_staff_inbound(
     )
     for row in deferred:
         row.status, row.next_attempt_at = "PENDING", now
+        row.last_error_code, row.last_error = None, None
         staff_audit(
             session,
             "STAFF_NOTIFICATION_REQUEUED",

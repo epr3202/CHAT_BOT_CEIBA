@@ -173,6 +173,10 @@ POST/PATCH incluye la advertencia y el panel la muestra sin bloquear:
 
 > Este número tiene conversaciones como cliente. Mientras esté activo como asesor, el bot no le responderá.
 
+Una entrada nueva del asesor que reabre un aviso DEFERRED también borra
+last_error y last_error_code: un 131047 anterior no impide usar TEXT en la nueva
+ventana.
+
 ## Revisión de comprobantes y nombre de reserva
 
 Para rechazar un comprobante sin reserva, el panel separa Nota interna de Motivo
