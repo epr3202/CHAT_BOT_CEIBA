@@ -162,6 +162,17 @@ audita RESERVATION_BALANCE_OVERDUE y encola BALANCE_OVERDUE. La reserva sigue RE
 y conserva su franja; la decisión de cancelación pertenece al asesor. El pago
 completo borra balance_due_at y balance_overdue_at.
 
+## Teléfonos de destinatarios y reapertura
+
+La administración y el webhook comparten la normalización: diez dígitos sin
+prefijo se convierten a +57; números con + conservan su prefijo y se eliminan
+espacios y separadores. Después se valida E.164 y, para +57, exactamente diez
+dígitos nacionales. Los duplicados se detectan después de normalizar. El panel
+muestra el número persistido. Si ese número tiene conversaciones de cliente,
+POST/PATCH incluye la advertencia y el panel la muestra sin bloquear:
+
+> Este número tiene conversaciones como cliente. Mientras esté activo como asesor, el bot no le responderá.
+
 ## Revisión de comprobantes y nombre de reserva
 
 Para rechazar un comprobante sin reserva, el panel separa Nota interna de Motivo

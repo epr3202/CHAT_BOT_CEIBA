@@ -65,6 +65,7 @@ from app.conversation.models import Conversation, KnowledgeEntry
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
+from app.customer.phone import normalize_phone_number
 from app.event.models import EVENT_TYPES, Event
 from app.handoff.models import Handoff
 from app.lead.models import Lead
@@ -3144,8 +3145,12 @@ class NotificationRecipientCreate(BaseModel):
 
     @model_validator(mode="after")
     def normalize_phone(self) -> NotificationRecipientCreate:
-        phone = re.sub(r"[\s()-]", "", self.phone_number)
-        phone = "+" + phone.removeprefix("+")
+        try:
+            phone = normalize_phone_number(self.phone_number)
+        except ValueError as exc:
+            raise ValueError("Escribe un teléfono válido, por ejemplo 3001234567") from exc
+        if phone.startswith("+57") and len(phone) != 13:
+            raise ValueError("Número colombiano inválido: usa 10 dígitos, por ejemplo 3001234567")
         if not re.fullmatch(r"\+[1-9][0-9]{7,14}", phone):
             raise ValueError(
                 "Escribe un teléfono válido en formato E.164, por ejemplo +573000000123"
@@ -3179,6 +3184,24 @@ def notification_recipient_payload(row: NotificationRecipient) -> dict:
         "last_inbound_at": row.last_inbound_at,
         "ventana_abierta_hasta": window_until(row.last_inbound_at, get_settings()),
     }
+
+
+async def notification_recipient_with_warning(
+    session: AsyncSession, row: NotificationRecipient
+) -> dict:
+    payload = notification_recipient_payload(row)
+    has_customer_conversations = await session.scalar(
+        select(Conversation.id)
+        .join(Customer, Customer.id == Conversation.customer_id)
+        .where(Customer.phone_number == row.phone_number)
+        .limit(1)
+    )
+    if has_customer_conversations is not None:
+        payload["warning"] = (
+            "Este número tiene conversaciones como cliente. Mientras esté activo como asesor, "
+            "el bot no le responderá."
+        )
+    return payload
 
 
 @router.get("/notification-recipients")
@@ -3222,7 +3245,7 @@ async def create_notification_recipient(
         )
     )
     await session.commit()
-    return notification_recipient_payload(row)
+    return await notification_recipient_with_warning(session, row)
 
 
 @router.patch("/notification-recipients/{recipient_id}")
@@ -3255,7 +3278,7 @@ async def update_notification_recipient(
             )
         )
     await session.commit()
-    return notification_recipient_payload(row)
+    return await notification_recipient_with_warning(session, row)
 
 
 @router.post("/notification-recipients/{recipient_id}/test", status_code=201)

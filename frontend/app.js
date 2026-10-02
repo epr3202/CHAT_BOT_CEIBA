@@ -2394,8 +2394,8 @@ async function saveNotificationRecipient(event) {
   const form = event.currentTarget;
   const displayName = form.elements.display_name.value.trim();
   const phone = form.elements.phone_number.value.trim();
-  if (!displayName || displayName.length > 120 || !/^\+[1-9][0-9]{7,14}$/.test(phone)) {
-    managementFeedback("staffNotificationFeedback", "Escribe un nombre y un teléfono válido en formato E.164, por ejemplo +573000000123.", true);
+  if (!displayName || displayName.length > 120 || !phone) {
+    managementFeedback("staffNotificationFeedback", "Escribe un nombre y un teléfono, por ejemplo +57 300 123 4567.", true);
     return;
   }
   const body = { display_name: displayName };
@@ -2403,13 +2403,13 @@ async function saveNotificationRecipient(event) {
   const id = form.dataset.recipientId;
   if (!id) body.phone_number = phone;
   await managementAction($("button[type=submit]", form), form, "Guardando…", "staffNotificationFeedback", async current => {
-    await managementRequest(`/api/admin/notification-recipients${id ? `/${id}` : ""}`, {
+    const saved = await managementRequest(`/api/admin/notification-recipients${id ? `/${id}` : ""}`, {
       method: id ? "PATCH" : "POST", body: JSON.stringify(body),
     });
     if (!current()) return;
     resetRecipientForm();
     await loadStaffNotifications();
-    if (current()) managementFeedback("staffNotificationFeedback", "Destinatario guardado.");
+    if (current()) managementFeedback("staffNotificationFeedback", saved.warning || "Destinatario guardado.");
   }, "No se pudo guardar el destinatario");
 }
 

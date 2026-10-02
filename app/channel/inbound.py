@@ -28,6 +28,7 @@ from app.conversation.service import transition_conversation
 from app.conversation.services_catalog import match_requested_services
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
+from app.customer.phone import normalize_phone_number
 from app.event.event_type import normalize_event_type
 from app.handoff.models import Handoff
 from app.handoff.service import create_handoff
@@ -63,17 +64,6 @@ class PersistedInboundMessage:
     external_message_id: str
     message_type: str
     content: dict[str, Any]
-
-
-def normalize_phone_number(phone_number: str) -> str:
-    digits = "".join(character for character in phone_number if character.isdigit())
-    if not digits:
-        raise ValueError("phone_number must contain at least one digit")
-    if phone_number.strip().startswith("+"):
-        return f"+{digits}"
-    if len(digits) == 10:
-        return f"+57{digits}"
-    return f"+{digits}"
 
 
 async def process_whatsapp_webhook(
