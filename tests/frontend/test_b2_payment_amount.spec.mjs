@@ -1,6 +1,6 @@
 import { test, expect } from "playwright/test";
 
-test("B2 acceptance submits the verified integer COP amount and rejection requires a note", async ({ page }) => {
+test("B2 acceptance keeps the COP amount and unlinked rejection requires both reasons", async ({ page }) => {
   const writes = [];
   await page.addInitScript(() => sessionStorage.setItem("ceiba.sessionToken", "b2-test-session"));
   await page.route("**/api/**", route => {
@@ -34,8 +34,12 @@ test("B2 acceptance submits the verified integer COP amount and rejection requir
   expect(writes[0].body).toEqual({ amount_cop: 125000 });
   await card.getByRole("button", { name: "Rechazar", exact: true }).click();
   expect(writes).toHaveLength(1);
-  await card.locator("textarea").fill("Comprobante ilegible");
+  await card.getByLabel("Nota interna", { exact: true }).fill("Comprobante ilegible");
+  await card.getByRole("button", { name: "Rechazar", exact: true }).click();
+  expect(writes).toHaveLength(1);
+  await expect(page.locator("#paymentEvidenceFeedback")).toContainText("Escribe el motivo que verá el cliente");
+  await card.getByLabel("Motivo visible para el cliente", { exact: true }).fill("Imagen borrosa");
   await card.getByRole("button", { name: "Rechazar", exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
-  expect(writes[1].body).toEqual({ note: "Comprobante ilegible" });
+  expect(writes[1].body).toEqual({ note: "Comprobante ilegible", customer_reason: "Imagen borrosa" });
 });

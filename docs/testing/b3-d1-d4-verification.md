@@ -50,7 +50,8 @@ No se modificaron los tests G2 para ocultar fallos de implementación.
 ## G3 — verificación
 
 Se ejecutan únicamente los subsets afectados, contratos y regresiones del outbox
-de clientes. La suite completa se reserva para el único run de CI.
+de clientes. La suite completa se reserva para CI; el segundo run se autoriza
+expresamente tras el fallo de contrato descrito más adelante.
 
 - PostgreSQL 16 local desechable, bases ceiba_b3_test, ceiba_b3_regression_test,
   ceiba_b3_frontend_test y ceiba_b3_migration_test. Meta/OpenRouter con dobles.
@@ -120,9 +121,32 @@ QUALITY_STAGE=suite pytest tests/staff_notifications tests/booking_conversation 
 - Tests históricos afectados de pagos/horario se amplían en commit test propio:
   motivo visible separado, TIME en horario inválido y cierre por defecto 24:00.
   Se conservan pruebas de auditoría, idempotencia, permisos y agenda.
-- Se prepara el PR draft contra main después de un solo push. La ejecución y URL
-  del único CI se informan en el PR y en el cierre; este informe previo al push
-  no afirma un resultado remoto aún no observado.
+- Se prepara el PR draft contra main después del primer push. La excepción
+  posterior para un segundo push y CI se declara a continuación. Sus resultados
+  se informan en el PR y en el cierre, sin afirmar resultados aún no observados.
+
+## CI inicial y excepción posterior autorizada
+
+PR draft: https://github.com/epr3202/CHAT_BOT_CEIBA/pull/39.
+Primer run: https://github.com/epr3202/CHAT_BOT_CEIBA/actions/runs/37027602074,
+SHA 4a82ca9e8b9c8c6f2d237b95ca4c6aa0e0f3ffff. Ruff y migrate-cycle remotos verdes;
+la suite completa de backend sigue en curso al publicar la corrección.
+Frontend: 69 verdes y 1 fallo en test_b2_payment_amount.spec.mjs:37:
+`locator('textarea') resolved to 2 elements`. Es un contrato histórico omitido
+de la selección local, no un fallo de infraestructura.
+
+Corrección preparada: seleccionar Nota interna por etiqueta, comprobar que la
+nota sola no permite rechazar sin motivo visible, completar ese motivo y verificar
+el JSON con ambos campos. Diff del test: 7 líneas añadidas, 3 retiradas. Mantiene
+la comprobación del monto y añade la exigencia de D3. Verificación local con el
+spec corregido y los tres casos B3/D3: **4 verdes**, Ruff verde. No cambia G2.
+
+Emerson autorizó expresamente «Autorizar un push adicional y un segundo CI»
+después de revisar esta corrección y su evidencia. Posteriormente indicó
+«mandalo antes que termine el otro»: el segundo push se publica con el primer
+run todavía en curso. Se descarta relanzarlo como infraestructura, cambiar D3
+para conservar un único campo o publicar sin esa excepción a §9.
+El resultado del segundo run se informa en el PR y el cierre.
 
 ## Primeras líneas de cada fallo G2
 
