@@ -96,3 +96,19 @@ mezclaría destinatarios, políticas de pausa y permisos. La cola separada conse
 el patrón probado de claims, stale recovery, backoff y envío posterior al commit,
 con idempotencia por destinatario/evento/fuente y fallback de ventana a plantilla.
 La administración queda restringida a ADMIN. No se añade infraestructura externa.
+
+## 2026-10-02 — D6: lease mutable y pre-revisión en dos transacciones
+
+TX1 bloquea con FOR UPDATE SKIP LOCKED y registra claim_token/claimed_at en
+payment_evidence; confirma antes de leer el archivo y llamar a OpenRouter.
+El archivo conserva las validaciones de ruta, tamaño, descarga y MIME. TX2
+adquiere un bloqueo fresco, comprueba PENDING_REVIEW y el mismo token e inserta
+payment_evidence_review, ai_execution y audit_event atómicamente. Si un humano
+ya decidió o el lease cambió, solo registra PAYMENT_PREREVIEW_DISCARDED.
+Los tres historiales siguen append-only; solo el lease de la evidencia es mutable.
+
+Worker y re-revisión administrativa usan el mismo flujo. Un lease vigente devuelve
+409 con «La pre-revisión está en curso»; un lease vencido según
+OUTBOX_SENDING_TIMEOUT_SECONDS puede reclamarse. Descarga FAILED_PERMANENT y MIME
+no imagen producen SKIPPED sin proveedor. Se descarta mantener el bloqueo abierto
+durante HTTP porque impedía aceptar comprobantes mientras respondía la IA.

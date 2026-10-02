@@ -74,7 +74,14 @@ from app.notifications.staff_texts import present_start, sanitize_param, window_
 from app.orchestrator.service import enqueue_template
 from app.payment.customer_reason import CustomerRejectionReason
 from app.payment.models import PaymentEvidence, PaymentEvidenceReview
-from app.payment.review import latest_review, prereview_evidence, review_payload
+from app.payment.review import (
+    PrereviewConflict,
+    PrereviewEvidenceNotFound,
+    claim_prereview_evidence,
+    latest_review,
+    prereview_evidence,
+    review_payload,
+)
 from app.plan.models import Plan
 from app.reservation.availability import (
     BookingBlocker,
@@ -1031,24 +1038,21 @@ async def retry_payment_prereview(
     if not settings.payment_review_ai_enabled:
         raise HTTPException(409, "La pre-revisión está desactivada.")
     await session.rollback()
-    async with session.begin():
-        evidence = await session.get(PaymentEvidence, evidence_id, with_for_update=True)
-        if evidence is None:
-            raise HTTPException(404, "El comprobante no existe.")
-        if evidence.review_status != "PENDING_REVIEW":
-            raise HTTPException(409, "El comprobante ya fue revisado por un asesor.")
-        if evidence.download_status not in {"DOWNLOADED", "FAILED_PERMANENT"}:
-            raise HTTPException(409, "El comprobante aún no está disponible.")
-        review = await prereview_evidence(
-            session,
-            evidence,
-            settings=settings,
-            now=datetime.now(UTC),
-            force=True,
-            request_id=request_id,
+    now = datetime.now(UTC)
+    try:
+        claim = await claim_prereview_evidence(
+            session, settings=settings, now=now, evidence_id=evidence_id
         )
-        payload = review_payload(review)
-    return {"id": evidence_id, "review": payload}
+    except PrereviewEvidenceNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except PrereviewConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if claim is None:
+        raise HTTPException(409, "La pre-revisión está desactivada.")
+    review = await prereview_evidence(
+        session, claim, settings=settings, now=now, request_id=request_id
+    )
+    return {"id": evidence_id, "review": review_payload(review)}
 
 
 @router.get("/payment-evidence/{evidence_id}/download")
