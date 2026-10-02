@@ -16,9 +16,8 @@ def test_pending_action_literal_matches_states_catalog() -> None:
         re.DOTALL,
     )
     assert section is not None
-    documented = tuple(
-        line.strip() for line in section.group("body").splitlines() if line.strip()
-    )
+    documented = tuple(line.strip() for line in section.group("body").splitlines() if line.strip())
 
     assert get_args(PendingAction) == documented
     assert PENDING_ACTIONS == documented
+    assert "COLLECT_BOOKING_NAME" in PENDING_ACTIONS

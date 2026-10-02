@@ -156,7 +156,7 @@ async def test_g3_pending_check_matches_model_and_migration(harness: Harness) ->
     )
     migration = module_from_spec(spec)
     spec.loader.exec_module(migration)
-    assert migration.BEFORE + migration.ADDED == PENDING_ACTIONS
+    assert migration.BEFORE + migration.ADDED + ("COLLECT_BOOKING_NAME",) == PENDING_ACTIONS
     async with harness.db() as session:
         definition = await session.scalar(
             text(
@@ -198,8 +198,15 @@ async def test_g3_pending_request_appearing_during_slots_prevents_duplicate(
         event = await session.scalar(select(Event).where(Event.lead_id == lead.lead_id))
         plan = await session.get(Plan, UUID(conversation.booking_draft["plan_id"]))
         await create_pending_reservation(
-            session, lead=lead, event=event, plan=plan, conversation=None,
-            customer=customer, starts_at=START, actor="Asesor", request_id="g3.manual",
+            session,
+            lead=lead,
+            event=event,
+            plan=plan,
+            conversation=None,
+            customer=customer,
+            starts_at=START,
+            actor="Asesor",
+            request_id="g3.manual",
         )
     await harness.send("sí")
     assert (await harness.conversation()).state == "WAITING_FOR_HUMAN"

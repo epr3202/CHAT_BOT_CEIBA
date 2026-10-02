@@ -73,7 +73,7 @@ test("C-1 rechaza con motivo obligatorio y descarga el comprobante", async ({ pa
   await expect(evidence).toBeVisible();
   await evidence.getByRole("button", { name: "Rechazar", exact: true }).click();
   expect(data.calls.filter(c => c.key.endsWith("/reject"))).toHaveLength(0);
-  await evidence.getByLabel("Nota de revisión").fill("Comprobante ilegible");
+  await evidence.getByLabel("Nota interna").fill("Comprobante ilegible");
   const download = page.waitForEvent("download");
   await evidence.getByRole("button", { name: "Descargar", exact: true }).click();
   await download;
@@ -144,7 +144,7 @@ for (const action of ["availability", "create", "accept", "reject", "schedule", 
         const evidence = view.locator(".paymentEvidenceCard").filter({ hasText: "Comprobante #11" });
         await expect(evidence).toBeVisible();
         await evidence.getByLabel("Monto verificado (COP)").fill("125000");
-        await evidence.getByLabel("Nota de revisión").fill("Revisar comprobante");
+        await evidence.getByLabel("Nota interna").fill("Revisar comprobante");
         button = evidence.getByRole("button", { name: action === "accept" ? "Aceptar" : "Rechazar", exact: true });
       } else if (action === "schedule") {
         const form = view.locator("#reservationScheduleForm");
@@ -232,7 +232,7 @@ for (const action of ["availability", "create", "accept", "reject", "schedule", 
         const evidence = view.locator(".paymentEvidenceCard").filter({ hasText: "Comprobante #11" });
         await expect(evidence).toBeVisible();
         await evidence.getByLabel("Monto verificado (COP)").fill("125000");
-        await evidence.getByLabel("Nota de revisión").fill("Ilegible");
+        await evidence.getByLabel("Nota interna").fill("Ilegible");
         button = evidence.getByRole("button", { name: action === "accept" ? "Aceptar" : "Rechazar", exact: true });
       } else if (action === "schedule") {
         const form = view.locator("#reservationScheduleForm");

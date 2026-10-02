@@ -6,9 +6,7 @@ from types import ModuleType
 
 from app.conversation.pending_actions import PENDING_ACTIONS
 
-MIGRATION_PATH = Path(
-    "alembic/versions/20260819_0019_catalog_capture_pending_action_constraint.py"
-)
+MIGRATION_PATH = Path("alembic/versions/20260819_0019_catalog_capture_pending_action_constraint.py")
 
 
 def load_migration() -> ModuleType:
@@ -30,7 +28,7 @@ def test_catalog_capture_constraint_lists_are_complete_and_reversible() -> None:
     booking = importlib.util.module_from_spec(booking_spec)
     booking_spec.loader.exec_module(booking)
     assert migration.PENDING_ACTIONS_AFTER == booking.BEFORE
-    assert booking.BEFORE + booking.ADDED == PENDING_ACTIONS
+    assert booking.BEFORE + booking.ADDED + ("COLLECT_BOOKING_NAME",) == PENDING_ACTIONS
     assert migration.PENDING_ACTIONS_BEFORE == tuple(
         action
         for action in migration.PENDING_ACTIONS_AFTER

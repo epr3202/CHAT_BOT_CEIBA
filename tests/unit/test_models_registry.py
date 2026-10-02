@@ -27,12 +27,14 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
         "lead",
         "message",
         "message_provider_status",
+        "notification_recipient",
         "outbox",
         "payment_evidence",
         "payment_evidence_review",
         "plan",
         "quote_request",
         "reservation",
+        "staff_outbox",
         "webhook_event",
     }
 

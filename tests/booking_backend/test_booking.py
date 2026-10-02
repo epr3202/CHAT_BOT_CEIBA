@@ -129,7 +129,8 @@ def test_settings_defaults() -> None:
         "self_service_booking_enabled": False,
         "booking_exclusivity_keyword": "exclusividad",
         "booking_hours_start": "12:00",
-        "booking_hours_end": "21:00",
+        "booking_hours_end": "24:00",
+        "booking_latest_start": "21:00",
         "booking_min_lead_days": 1,
         "booking_deposit_percent": 50,
     }

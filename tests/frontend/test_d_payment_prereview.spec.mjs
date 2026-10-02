@@ -32,7 +32,7 @@ for (const [code, note] of [["ACCOUNT", "Cuenta destino no coincide"], ["REFEREN
       checks: [{ code, result: "FAIL", detail: note }] };
     await page.locator('[data-view="paymentEvidence"]').click();
     const card = page.locator("#paymentEvidenceList .paymentEvidenceCard");
-    await expect(card.getByLabel("Nota de revisión")).toHaveValue(note);
+    await expect(card.getByLabel("Nota interna")).toHaveValue(note);
     expect(data.calls.filter(c => c.key.endsWith("/reject"))).toHaveLength(0);
     await card.getByRole("button", { name: "Rechazar", exact: true }).click();
     await expect.poll(() => data.calls.filter(c => c.key.endsWith("/reject")).length).toBe(1);
@@ -54,7 +54,7 @@ for (const scope of ["list", "reservation"]) {
     const card = page.locator(scope === "list" ? "#paymentEvidenceList" : "#reservationEvidences")
       .locator(".paymentEvidenceCard").first();
     await card.getByLabel("Monto verificado (COP)").fill("50000");
-    await card.getByLabel("Nota de revisión").fill("Verificación manual");
+    await card.getByLabel("Nota interna").fill("Verificación manual");
     await card.getByRole("button", { name: "Solicitar pre-revisión", exact: true }).click();
     await expect(card.getByRole("button", { name: "Leyendo comprobante…", exact: true })).toBeDisabled();
     await expect(card.getByLabel("Monto verificado (COP)")).toBeDisabled();
@@ -62,7 +62,7 @@ for (const scope of ["list", "reservation"]) {
     const feedback = page.locator(scope === "list" ? "#paymentEvidenceFeedback" : "#reservationDetailFeedback");
     await expect(feedback).toContainText("No se pudo completar la pre-revisión: La lectura no está disponible.");
     await expect(card.getByLabel("Monto verificado (COP)")).toHaveValue("50000");
-    await expect(card.getByLabel("Nota de revisión")).toHaveValue("Verificación manual");
+    await expect(card.getByLabel("Nota interna")).toHaveValue("Verificación manual");
     await expect(card.getByRole("button", { name: "Solicitar pre-revisión", exact: true })).toBeEnabled();
   });
 }

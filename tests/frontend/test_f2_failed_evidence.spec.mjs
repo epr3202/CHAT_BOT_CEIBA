@@ -11,7 +11,7 @@ for (const scope of ["list", "reservation"]) {
       .locator(".paymentEvidenceCard").first();
     await expect(card.getByRole("button", { name: "Aceptar", exact: true })).toBeDisabled();
     await expect(card).toContainText("No se pudo descargar el comprobante");
-    await expect(card.getByLabel("Nota de revisión")).toHaveValue(
+    await expect(card.getByLabel("Nota interna")).toHaveValue(
       "No se pudo descargar el comprobante. Envía una nueva imagen.");
     expect(data.calls.filter(c => c.key.endsWith("/reject"))).toHaveLength(0);
     await card.getByRole("button", { name: "Rechazar", exact: true }).click();
@@ -33,7 +33,7 @@ test("F2 failed rejection keeps acceptance disabled and preserves the note", asy
   await expect(page.locator("#paymentEvidenceFeedback")).toContainText("No se pudo guardar la revisión.");
   await expect(card.getByRole("button", { name: "Aceptar", exact: true })).toBeDisabled();
   await expect(card.getByRole("button", { name: "Rechazar", exact: true })).toBeEnabled();
-  await expect(card.getByLabel("Nota de revisión")).toHaveValue(
+  await expect(card.getByLabel("Nota interna")).toHaveValue(
     "No se pudo descargar el comprobante. Envía una nueva imagen.");
 });
 
