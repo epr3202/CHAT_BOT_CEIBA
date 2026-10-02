@@ -28,3 +28,19 @@ def test_reserved_receipt_amount_compares_balance_instead_of_already_paid_deposi
     )
     assert next(check for check in checks if check.code == "AMOUNT").result == expected
     assert proposed_amount == amount
+
+
+def test_reserved_sufficient_amount_describes_the_remaining_balance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checks, _, _ = evaluate_receipt(
+        extraction(amount_cop=200000),
+        reservation=Reservation(
+            status="RESERVED", price_cop=400000, amount_paid_cop=200000, created_at=NOW
+        ),
+        settings=configured(monkeypatch),
+        previous_references=set(),
+        now=NOW,
+    )
+    detail = next(check for check in checks if check.code == "AMOUNT").detail.lower()
+    assert "saldo" in detail and "anticipo" not in detail
