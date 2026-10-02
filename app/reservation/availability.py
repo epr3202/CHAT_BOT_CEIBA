@@ -99,11 +99,21 @@ def validate_booking_window(
     if ends_at <= starts_at:
         return BookingWindow(False, "INVALID_RANGE")
     start, end = starts_at.astimezone(BOGOTA), ends_at.astimezone(BOGOTA)
-    if start.date() != end.date():
-        return BookingWindow(False, "CROSSES_MIDNIGHT")
     if start.time() < time.fromisoformat(
         settings.booking_hours_start
-    ) or end.time() > time.fromisoformat(settings.booking_hours_end):
+    ) or start.time() > time.fromisoformat(settings.booking_latest_start):
+        return BookingWindow(False, "OUTSIDE_HOURS")
+    midnight = datetime.combine(start.date() + timedelta(days=1), time(), tzinfo=BOGOTA)
+    allowed_end = (
+        midnight
+        if settings.booking_hours_end == "24:00"
+        else datetime.combine(
+            start.date(), time.fromisoformat(settings.booking_hours_end), tzinfo=BOGOTA
+        )
+    )
+    if end > midnight:
+        return BookingWindow(False, "CROSSES_MIDNIGHT")
+    if end > allowed_end:
         return BookingWindow(False, "OUTSIDE_HOURS")
     today = today if today is not None else datetime.now(BOGOTA).date()
     if start.date() < today + timedelta(days=settings.booking_min_lead_days):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -163,13 +164,57 @@ async def ask_plan(
     await send(session, settings, sm, turn, "PLAN", {"plan_options": plans})
 
 
-def consume_date_time(draft: dict, message: str, today: date) -> bool:
+def resolve_booking_clock(
+    message: str, *, only_time_expected: bool, hours_start: str, latest_start: str
+) -> time | None:
+    # Only booking accepts a bare number; visit interpretation stays unchanged.
+    clock = parse_visit_time_text(message, require_explicit=not only_time_expected)
+    if clock is None:
+        return None
+    marker = re.search(r"\b(?:[ap]\.?\s*m\.?|mañana|manana|tarde|noche)\b", message.casefold())
+    if marker or not 1 <= clock.hour <= 11:
+        return clock
+    start, latest = time.fromisoformat(hours_start), time.fromisoformat(latest_start)
+    afternoon = clock.replace(hour=clock.hour + 12)
+    if start <= afternoon <= latest and not start <= clock <= latest:
+        return afternoon
+    return clock
+
+
+def extract_booking_name(message: str) -> str | None:
+    value = message.strip().strip("¡!¿?.,;:")
+    value = re.sub(
+        r"^(?:hola|buenos días|buenas tardes|buenas noches|buen día|buen dia|buenas)"
+        r"(?:[\s!¡.,:;]+|$)",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"^(?:me llamo|mi nombre es|soy|habla|con)(?:\s+|$)", "", value, flags=re.IGNORECASE
+    )
+    value = " ".join(value.strip("¡!¿?.,;: ").split())
+    if not 2 <= len(value) <= 60 or not 1 <= len(value.split()) <= 5:
+        return None
+    if not any(c.isalpha() for c in value) or any(not (c.isalpha() or c in " '-") for c in value):
+        return None
+    return value.title()
+
+
+def consume_date_time(
+    draft: dict, message: str, today: date, *, settings: Settings, only_time_expected: bool = False
+) -> bool:
     decision = resolve_visit_date_text(message, today=today, require_absolute_confirmation=True)
     recognized = decision.resolved_date is not None
     if recognized:
         draft["date"] = decision.resolved_date.isoformat()
         draft["date_confirmation"] = decision.needs_confirmation
-    clock = parse_visit_time_text(message, require_explicit=True)
+    clock = resolve_booking_clock(
+        message,
+        only_time_expected=only_time_expected,
+        hours_start=settings.booking_hours_start,
+        latest_start=settings.booking_latest_start,
+    )
     if clock is not None:
         draft["time"] = clock.strftime("%H:%M")
     return recognized or clock is not None
@@ -217,7 +262,9 @@ async def handle_booking_start(
             reason="Reserva autoservicio de precio fijo",
         )
     draft = {}
-    consume_date_time(draft, turn.message_text, core.current_bogota_datetime().date())
+    consume_date_time(
+        draft, turn.message_text, core.current_bogota_datetime().date(), settings=settings
+    )
     turn.conversation.booking_draft = draft
     turn.conversation.failed_understanding_count = 0
     turn.conversation.pending_fields = []
@@ -307,7 +354,10 @@ async def continue_slots(
         starts_at, ends_at, settings, today=core.current_bogota_datetime().date()
     )
     if not window.ok:
-        await unavailable(session, settings, sm, turn)
+        if window.reason in {"OUTSIDE_HOURS", "CROSSES_MIDNIGHT"}:
+            await ask_booking_time(session, settings, sm, turn)
+            return
+        await ask_booking_datetime(session, settings, sm, turn)
         return
     try:
         availability = await defer_agenda_service(
@@ -338,6 +388,19 @@ async def continue_slots(
         return
     draft["price_cop"], draft["duration_minutes"] = plan.price_cop, plan.duration_minutes
     conversation.booking_draft = draft
+    if turn.customer.full_name is None:
+        conversation.pending_action = "COLLECT_BOOKING_NAME"
+        await core.enqueue_template(
+            session,
+            sm,
+            conversation,
+            turn.customer,
+            turn.inbound_message,
+            "RESP-CUSTOMER-001",
+            {},
+            strict=True,
+        )
+        return
     conversation.pending_action = "CONFIRM_BOOKING"
     await send(
         session,
@@ -361,12 +424,34 @@ async def unavailable(
     sm: Any,
     turn: OrchestrationInput,
 ) -> None:
+    await ask_booking_datetime(session, settings, sm, turn, response_kind="UNAVAILABLE")
+
+
+async def ask_booking_datetime(
+    session: AsyncSession,
+    settings: Settings,
+    sm: Any,
+    turn: OrchestrationInput,
+    *,
+    response_kind: str = "DATETIME",
+) -> None:
     draft = dict(turn.conversation.booking_draft or {})
     for field in ("date", "time", "date_confirmation"):
         draft.pop(field, None)
     turn.conversation.booking_draft = draft
     turn.conversation.pending_action = "SELECT_BOOKING_DATETIME"
-    await send(session, settings, sm, turn, "UNAVAILABLE")
+    await send(session, settings, sm, turn, response_kind)
+
+
+async def ask_booking_time(
+    session: AsyncSession, settings: Settings, sm: Any, turn: OrchestrationInput
+) -> None:
+    draft = dict(turn.conversation.booking_draft or {})
+    draft.pop("time", None)
+    turn.conversation.booking_draft = draft
+    turn.conversation.pending_action = "SELECT_BOOKING_TIME"
+    turn.conversation.failed_understanding_count = 0
+    await send(session, settings, sm, turn, "TIME")
 
 
 async def not_understood(
@@ -433,7 +518,43 @@ async def handle_booking_step(
             await ask_plan(session, settings, sm, turn)
             return
         normalized = normalize_confirmation_text(turn.message_text)
-        if action == "CONFIRM_BOOKING":
+        if action == "COLLECT_BOOKING_NAME":
+            name = extract_booking_name(turn.message_text)
+            if name is None:
+                conversation.failed_understanding_count += 1
+                if conversation.failed_understanding_count >= 2:
+                    await handoff(
+                        session,
+                        settings,
+                        sm,
+                        turn,
+                        "Nombre no reconocido en reserva",
+                        reason="LOW_CONFIDENCE",
+                    )
+                else:
+                    await core.enqueue_template(
+                        session,
+                        sm,
+                        conversation,
+                        turn.customer,
+                        turn.inbound_message,
+                        "RESP-CUSTOMER-003",
+                        {},
+                        strict=True,
+                    )
+                return
+            old = {"full_name": turn.customer.full_name}
+            turn.customer.full_name = name
+            core.audit_domain_change(
+                session,
+                "CUSTOMER_NAME_CAPTURED",
+                "customer",
+                old,
+                {"customer_id": turn.customer.id, "full_name": name},
+                "Nombre capturado en flujo de reserva",
+                turn.request_id,
+            )
+        elif action == "CONFIRM_BOOKING":
             if normalized in DENIALS:
                 draft = {"plan_id": str(plan.plan_id)}
             elif normalized in AFFIRMATIONS:
@@ -470,7 +591,10 @@ async def handle_booking_step(
                     today=core.current_bogota_datetime().date(),
                 )
                 if not window.ok:
-                    await unavailable(session, settings, sm, turn)
+                    if window.reason in {"OUTSIDE_HOURS", "CROSSES_MIDNIGHT"}:
+                        await ask_booking_time(session, settings, sm, turn)
+                        return
+                    await ask_booking_datetime(session, settings, sm, turn)
                     return
                 try:
                     context = await defer_agenda_service(
@@ -548,7 +672,13 @@ async def handle_booking_step(
             draft["date_confirmation"] = False
         elif draft.get("date_confirmation") and normalized in DENIALS:
             draft = {"plan_id": str(plan.plan_id)}
-        elif not consume_date_time(draft, turn.message_text, core.current_bogota_datetime().date()):
+        elif not consume_date_time(
+            draft,
+            turn.message_text,
+            core.current_bogota_datetime().date(),
+            settings=settings,
+            only_time_expected=action == "SELECT_BOOKING_TIME",
+        ):
             await not_understood(session, settings, sm, turn, plan)
             return
     conversation.failed_understanding_count = 0

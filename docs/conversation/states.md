@@ -1383,6 +1383,7 @@ SELECT_BOOKING_PLAN
 SELECT_BOOKING_DATETIME
 SELECT_BOOKING_TIME
 CONFIRM_BOOKING
+COLLECT_BOOKING_NAME
 ```
 
 ## 20.1 `COLLECT_CATALOG_EVENT_TYPE`
@@ -2874,11 +2875,22 @@ registrar la solicitud. Los estados de pago/reserva siguen perteneciendo a sus
 entidades, no a conversation.state.
 
 Secuencia de pending_action: SELECT_BOOKING_PLAN → SELECT_BOOKING_DATETIME →
-SELECT_BOOKING_TIME si falta hora → CONFIRM_BOOKING. El borrador consume fecha/hora
+SELECT_BOOKING_TIME si falta hora → COLLECT_BOOKING_NAME (solo si customer.full_name
+es NULL) → CONFIRM_BOOKING. El borrador consume fecha/hora
 del mensaje inicial antes de pedir plan. Números o nombres normalizados seleccionan
 un plan activo del event_type, orden sort_order/code; no se usa texto del cliente
 como variable. Fechas relativas o con weekday contradictorio requieren confirmación
 RESP-EVENT-DATA-003 dentro del paso DATETIME. La ventana usa ZoneInfo Bogotá.
+
+COLLECT_BOOKING_NAME usa RESP-CUSTOMER-001 APPROVED y extracción determinista del
+texto del mensaje: prefijos/saludos se retiran; se admiten 2–60 caracteres y 1–5
+palabras con letras, espacios, apóstrofo o guion. Se capitaliza cada palabra.
+Nombre válido actualiza Customer.full_name, audita CUSTOMER_NAME_CAPTURED con
+motivo «Nombre capturado en flujo de reserva» y continúa a CONFIRM_BOOKING con
+RESP-BOOKING-CONFIRM-001. El nombre no se repite al cliente y no se envía
+RESP-CUSTOMER-002. Inválido usa RESP-CUSTOMER-003 APPROVED y mantiene el paso;
+el segundo inválido consecutivo escala y pausa con «Nombre no reconocido en
+reserva». Un nombre existente omite la captura. La IA no participa en este paso.
 
 La llamada diferida booking_availability carga y separa Plan en una sesión propia,
 lee D3 y llama a Calendar sin transacción; AgendaResults reproduce solo el valor.

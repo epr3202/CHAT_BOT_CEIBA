@@ -31,6 +31,7 @@ PendingAction = Literal[
     "SELECT_BOOKING_DATETIME",
     "SELECT_BOOKING_TIME",
     "CONFIRM_BOOKING",
+    "COLLECT_BOOKING_NAME",
 ]
 
 PENDING_ACTIONS: tuple[str, ...] = (
@@ -62,6 +63,7 @@ PENDING_ACTIONS: tuple[str, ...] = (
     "SELECT_BOOKING_DATETIME",
     "SELECT_BOOKING_TIME",
     "CONFIRM_BOOKING",
+    "COLLECT_BOOKING_NAME",
 )
 
 

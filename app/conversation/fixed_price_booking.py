@@ -18,6 +18,7 @@ BOOKING_ACTIONS = frozenset(
         "SELECT_BOOKING_DATETIME",
         "SELECT_BOOKING_TIME",
         "CONFIRM_BOOKING",
+        "COLLECT_BOOKING_NAME",
     }
 )
 BOOKING_EXPRESSIONS = frozenset(
