@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import AsyncIterator
+from datetime import date
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config.settings import Settings
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.knowledge import (
     KnowledgeRenderError,
@@ -14,6 +16,8 @@ from app.conversation.knowledge import (
     render_response,
 )
 from app.conversation.models import KnowledgeEntry
+from app.payment.customer_reason import CustomerRejectionReason
+from app.plan.models import Plan
 from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries
 from tests.integration.helpers import reset_test_database
@@ -143,12 +147,29 @@ async def test_approved_templates_render_without_internal_enums_or_iso_dates(
 ) -> None:
     entries = list(iter_seed_entries())
     await load_knowledge_entries(sessionmaker_fixture, entries)
+    plan = Plan(code="TEST_PLAN", name="Ritual del Corazón", active=True, sort_order=1)
+    bank_settings = Settings(
+        ENVIRONMENT="testing",
+        BOOKING_BANK_NAME="Banco de prueba",
+        BOOKING_ACCOUNT_TYPE="Ahorros",
+        BOOKING_ACCOUNT_NUMBER="0000000062",
+        BOOKING_ACCOUNT_HOLDER="Titular de prueba",
+        _env_file=None,
+    )
     safe_values = {
+        "account_holder": bank_settings,
+        "account_number": bank_settings,
+        "account_type": bank_settings,
         "adult_guest_count": "40",
         "advisor_name": "Natalia",
         "appointment_options": "08:00, 09:00 y 11:00",
+        "balance_due_date": date(2026, 9, 12),
+        "bank_name": bank_settings,
+        "booking_date": date(2026, 9, 13),
+        "booking_time": "19:00",
         "child_guest_count": "5",
         "customer_name": "Natalia",
+        "deposit_amount": 200000,
         "email": "natalia@example.com",
         "event_date": "13 de septiembre de 2026",
         "event_month": "septiembre de 2026",
@@ -156,13 +177,20 @@ async def test_approved_templates_render_without_internal_enums_or_iso_dates(
         "guest_count": "45",
         "guest_count_range": "entre 40 y 50",
         "map_url": "https://example.com/mapa",
+        "missing_amount": 100000,
         "missing_field": "la fecha del evento",
         "new_visit_date": "18 de agosto de 2026",
         "new_visit_time": "08:00",
         "pending_topic": "los servicios",
+        "plan_name": plan,
+        "plan_options": [plan],
+        "rejection_reason_customer_safe": CustomerRejectionReason(
+            "El comprobante no permite validar la transferencia"
+        ),
         "requested_services_summary": "el espacio",
         "resolved_date": "13 de septiembre de 2026",
         "service_name": "gastronomía",
+        "total_amount": 400000,
         "total_guest_count": "45",
         "visit_attendee_count": "2",
         "visit_date": "18 de agosto de 2026",
@@ -174,6 +202,7 @@ async def test_approved_templates_render_without_internal_enums_or_iso_dates(
     for entry in entries:
         if entry.status != "APPROVED":
             continue
+        assert set(entry.allowed_variables) <= safe_values.keys(), entry.code
         variables = {name: safe_values[name] for name in entry.allowed_variables}
         rendered = await render_response(sessionmaker_fixture, entry.code, variables)
 
