@@ -1930,8 +1930,10 @@ del servicio de B1a; la administración B1a cancela directamente según D2.
 ## 27.1.1 B2-3 — propuestas de lectura de comprobantes
 
 La pre-revisión no añade estados a la conversación ni transiciones de reserva.
-La reserva permanece PAYMENT_REVIEW y el comprobante PENDING_REVIEW hasta el
-clic humano en aceptar o rechazar. COMPLETED, FAILED y SKIPPED son estados del
+La solicitud permanece PAYMENT_REVIEW durante la revisión de su anticipo; una
+reserva confirmada con evidencia de saldo permanece RESERVED. El comprobante
+sigue PENDING_REVIEW hasta el clic humano en aceptar o rechazar. COMPLETED, FAILED
+y SKIPPED son estados del
 intento de extracción, no estados de conversación ni confirmaciones de pago.
 ACCEPT, REVIEW y REJECT son sugerencias privadas para el asesor.
 
@@ -1939,6 +1941,14 @@ PAYMENT_REVIEW_AI_ENABLED=false conserva el flujo manual. El worker procesa
 imágenes DOWNLOADED con máximo dos intentos automáticos; un COMPLETED se
 deduplica por evidence_id bajo bloqueo de fila. Reintentar por ADMIN inserta un
 nuevo intento sin editar el anterior. Descarga FAILED_PERMANENT o PDF → SKIPPED.
+
+D6 reclama un lease mutable en payment_evidence mediante TX1 con FOR UPDATE
+SKIP LOCKED y confirma antes de leer el archivo y llamar al proveedor. TX2 bloquea
+de nuevo, comprueba PENDING_REVIEW y el token, calcula checks y añade review,
+ai_execution y audit atómicamente. Una decisión humana concurrente descarta el
+resultado y audita PAYMENT_PREREVIEW_DISCARDED, sin insertar review. Worker y
+ADMIN comparten el flujo; un lease vigente devuelve 409 y uno vencido puede
+reclamarse según OUTBOX_SENDING_TIMEOUT_SECONDS. El historial sigue append-only.
 
 Listado y detalle de comprobantes y detalle de reserva muestran la última
 pre-revisión, con iniciales del remitente, campos, checks y monto sugerido.

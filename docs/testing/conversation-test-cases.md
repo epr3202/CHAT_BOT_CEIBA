@@ -4334,15 +4334,40 @@ Su aprobación implica que:
 | B-R5 | D3 bloqueada/libre | UNAVAILABLE conserva plan / CONFIRM con 250.000 y 125.000 |
 | B-R6 | Sí/no, banco completo/incompleto | Pendiente sin bloqueo / otra fecha / handoff sin frase incompleta |
 | B-R7 | Imagen con/sin caption; nueva solicitud pendiente | REVIEW y EVIDENCE / handoff sin duplicado |
-| B-R8 | Accept/reject y plantillas DRAFT, reserva manual | Notificación específica; skip audit; sin conversación no notifica |
+| B-R8 | Accept/reject y plantillas DRAFT, reserva manual | Notificación específica en la conversación válida de la evidencia, incluso si la reserva es manual; DRAFT produce skip audit |
 | B-R9 | Cinco planes activos y variables de origen cerrado | Orden de catálogo; COP sin decimales; sin texto libre |
-| B-R10 | Diez propuestas y 0031 | Literal DRAFT; pending_action, CHECK y docs alineados |
+| B-R10 | Diez respuestas BOOKING aprobadas y 0031 | Literales APPROVED desde 2026-10-02; pending_action, CHECK y docs alineados |
 | B-R11 | Guion 189: catálogo → fecha → plan → hora → sí → pago → foto → admin | PAYMENT_REVIEW → RESERVED + Calendar + CONFIRMED |
 
 Los casos se ejecutan en tests/payment_settlement/ y tests/booking_conversation/.
 El guion de 19:00 usa BOOKING_HOURS_END=23:00 en tests: el plan semilla dura 180
 minutos y la ventana existente valida su final. No implica un cambio de horario
 de producción. Casos complementarios de G3 van en test_g3_*.py.
+
+## D6/D5/B4 y F1–F5 — contratos de 2026-10-02
+
+La excepción R9 transmitida por Emerson permite únicamente el acuse de una
+imagen vinculada durante el único handoff PAYMENT_REVIEW PENDING. El primer
+comprobante conserva HANDOFF_NOTICE. Los acuses posteriores prueban su autoridad
+con PAYMENT_EVIDENCE_ACK y se vuelven a admitir antes de llamar a Meta.
+
+| Área | Casos y resultado observable |
+| --- | --- |
+| D6 P1–P4 | Worker y ADMIN extraen sin transacción ni bloqueo de evidencia; aceptación humana concurrente descarta IA; lease vencido se reclama y lease vigente devuelve 409. P5 mantiene los casos funcionales de pre-revisión anteriores. |
+| D5 T1–T3 | Dos abonos de $100.000 completan el anticipo de $200.000 de una reserva de $400.000; múltiples imágenes se vinculan; saldo en conversación nueva notifica parcial y completo sin modificar Calendar. |
+| D5 T4–T6 | TAKEN no recibe acuse y audita; reservas pasadas/canceladas no reciben evidencia; reentrega no duplica evidencia, respuesta ni aviso. |
+| D5 T7–T10 | Segunda imagen con PENDING usa contexto propio; toma humana antes del envío suprime sin HTTP; texto durante pausa mantiene silencio; reentrega de segunda imagen deja un acuse. |
+| B4 R1–R3 | EARLY/DUE a las 10:00 Bogotá y cinco parámetros exactos; flag apagado o saldo pagado omiten; pago tras encolado vence sin HTTP; reserva tardía omite EARLY una sola vez y permite DUE. |
+| B4 R4–R7 | Vencimiento marca y avisa sin cancelar ni duplicar; nombre de plantilla vacío audita; 132001 falla permanente y 5xx reintenta; callbacks nulos/deduplicados; panel muestra insignias, filtros e historia en español. |
+| F1/F5 | Teléfono local y separadores se normalizan a +57; Colombia inválida/E.164 inválido dan 422 en español, duplicado 409; número activo intercepta webhook; POST/PATCH muestran advertencia si tiene conversaciones de cliente. |
+| F2/F3/F4 | Reapertura borra 131047 y usa TEXT; mañana suelto es fecha, marcador de mañana es 07:00 y fuera de ventana; rechazo sin motivo visible difiere y audita sin outbox. |
+| Alineación | Seed APPROVED con literales aprobados, FILE-002 igual PAYMENT-002 y nuevos BALANCE; repetir seed conserva filas existentes. |
+
+Los contratos adversariales G2 se congelan en un commit test: con evidencia roja.
+Las extensiones posteriores de tablas/head, permisos, seed, admisión, reservas
+manuales, reprogramación y concurrencia se declaran en commits test: separados.
+La única corrección de mecanismo de G2 fija los dos relojes del caso F2 y conserva
+sus aserciones; su manifiesto original y declaración quedan en el informe del PR.
 
 ## Revisión F1–F3 de PR #38 (2026-10-01)
 
