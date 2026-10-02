@@ -60,6 +60,7 @@ async def enqueue_proactive_catalogs_for_event_type(
     lead_id: UUID,
     event_type: str | None,
     request_id: str | None,
+    *, after_outbox_id: int | None = None,
 ) -> int:
     if event_type is None:
         return 0
@@ -74,6 +75,7 @@ async def enqueue_proactive_catalogs_for_event_type(
         "PROACTIVE",
         ("PROACTIVE",),
         request_id,
+        after_outbox_id=after_outbox_id,
     )
 
 
@@ -257,6 +259,7 @@ async def enqueue_catalogs_for_event_type(
     trigger: str,
     modes: tuple[str, ...],
     request_id: str | None,
+    *, after_outbox_id: int | None = None,
 ) -> int:
     assets = await active_assets_for_event_type(session, event_type, modes=modes)
     if not assets:
@@ -311,7 +314,10 @@ async def enqueue_catalogs_for_event_type(
         try:
             async with session.begin_nested():
                 outbox = Outbox(
-                    delivery_context=automatic_context(conversation, "CATALOG"),
+                    delivery_context={
+                        **automatic_context(conversation, "CATALOG"),
+                        **({"after_outbox_id": after_outbox_id} if after_outbox_id else {}),
+                    },
                     conversation_id=conversation.id,
                     message_id=inbound_message.id,
                     channel=Channel.WHATSAPP,

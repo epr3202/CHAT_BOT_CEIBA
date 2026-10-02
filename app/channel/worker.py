@@ -10,8 +10,9 @@ from uuid import UUID, uuid4
 
 import httpx
 import structlog
-from sqlalchemy import and_, or_, select
+from sqlalchemy import BigInteger, and_, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 import app.models_registry  # noqa: F401
 from app.audit.models import AuditEvent
@@ -61,26 +62,82 @@ def backoff_seconds(attempts: int, max_backoff_seconds: int) -> int:
     return min(2**attempts, max_backoff_seconds)
 
 
+async def _dependency_blocks_claim(
+    session: AsyncSession, row: Outbox, now: datetime,
+) -> bool:
+    """Retire blocked PENDING output under its row lock without admitting provider I/O."""
+    context = row.delivery_context
+    if not isinstance(context, dict) or "after_outbox_id" not in context:
+        return False
+    predecessor_id = context["after_outbox_id"]
+    if (row.message_kind != "DOCUMENT" or type(predecessor_id) is not int
+            or not 0 < predecessor_id <= 2147483647):
+        stop_delivery(row, "REVIEW", "PRECEDING_TEXT_UNPROVEN", now)
+        return True
+    predecessor = await session.get(Outbox, predecessor_id)
+    if (predecessor is None or predecessor.message_kind != "TEXT"
+            or predecessor.conversation_id != row.conversation_id
+            or predecessor.message_id != row.message_id):
+        stop_delivery(row, "REVIEW", "PRECEDING_TEXT_UNPROVEN", now)
+        return True
+    if predecessor.status == "SENT":
+        return False
+    if predecessor.status in {"PENDING", "SENDING"}:
+        return True
+    if predecessor.status == "SUPPRESSED":
+        stop_delivery(row, "SUPPRESSED",
+                      predecessor.delivery_reason or "PRECEDING_TEXT_SUPPRESSED", now)
+    elif predecessor.status == "FAILED":
+        stop_delivery(row, "SUPPRESSED", "PRECEDING_TEXT_FAILED", now)
+    else:
+        stop_delivery(row, "REVIEW", "PRECEDING_TEXT_REVIEW", now)
+    return True
+
+
 async def claim_due_outbox_batch(
     sessionmaker: async_sessionmaker[AsyncSession],
     claimed_at: datetime,
     batch_size: int,
 ) -> Sequence[OutboxClaim]:
+    predecessor = aliased(Outbox)
+    dependency = Outbox.delivery_context["after_outbox_id"]
+    dependency_text = dependency.as_string()
+    # CASE avoids casting arbitrary JSON. A bounded bigint preserves the predecessor PK lookup.
+    dependency_id = case((and_(
+        func.jsonb_typeof(dependency) == "number",
+        dependency_text.op("~")(r"^[1-9][0-9]{0,9}$"),
+    ), cast(dependency_text, BigInteger)), else_=None)
+    preceding_text = select(predecessor.id).where(
+        predecessor.id == dependency_id,
+        predecessor.message_id == Outbox.message_id,
+        predecessor.conversation_id == Outbox.conversation_id,
+        predecessor.message_kind == "TEXT",
+    )
+    text_resolved = preceding_text.where(
+        predecessor.status.not_in(("PENDING", "SENDING")),
+    ).exists()
+    text_blocked = preceding_text.where(
+        predecessor.status.not_in(("PENDING", "SENDING", "SENT")),
+    ).exists()
     async with sessionmaker() as session:
         async with session.begin():
             result = await session.scalars(
                 select(Outbox)
                 .where(
                     Outbox.status == "PENDING",
-                    or_(Outbox.next_attempt_at.is_(None), Outbox.next_attempt_at <= claimed_at),
+                    or_(Outbox.next_attempt_at.is_(None),
+                        Outbox.next_attempt_at <= claimed_at, text_blocked),
+                    or_(dependency_id.is_(None), text_resolved, ~preceding_text.exists()),
                 )
-                .order_by(Outbox.created_at)
+                .order_by(Outbox.created_at, Outbox.id)
                 .limit(batch_size)
                 .with_for_update(skip_locked=True)
             )
             outbox_items = list(result.all())
             claims = []
             for outbox_item in outbox_items:
+                if await _dependency_blocks_claim(session, outbox_item, claimed_at):
+                    continue
                 outbox_item.status = "SENDING"
                 outbox_item.claimed_at = claimed_at
                 outbox_item.claim_token = uuid4()

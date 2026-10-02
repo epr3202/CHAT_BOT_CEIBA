@@ -265,11 +265,19 @@ async def classify_message(
             None, "DETERMINISTIC", None, False, False,
         )
     settings = get_settings()
-    classification: IntentClassification | None = None
+    # Confirmations and booking proposals precede generic service capture. The
+    # explicit human guard above still owns every human request.
+    classification = deterministic_confirmation_classification(
+        persisted.message_text, persisted.context,
+    )
+    if classification is None:
+        classification = deterministic_booking_or_catalog_classification(
+            persisted.message_text, persisted.context, settings,
+        )
     ai_error_reason: AIErrorReason | None = None
     services_resolution_failed = False
     services_pending = persisted.context.get("pending_action") == "COLLECT_SERVICES"
-    if services_pending:
+    if services_pending and classification is None:
         service_codes = match_requested_services(persisted.message_text)
         decision_source: Literal["DETERMINISTIC", "LLM", "FALLBACK"] = (
             "DETERMINISTIC" if service_codes is not None else "LLM"
@@ -313,19 +321,9 @@ async def classify_message(
                 service_codes,
             )
     else:
-        classification = deterministic_confirmation_classification(
-            persisted.message_text,
-            persisted.context,
-        )
         decision_source = "DETERMINISTIC"
     directed_event_type: str | None = None
     confidence_entity_rescued = False
-    if classification is None:
-        classification = deterministic_booking_or_catalog_classification(
-            persisted.message_text, persisted.context, settings,
-        )
-        if classification is not None:
-            decision_source = "DETERMINISTIC"
     if classification is None:
         decision_source = "LLM"
         async with OpenRouterIntentClient(settings, sessionmaker) as classifier:

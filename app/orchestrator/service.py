@@ -42,7 +42,7 @@ from app.channel.delivery import (
 )
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
-from app.config.settings import Settings
+from app.config.settings import Settings, get_settings
 from app.conversation.catalog_event_type import (
     FIXED_PRICE_EVENT_TYPES,
     resolve_catalog_event_type_label,
@@ -67,9 +67,11 @@ from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_c
 from app.conversation.fixed_price_booking import (
     BOOKING_ACTIONS,
     FIXED_PRICE_BOOKING_REASON,
+    GENERIC_CAPTURE_ACTIONS,
     SELF_SERVICE_BOOKING_REASON,
     booking_guard_eligible,
     is_fixed_price_booking,
+    match_booking_plan,
 )
 from app.conversation.knowledge import KnowledgeRenderError, render_response
 from app.conversation.models import Conversation
@@ -107,6 +109,7 @@ from app.orchestrator.slot_filling import (
 )
 from app.payment.models import PaymentEvidence
 from app.payment.service import create_payment_evidence
+from app.plan.models import Plan
 from app.quote.models import QuoteRequest
 from app.scheduling.availability import AvailabilityService
 
@@ -476,9 +479,11 @@ def conversation_context(conversation: Conversation) -> dict[str, Any]:
 
 async def booking_event_context(
     session: AsyncSession, conversation: Conversation,
-) -> dict[str, str | None] | None:
+) -> dict[str, Any] | None:
+    self_service = get_settings().self_service_booking_enabled
     if not booking_guard_eligible(
         conversation.state, conversation.pending_action, conversation.bot_enabled,
+        self_service=self_service,
     ):
         return None
     # Eligible claim/apply/prepare loads lead + event, then refreshes event with FOR UPDATE.
@@ -487,13 +492,20 @@ async def booking_event_context(
         event = await session.get(
             Event, event.event_id, with_for_update=True, populate_existing=True,
         )
-    if event is None:
+    if event is None and not self_service:
         return None
     catalog_sent = await session.scalar(select(CatalogSend.catalog_send_id).join(
         Outbox, Outbox.id == CatalogSend.outbound_message_id,
-    ).where(CatalogSend.lead_id == event.lead_id, Outbox.status == "SENT").limit(1))
-    return {"event_id": str(event.event_id), "event_type": event.event_type,
-            "catalog_sent": "yes" if catalog_sent is not None else None}
+    ).where(CatalogSend.lead_id == event.lead_id, Outbox.status == "SENT").limit(1)
+    ) if event is not None else None
+    plans = await session.scalars(select(Plan).where(
+        Plan.active.is_(True), Plan.event_type.in_(FIXED_PRICE_EVENT_TYPES),
+    ).order_by(Plan.sort_order, Plan.code)) if self_service else []
+    return {"event_id": str(event.event_id) if event is not None else None,
+            "event_type": event.event_type if event is not None else None,
+            "catalog_sent": "yes" if catalog_sent is not None else None,
+            "plans": [{"plan_id": str(plan.plan_id), "name": plan.name,
+                       "event_type": plan.event_type} for plan in plans]}
 
 
 def deterministic_booking_or_catalog_classification(
@@ -509,12 +521,16 @@ def deterministic_booking_or_catalog_classification(
             reasoning_code="BOOKING_STEP",
         )
     self_service = settings is not None and settings.self_service_booking_enabled
+    named_plan = match_booking_plan(message_text, facts.get("plans", [])) if self_service else None
     explicit_date = resolve_visit_date_text(
         message_text, today=current_bogota_datetime().date(), require_absolute_confirmation=True,
     ) if self_service and facts.get("catalog_sent") == "yes" else None
     if booking_guard_eligible(
         context.get("state"), context.get("pending_action"), context.get("bot_enabled", True),
-    ) and (is_fixed_price_booking(message_text, facts.get("event_type")) or (
+        self_service=self_service,
+    ) and (named_plan is not None or is_fixed_price_booking(
+        message_text, facts.get("event_type"),
+    ) or (
         self_service and facts.get("event_type") in FIXED_PRICE_EVENT_TYPES
         and explicit_date is not None and explicit_date.resolved_date is not None
         and explicit_date.interpretation == "EXACTA"
@@ -2278,26 +2294,9 @@ async def handle_general_information(
             request_id=orchestration_input.request_id,
         )
         apply_event_type(session, event, fixed_price_entity, orchestration_input.request_id)
-        try:
-            sent_count = await enqueue_proactive_catalogs_for_event_type(
-                session, knowledge_sessionmaker, conversation, orchestration_input.customer,
-                orchestration_input.inbound_message, lead.lead_id, event.event_type,
-                orchestration_input.request_id,
-            )
-        except CatalogCaptionTooLong:
-            # The catalog service audits rejection; the approved plans text can still answer.
-            sent_count = 0
-        audit_actions = ["FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO"]
-        if event.event_type == "ROMANTIC_DINNER":
-            # Keep the audit contract covered by the existing PR #29 regressions.
-            audit_actions.append("ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO")
-        for action in audit_actions:
-            audit_orchestrator_event(
-                session, action, conversation,
-                reason="Fixed-price event information triggers proactive catalog selection",
-                request_id=orchestration_input.request_id,
-                extra={"event_type": event.event_type, "lead_id": str(lead.lead_id),
-                       "sent_count": sent_count},
+        if not settings.self_service_booking_enabled:
+            await enqueue_fixed_price_catalogs(
+                session, knowledge_sessionmaker, orchestration_input, lead, event,
             )
         response_code = (
             "RESP-EVENTS-PROPOSAL-001" if event.event_type == "PROPOSAL"
@@ -2320,17 +2319,35 @@ async def handle_general_information(
         )
         return
 
-    await enqueue_template(
-        session,
-        knowledge_sessionmaker,
-        conversation,
-        orchestration_input.customer,
-        orchestration_input.inbound_message,
-        response_code,
-        {"map_url": "https://maps.app.goo.gl/hvxQH8UFN7upKMwU8?g_st=iw"}
-        if response_code == "RESP-LOCATION-002"
-        else {},
-    )
+    try:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            response_code,
+            {"map_url": "https://maps.app.goo.gl/hvxQH8UFN7upKMwU8?g_st=iw"}
+            if response_code == "RESP-LOCATION-002"
+            else {},
+            strict=fixed_price_entity is not None and settings.self_service_booking_enabled,
+        )
+    except KnowledgeRenderError:
+        from app.orchestrator.booking_flow import handoff
+
+        await handoff(session, settings, knowledge_sessionmaker, orchestration_input,
+                      "Texto de experiencia de precio fijo no aprobado o incompleto",
+                      reason="TEMPLATE_UNAVAILABLE")
+        return
+    if fixed_price_entity is not None and settings.self_service_booking_enabled:
+        await enqueue_fixed_price_catalogs(
+            session, knowledge_sessionmaker, orchestration_input, lead, event, ordered=True,
+        )
+        if previous_pending_action in GENERIC_CAPTURE_ACTIONS:
+            previous_pending_action = None
+            previous_state = ConversationState.BOT_ACTIVE
+            conversation.pending_fields = []
+            conversation.pending_confirmation = None
     persist_classification_context(conversation, classification)
     conversation.failed_understanding_count = 0
     # A validated proposal survives an approved FAQ interruption and its restored action.
@@ -2352,6 +2369,39 @@ async def handle_general_information(
             reason="General information answered",
         )
     conversation.pending_action = previous_pending_action
+
+
+async def enqueue_fixed_price_catalogs(
+    session: AsyncSession, sm: Any, turn: OrchestrationInput, lead: Lead, event: Event,
+    *, ordered: bool = False,
+) -> None:
+    after_outbox_id = None
+    if ordered:
+        await session.flush()
+        after_outbox_id = await session.scalar(select(Outbox.id).where(
+            Outbox.message_id == turn.inbound_message.id, Outbox.message_kind == "TEXT",
+            Outbox.conversation_id == turn.conversation.id,
+        ).order_by(Outbox.id.desc()).limit(1))
+        if after_outbox_id is None:
+            raise ValueError("Fixed-price catalog requires its approved text outbox")
+    try:
+        sent_count = await enqueue_proactive_catalogs_for_event_type(
+            session, sm, turn.conversation, turn.customer, turn.inbound_message,
+            lead.lead_id, event.event_type, turn.request_id, after_outbox_id=after_outbox_id,
+        )
+    except CatalogCaptionTooLong:
+        sent_count = 0
+    actions = ["FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO"]
+    if event.event_type == "ROMANTIC_DINNER":
+        actions.append("ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO")
+    for action in actions:
+        audit_orchestrator_event(
+            session, action, turn.conversation,
+            reason="Fixed-price event information triggers proactive catalog selection",
+            request_id=turn.request_id,
+            extra={"event_type": event.event_type, "lead_id": str(lead.lead_id),
+                   "sent_count": sent_count},
+        )
 
 
 async def handle_unknown(
@@ -2458,18 +2508,47 @@ async def handle_collecting_event_data(
             entities,
             orchestration_input.request_id,
         )
-        await maybe_enqueue_proactive_catalogs(
-            session,
-            knowledge_sessionmaker,
-            conversation,
-            customer,
-            inbound_message,
-            lead,
-            event,
-            entities,
-            orchestration_input.request_id,
-        )
+        if not (settings.self_service_booking_enabled
+                and event.event_type in FIXED_PRICE_EVENT_TYPES):
+            await maybe_enqueue_proactive_catalogs(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                customer,
+                inbound_message,
+                lead,
+                event,
+                entities,
+                orchestration_input.request_id,
+            )
     fixed_price_event = event.event_type in FIXED_PRICE_EVENT_TYPES
+    if fixed_price_event and settings.self_service_booking_enabled:
+        conversation.pending_fields = []
+        conversation.pending_action = None
+        conversation.pending_confirmation = None
+        conversation.failed_understanding_count = 0
+        persist_classification_context(conversation, classification)
+        await transition_conversation(
+            session, conversation, "BOT_ACTIVE", actor=SYSTEM_ACTOR,
+            reason="Precio fijo: se omite captura genérica bajo autoservicio",
+        )
+        try:
+            await enqueue_template(
+                session, knowledge_sessionmaker, conversation, customer, inbound_message,
+                "RESP-EVENTS-PROPOSAL-001" if event.event_type == "PROPOSAL"
+                else "RESP-EVENTS-ROMANTIC-001", {}, strict=True,
+            )
+        except KnowledgeRenderError:
+            from app.orchestrator.booking_flow import handoff
+
+            await handoff(session, settings, knowledge_sessionmaker, orchestration_input,
+                          "Texto de experiencia de precio fijo no aprobado o incompleto",
+                          reason="TEMPLATE_UNAVAILABLE")
+            return
+        await enqueue_fixed_price_catalogs(
+            session, knowledge_sessionmaker, orchestration_input, lead, event, ordered=True,
+        )
+        return
     declined_by_evasion = (
         not fixed_price_event and not batch.rejected
         and should_mark_budget_declined_by_evasion(lead, entities)

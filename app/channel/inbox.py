@@ -47,7 +47,7 @@ def silent_reason(conversation: Conversation) -> str | None:
 
 def fingerprint(
     conversation: Conversation, customer: Customer,
-    booking_event: dict[str, str | None] | None = None,
+    booking_event: dict[str, Any] | None = None,
 ) -> str:
     # Local processing order plus this check cover relevant concurrent human/context changes.
     values = {

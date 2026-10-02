@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.admin import routes
 from app.config.settings import get_settings
@@ -36,6 +36,18 @@ async def harness(  # noqa: F811
     get_settings.cache_clear()
     await load_plans(case.db)
     async with case.db.begin() as session:
+        # Active B1b-3 requires an approved informational text before its PDF.
+        # Production proposals stay DRAFT; approval here is synthetic test setup.
+        for response_code in ("RESP-EVENTS-ROMANTIC-001", "RESP-EVENTS-PROPOSAL-001"):
+            proposal = await session.scalar(select(KnowledgeEntry).where(
+                KnowledgeEntry.code == response_code,
+            ).order_by(KnowledgeEntry.version.desc()).limit(1))
+            session.add(KnowledgeEntry(
+                code=response_code, category=proposal.category,
+                question_summary=proposal.question_summary,
+                answer_template=proposal.answer_template,
+                allowed_variables=proposal.allowed_variables, version=100, status="APPROVED",
+            ))
         for name, template in TEMPLATES.items():
             session.add(
                 KnowledgeEntry(
