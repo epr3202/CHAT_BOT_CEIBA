@@ -8,7 +8,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
-from app.ai.client import extract_message_content
+from app.ai.client import OpenRouterHTTPClient, extract_message_content
+from app.ai.errors import AIUnavailable
 from app.ai.prompts.receipt_v1 import RECEIPT_PROMPT
 from app.config.settings import Settings
 
@@ -37,7 +38,7 @@ class ReceiptModelError(Exception):
 
 
 async def extract_receipt(image_bytes: bytes, mime: str, settings: Settings) -> ReceiptExtraction:
-    """One HTTP call and one strict parse per attempt; never log provider content."""
+    """Bounded shared HTTP retries and one strict parse; never log provider content."""
     started = time.monotonic()
     telemetry: dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0}
     try:
@@ -63,15 +64,18 @@ async def extract_receipt(image_bytes: bytes, mime: str, settings: Settings) -> 
             ],
             "temperature": 0,
             "max_tokens": 1000,
-            "response_format": {"type": "json_object"},
+            "provider": {"require_parameters": True},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "receipt_extraction",
+                    "strict": True,
+                    "schema": ReceiptExtraction.model_json_schema(),
+                },
+            },
         }
-        async with httpx.AsyncClient(timeout=settings.openrouter_timeout_seconds) as client:
-            response = await client.post(
-                settings.openrouter_base_url.rstrip("/") + "/chat/completions",
-                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                json=payload,
-            )
-            response.raise_for_status()
+        async with OpenRouterHTTPClient(settings) as client:
+            response = await client.post("chat/completions", payload)
         body = response.json()
         if not isinstance(body, dict):
             raise ValueError("invalid_response")
@@ -82,7 +86,7 @@ async def extract_receipt(image_bytes: bytes, mime: str, settings: Settings) -> 
             value = usage.get(key)
             telemetry[key] = value if type(value) is int and value >= 0 else 0
         extraction = ReceiptExtraction.model_validate_json(extract_message_content(body))
-    except (httpx.HTTPError, ValueError, TypeError, KeyError, IndexError) as error:
+    except (AIUnavailable, httpx.HTTPError, ValueError, TypeError, KeyError, IndexError) as error:
         telemetry["latency_ms"] = int((time.monotonic() - started) * 1000)
         code = "INVALID_SCHEMA" if isinstance(error, ValidationError) else "MODEL_UNAVAILABLE"
         raise ReceiptModelError(code, telemetry) from None

@@ -45,22 +45,19 @@ class _TaskResult[TaskValue]:
     validation_status: str = "VALID"
 
 
-class OpenRouterIntentClient:
+class OpenRouterHTTPClient:
+    """Shared provider transport; retries HTTP failures without parsing model output."""
+
     def __init__(
         self,
         settings: Settings,
-        sessionmaker: async_sessionmaker[AsyncSession],
         http_client: httpx.AsyncClient | None = None,
-        model: str | None = None,
     ) -> None:
         self._settings = settings
-        self._sessionmaker = sessionmaker
-        self._model = model or settings.openrouter_model_intent or DEFAULT_INTENT_MODEL
-        self._prompt = get_intent_prompt(settings.ai_prompt_version)
         self._http_client = http_client
         self._owns_http_client = http_client is None
 
-    async def __aenter__(self) -> OpenRouterIntentClient:
+    async def __aenter__(self) -> OpenRouterHTTPClient:
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(
                 base_url=self._settings.openrouter_base_url.rstrip("/") + "/",
@@ -71,6 +68,62 @@ class OpenRouterIntentClient:
     async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
         if self._owns_http_client and self._http_client is not None:
             await self._http_client.aclose()
+
+    async def post(self, endpoint: str, payload: dict[str, Any]) -> httpx.Response:
+        if self._http_client is None:
+            raise RuntimeError("OpenRouterHTTPClient must be used as an async context manager")
+        attempts = self._settings.openrouter_max_retries + 1
+
+        for attempt in range(attempts):
+            try:
+                response = await self._http_client.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {self._settings.openrouter_api_key}"},
+                    json=payload,
+                    timeout=self._settings.openrouter_timeout_seconds,
+                )
+            except httpx.TimeoutException as error:
+                if attempt + 1 >= attempts:
+                    raise AIUnavailable(AIErrorReason.TIMEOUT, type(error).__name__) from error
+                continue
+            except (httpx.NetworkError, httpx.RemoteProtocolError, httpx.ProxyError) as error:
+                # Keep protocol/configuration misuse and cancellation outside provider failures.
+                if attempt + 1 >= attempts:
+                    raise AIUnavailable(
+                        AIErrorReason.HTTP_ERROR, f"TRANSPORT_{type(error).__name__}"
+                    ) from error
+                continue
+
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                if attempt + 1 >= attempts:
+                    raise AIUnavailable(
+                        AIErrorReason.HTTP_ERROR, f"HTTP_STATUS_{response.status_code}"
+                    ) from error
+                continue
+
+            return response
+
+        raise AIUnavailable(AIErrorReason.TIMEOUT, "NO_HTTP_ATTEMPTS")
+
+
+class OpenRouterIntentClient(OpenRouterHTTPClient):
+    def __init__(
+        self,
+        settings: Settings,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        http_client: httpx.AsyncClient | None = None,
+        model: str | None = None,
+    ) -> None:
+        super().__init__(settings, http_client=http_client)
+        self._sessionmaker = sessionmaker
+        self._model = model or settings.openrouter_model_intent or DEFAULT_INTENT_MODEL
+        self._prompt = get_intent_prompt(settings.ai_prompt_version)
+
+    async def __aenter__(self) -> OpenRouterIntentClient:
+        await super().__aenter__()
+        return self
 
     async def classify_intent(
         self,
@@ -271,43 +324,7 @@ class OpenRouterIntentClient:
         endpoint: str,
         payload: dict[str, Any],
     ) -> httpx.Response:
-        assert self._http_client is not None
-        attempts = self._settings.openrouter_max_retries + 1
-        last_timeout: httpx.TimeoutException | None = None
-
-        for attempt in range(attempts):
-            try:
-                response = await self._http_client.post(
-                    endpoint,
-                    headers={"Authorization": f"Bearer {self._settings.openrouter_api_key}"},
-                    json=payload,
-                )
-            except httpx.TimeoutException as error:
-                last_timeout = error
-                if attempt + 1 >= attempts:
-                    raise AIUnavailable(AIErrorReason.TIMEOUT, type(error).__name__) from error
-                continue
-            except (httpx.NetworkError, httpx.RemoteProtocolError, httpx.ProxyError) as error:
-                # These failures belong to the provider call. Configuration/protocol misuse,
-                # cancellation and programming/guard errors keep their existing propagation.
-                if attempt + 1 >= attempts:
-                    raise AIUnavailable(
-                        AIErrorReason.HTTP_ERROR, f"TRANSPORT_{type(error).__name__}"
-                    ) from error
-                continue
-
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as error:
-                if attempt + 1 >= attempts:
-                    raise AIUnavailable(
-                        AIErrorReason.HTTP_ERROR, f"HTTP_STATUS_{response.status_code}"
-                    ) from error
-                continue
-
-            return response
-
-        raise AIUnavailable(AIErrorReason.TIMEOUT, str(last_timeout))
+        return await self.post(endpoint, payload)
 
     async def _record_execution(
         self,

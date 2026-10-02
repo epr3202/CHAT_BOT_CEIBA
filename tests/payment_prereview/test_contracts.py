@@ -188,7 +188,8 @@ async def test_r3_worker_completed_idempotent_no_domain_change(client, monkeypat
 @respx.mock
 async def test_r3_failed_bounded_and_disabled(client, monkeypatch, tmp_path):
     process = require_symbol("app.payment.worker", "process_payment_prereview_once")
-    settings = configured(monkeypatch, PAYMENT_EVIDENCE_DIR=tmp_path)
+    # This contract counts persisted review attempts; transport retries have their own tests.
+    settings = configured(monkeypatch, PAYMENT_EVIDENCE_DIR=tmp_path, OPENROUTER_MAX_RETRIES=0)
     evidence = await downloaded(tmp_path)
     route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
         side_effect=httpx.ReadTimeout("private provider output")
