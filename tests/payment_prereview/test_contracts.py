@@ -352,7 +352,8 @@ async def test_r7_synthetic_images(monkeypatch, index):
 async def test_r8_migration_round_trip(monkeypatch):
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_current_head() == "20261002_0034", "B3 requires migration 0034"
+    assert scripts.get_current_head() == "20261002_0035", "Balance requires migration 0035"
+    assert scripts.get_revision("20261002_0035").down_revision == "20261002_0034"
     assert scripts.get_revision("20261002_0034").down_revision == "20260930_0033"
     assert scripts.get_revision("20260930_0033").down_revision == "20260930_0032"
     url = configure_test_database(monkeypatch)
@@ -382,6 +383,7 @@ async def test_r8_migration_round_trip(monkeypatch):
             "payment_evidence_review",
             "notification_recipient",
             "staff_outbox",
+            "customer_notification",
         }
         model = require_symbol("app.payment.models", "PaymentEvidenceReview")
         sm = async_sessionmaker(engine, expire_on_commit=False)

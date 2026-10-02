@@ -90,7 +90,7 @@ async def catalogs(
                 template = await session.scalar(
                     select(KnowledgeEntry).where(KnowledgeEntry.code == ROMANTIC_CODE)
                 )
-                # Approval is test-only; the seed must remain DRAFT pending Leandro's OK.
+                # Fixture retains the literal approved by Leandro on 2026-10-02.
                 if template is not None:
                     template.status = "APPROVED"
                     template.answer_template = template.answer_template.removeprefix("[REVISAR] ")
@@ -110,7 +110,7 @@ async def assert_romantic_template(sessions: async_sessionmaker[AsyncSession]) -
     assert template.answer_template == ROMANTIC_TEXT
     seed = next((entry for entry in iter_seed_entries() if entry.code == ROMANTIC_CODE), None)
     assert seed is not None
-    assert seed.status == "DRAFT", "Production copy still awaits Leandro's approval"
+    assert seed.status == "APPROVED", "Production copy approved by Leandro on 2026-10-02"
 
 
 async def information_turn(
@@ -493,7 +493,7 @@ async def proposal_catalogs(catalogs: CatalogFixture, tmp_path: Path) -> Catalog
         template = await session.scalar(
             select(KnowledgeEntry).where(KnowledgeEntry.code == PROPOSAL_CODE)
         )
-        # Same test-only approval as romantic plans; the new seed must remain DRAFT.
+        # Fixture retains the literal approved by Leandro on 2026-10-02.
         if template is not None:
             template.status = "APPROVED"
             template.answer_template = template.answer_template.removeprefix("[REVISAR] ")
@@ -858,16 +858,22 @@ async def test_proposal_capture_skips_budget_and_reaches_quote_confirmation(
         assert budget.answer_template not in texts
 
 
-def test_proposal_seed_is_draft_with_exact_plans_text() -> None:
+def test_proposal_seed_is_approved_with_exact_plans_text() -> None:
     from data.knowledge_seed import CONDITIONAL_DRAFT_CODES
 
-    assert PROPOSAL_CODE in CONDITIONAL_DRAFT_CODES
+    assert PROPOSAL_CODE not in CONDITIONAL_DRAFT_CODES
     template = next(entry for entry in iter_seed_entries() if entry.code == PROPOSAL_CODE)
-    assert template.status == "DRAFT"
-    assert template.answer_template == f"[REVISAR] {PROPOSAL_TEXT}"
+    assert template.status == "APPROVED"
+    assert template.answer_template == PROPOSAL_TEXT
 
 
 async def test_unapproved_proposal_template_is_not_sent(catalogs: CatalogFixture) -> None:
+    async with catalogs.sessions.begin() as session:
+        template = await session.scalar(
+            select(KnowledgeEntry).where(KnowledgeEntry.code == PROPOSAL_CODE)
+        )
+        assert template is not None
+        template.status = "DRAFT"
     conversation_id = await fixed_price_information_turn(catalogs, "pedida de mano")
     async with catalogs.sessions() as session:
         event = await session.scalar(select(Event))

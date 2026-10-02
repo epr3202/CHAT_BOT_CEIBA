@@ -18,6 +18,7 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
         "catalog_send",
         "conversation",
         "customer",
+        "customer_notification",
         "event",
         "event_service_request",
         "handoff",

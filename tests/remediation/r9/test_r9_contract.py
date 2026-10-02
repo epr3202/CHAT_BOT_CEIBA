@@ -551,10 +551,9 @@ async def test_admin_payment_decision_notification_survives_pause(
             .order_by(KnowledgeEntry.version.desc())
             .limit(1)
         )
-        assert template is not None and template.status == "DRAFT"
-        if approved:
-            # Approved only in this synthetic fixture, never in product/knowledge sources.
-            template.status = "APPROVED"
+        assert template is not None
+        # Explicit fixture status preserves both controls after production seed alignment.
+        template.status = "APPROVED" if approved else "DRAFT"
         row = PaymentEvidence(
             conversation_id=conversation_id,
             customer_id=before["conversation"][0]["customer_id"],

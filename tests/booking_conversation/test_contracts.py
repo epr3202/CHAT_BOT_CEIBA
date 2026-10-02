@@ -295,8 +295,8 @@ def test_b_r10_seed_literals_and_lineage() -> None:
     entries = {e.code: e for e in iter_seed_entries()}
     for name, literal in TEMPLATES.items():
         key = code(name)
-        assert key in CONDITIONAL_DRAFT_CODES and key in entries
-        assert entries[key].status == "DRAFT" and entries[key].answer_template == literal
+        assert key not in CONDITIONAL_DRAFT_CODES and key in entries
+        assert entries[key].status == "APPROVED" and entries[key].answer_template == literal
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
     assert scripts.get_revision("20260930_0032") is not None
     assert scripts.get_revision("20260930_0032").down_revision == "20260930_0031"
