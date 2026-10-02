@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from app.config.settings import get_settings
 from app.main import app
@@ -14,16 +14,18 @@ async def test_f2_reopen_clears_window_error_and_uses_text(client, monkeypatch):
     queued = await outbox(
         target, status="DEFERRED", last_error_code=131047, last_error="Ventana cerrada"
     )
-    async with app.state.db_sessionmaker.begin() as session:
-        result = await intercept_staff_inbound(
-            session,
-            phone_number=PHONE,
-            provider_timestamp=NOW,
-            external_message_id="f2.reopen",
-            settings=get_settings(),
-            request_id="f2",
-        )
-        assert result
+    with patch("app.notifications.service.datetime") as clock:
+        clock.now.return_value = NOW
+        async with app.state.db_sessionmaker.begin() as session:
+            result = await intercept_staff_inbound(
+                session,
+                phone_number=PHONE,
+                provider_timestamp=NOW,
+                external_message_id="f2.reopen",
+                settings=get_settings(),
+                request_id="f2",
+            )
+            assert result
     saved = (await rows(type(queued)))[0]
     assert saved.status == "PENDING"
     assert saved.last_error_code is None and saved.last_error is None
