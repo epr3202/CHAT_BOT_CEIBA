@@ -647,12 +647,28 @@ async def run_worker() -> None:
         try:
             await asyncio.gather(
                 _run_outbox_loop(sessionmaker, sender, settings),
+                _run_staff_outbox_loop(sessionmaker, sender, settings),
                 _run_inbox_loop(sessionmaker, settings),
                 _run_payment_evidence_loop(sessionmaker, settings),
                 _run_reservation_expiration_loop(sessionmaker),
             )
         finally:
             await engine.dispose()
+
+
+async def _run_staff_outbox_loop(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    sender: WhatsAppOutboundClient,
+    settings: Settings,
+) -> None:
+    from app.notifications.worker import process_staff_outbox_once
+
+    while True:
+        try:
+            await process_staff_outbox_once(sessionmaker, sender, settings)
+        except Exception:
+            logger.exception("staff_outbox_poll_failed")
+        await asyncio.sleep(settings.outbox_poll_interval_seconds)
 
 
 async def _run_reservation_expiration_loop(

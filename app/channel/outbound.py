@@ -6,10 +6,45 @@ from typing import Any
 import httpx
 
 from app.config.settings import Settings, get_settings
+from app.notifications.errors import OutboundSendError
 
 
-class WhatsAppSendError(RuntimeError):
+class WhatsAppSendError(OutboundSendError):
     pass
+
+
+PERMANENT_CODES = frozenset(
+    {
+        131026,
+        131047,
+        131051,
+        132000,
+        132001,
+        132005,
+        132007,
+        132012,
+        132015,
+        132016,
+        132018,
+        100,
+        190,
+    }
+)
+
+
+def provider_send_error(error: httpx.HTTPStatusError) -> WhatsAppSendError:
+    response = error.response
+    try:
+        payload = response.json()
+        details = payload.get("error", {}) if isinstance(payload, dict) else {}
+        code = details.get("code") if isinstance(details, dict) else None
+        code = code if type(code) is int else None
+    except ValueError:
+        code = None
+    retryable = code not in PERMANENT_CODES and (
+        response.status_code >= 500 or response.status_code == 429 or code in {130429, 131000}
+    )
+    return WhatsAppSendError(str(error), code=code, retryable=retryable)
 
 
 class WhatsAppInvalidMediaError(WhatsAppSendError):
@@ -36,31 +71,53 @@ class WhatsAppOutboundClient:
             await self._http_client.aclose()
 
     async def send_text(self, to: str, body: str) -> str:
-        if self._http_client is None:
-            raise RuntimeError("WhatsAppOutboundClient must be used as an async context manager")
-
-        response = await self._http_client.post(
-            self._messages_url(),
-            headers={
-                "Authorization": f"Bearer {self._settings.meta_access_token}",
-                "Content-Type": "application/json",
-            },
-            json={
+        return await self._send_message(
+            {
                 "messaging_product": "whatsapp",
                 "recipient_type": "individual",
                 "to": to,
                 "type": "text",
-                "text": {
-                    "preview_url": False,
-                    "body": body,
-                },
-            },
+                "text": {"preview_url": False, "body": body},
+            }
         )
 
+    async def send_template(
+        self, to: str, name: str, language_code: str, body_params: list[str]
+    ) -> str:
+        return await self._send_message(
+            {
+                "messaging_product": "whatsapp",
+                "to": to,
+                "type": "template",
+                "template": {
+                    "name": name,
+                    "language": {"code": language_code},
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [{"type": "text", "text": p} for p in body_params],
+                        },
+                    ],
+                },
+            }
+        )
+
+    async def _send_message(self, payload: dict[str, Any]) -> str:
+        if self._http_client is None:
+            raise RuntimeError("WhatsAppOutboundClient must be used as an async context manager")
         try:
+            response = await self._http_client.post(
+                self._messages_url(),
+                headers={
+                    "Authorization": f"Bearer {self._settings.meta_access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=10.0,
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as error:
-            raise WhatsAppSendError(str(error)) from error
+            raise provider_send_error(error) from error
 
         provider_message_id = extract_provider_message_id(response.json())
         if provider_message_id is None:

@@ -775,6 +775,17 @@ async def persist_inbound_message_in_session(
     request_id: uuid.UUID | None = None,
 ) -> PersistedInboundMessage | None:
     # Serialize first-contact creation on the unique phone row, before conversation/job locks.
+    from app.notifications.service import intercept_staff_inbound
+
+    if await intercept_staff_inbound(
+        session,
+        phone_number=inbound_message.phone_number,
+        provider_timestamp=inbound_message.provider_timestamp,
+        external_message_id=inbound_message.external_message_id,
+        settings=get_settings(),
+        request_id=request_id,
+    ):
+        return None
     customer = await get_or_create_customer(session, inbound_message.phone_number)
     existing = await session.scalar(
         select(Message).where(Message.external_message_id == inbound_message.external_message_id)
@@ -1148,6 +1159,12 @@ async def record_provider_status_in_session(
                 select(Message).where(Message.external_message_id == provider_message_id)
             )
             if message is None:
+                from app.notifications.statuses import record_staff_provider_status
+
+                if await record_staff_provider_status(
+                    session, status_payload, request_id=request_id
+                ):
+                    return
                 logger.info(
                     "whatsapp_status_without_message",
                     provider_message_id=provider_message_id,
