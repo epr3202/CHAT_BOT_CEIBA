@@ -29,15 +29,18 @@ FIELDS = {
 def settings(**changes: object) -> Settings:
     return Settings(
         _env_file=None,
-        **({
-            "DATABASE_URL": "postgresql+asyncpg://ceiba:ceiba@localhost/ceiba_f3_test",
-            "ENVIRONMENT": "testing",
-            "META_APP_SECRET": "test",
-            "META_ACCESS_TOKEN": "test",
-            "OPENROUTER_API_KEY": "test-receipt-token",
-            "OPENROUTER_TIMEOUT_SECONDS": 0.2,
-            "OPENROUTER_MAX_RETRIES": 1,
-        } | changes),
+        **(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://ceiba:ceiba@localhost/ceiba_f3_test",
+                "ENVIRONMENT": "testing",
+                "META_APP_SECRET": "test",
+                "META_ACCESS_TOKEN": "test",
+                "OPENROUTER_API_KEY": "test-receipt-token",
+                "OPENROUTER_TIMEOUT_SECONDS": 0.2,
+                "OPENROUTER_MAX_RETRIES": 1,
+            }
+            | changes
+        ),
     )
 
 
@@ -150,7 +153,10 @@ async def test_classifier_and_receipt_use_the_same_auth_and_explicit_timeout() -
     for call in route.calls:
         assert call.request.headers["authorization"] == "Bearer test-receipt-token"
         assert call.request.extensions["timeout"] == {
-            "connect": 0.2, "read": 0.2, "write": 0.2, "pool": 0.2,
+            "connect": 0.2,
+            "read": 0.2,
+            "write": 0.2,
+            "pool": 0.2,
         }
 
 

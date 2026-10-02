@@ -205,9 +205,7 @@ def _validate_download(claim: EvidenceClaim, media: InboundMediaFile) -> None:
     try:
         declared_sha256 = normalize_sha256(claim.declared_sha256)
     except ValueError as error:
-        raise InboundMediaHashMismatch(
-            "Inbound declaration contains an invalid sha256"
-        ) from error
+        raise InboundMediaHashMismatch("Inbound declaration contains an invalid sha256") from error
     if media.sha256 != declared_sha256:
         raise InboundMediaHashMismatch("Downloaded hash differs from inbound declaration")
 
@@ -241,9 +239,7 @@ async def _settle_success(
 ) -> None:
     async with sessionmaker() as session:
         async with session.begin():
-            evidence = await session.get(
-                PaymentEvidence, claim.evidence_id, with_for_update=True
-            )
+            evidence = await session.get(PaymentEvidence, claim.evidence_id, with_for_update=True)
             if evidence is None:
                 return
             evidence.download_status = "DOWNLOADED"
@@ -281,15 +277,11 @@ async def _settle_failure(
 ) -> None:
     async with sessionmaker() as session:
         async with session.begin():
-            evidence = await session.get(
-                PaymentEvidence, claim.evidence_id, with_for_update=True
-            )
+            evidence = await session.get(PaymentEvidence, claim.evidence_id, with_for_update=True)
             if evidence is None:
                 return
             is_permanent = permanent or evidence.download_attempts >= MAX_DOWNLOAD_ATTEMPTS
-            evidence.download_status = (
-                "FAILED_PERMANENT" if is_permanent else "FAILED_RETRYABLE"
-            )
+            evidence.download_status = "FAILED_PERMANENT" if is_permanent else "FAILED_RETRYABLE"
             evidence.next_attempt_at = (
                 None
                 if is_permanent

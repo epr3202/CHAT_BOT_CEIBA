@@ -16,13 +16,15 @@ from tests.integration.test_ai_execution_migration_parity import (
 
 @pytest.fixture
 async def probe_client(
-    migrated_database_url: str, monkeypatch: pytest.MonkeyPatch,
+    migrated_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[httpx.AsyncClient, AsyncEngine]]:
     engine = create_async_engine(migrated_database_url, poolclass=NullPool)
     monkeypatch.setattr(app.state, "db_engine", engine, raising=False)
     try:
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://probes.test",
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://probes.test",
         ) as client:
             yield client, engine
     finally:
@@ -32,7 +34,8 @@ async def probe_client(
 async def test_live_does_not_require_a_database(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app.state, "db_engine", None, raising=False)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://probes.test",
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://probes.test",
     ) as client:
         response = await client.get("/live")
     assert response.status_code == 200

@@ -414,9 +414,7 @@ async def test_p0a_confirm_pending_action_is_resolved_before_llm(
         raise AssertionError("LLM classifier must not run for deterministic CONFIRM")
 
     monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", fail_if_called)
-    payload = json.loads(
-        whatsapp_message_payload("wamid.p0a.before-llm", text="Si").decode()
-    )
+    payload = json.loads(whatsapp_message_payload("wamid.p0a.before-llm", text="Si").decode())
 
     await process_whatsapp_webhook(payload, sessionmaker_fixture, "req-p0a-before-llm")
 

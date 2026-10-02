@@ -34,19 +34,31 @@ class BookingAvailability:
 @dataclass(frozen=True)
 class BookingWindow:
     ok: bool
-    reason: Literal[
-        "TIMEZONE_REQUIRED", "INVALID_RANGE", "CROSSES_MIDNIGHT", "OUTSIDE_HOURS", "MIN_LEAD_DAYS"
-    ] | None = None
+    reason: (
+        Literal[
+            "TIMEZONE_REQUIRED",
+            "INVALID_RANGE",
+            "CROSSES_MIDNIGHT",
+            "OUTSIDE_HOURS",
+            "MIN_LEAD_DAYS",
+        ]
+        | None
+    ) = None
 
 
 def _normalized(value: str) -> str:
-    return "".join(char for char in normalize("NFKD", value.casefold())
-                   if not combining(char)).strip()
+    return "".join(
+        char for char in normalize("NFKD", value.casefold()) if not combining(char)
+    ).strip()
 
 
 def evaluate_booking_availability(
-    *, plan: Plan, starts_at: datetime, ends_at: datetime,
-    calendar_events: list[CalendarEvent], reservations: list[Reservation],
+    *,
+    plan: Plan,
+    starts_at: datetime,
+    ends_at: datetime,
+    calendar_events: list[CalendarEvent],
+    reservations: list[Reservation],
     exclusivity_keyword: str,
 ) -> BookingAvailability:
     """Pure D3 intersection with exclusive ends; reservation.plan must be loaded."""
@@ -56,12 +68,16 @@ def evaluate_booking_availability(
     blockers = [
         BookingBlocker("CALENDAR_EXCLUSIVE", event.event_id)
         for event in calendar_events
-        if event.start < ends_at and starts_at < event.end
+        if event.start < ends_at
+        and starts_at < event.end
         and keyword in _normalized(f"{event.summary} {event.description or ''}")
     ]
     for reservation in reservations:
-        if (reservation.status != "RESERVED" or reservation.starts_at >= ends_at
-                or starts_at >= reservation.ends_at):
+        if (
+            reservation.status != "RESERVED"
+            or reservation.starts_at >= ends_at
+            or starts_at >= reservation.ends_at
+        ):
             continue
         if reservation.plan.exclusive:
             blockers.append(BookingBlocker("RESERVED_EXCLUSIVE", str(reservation.reservation_id)))
@@ -71,7 +87,11 @@ def evaluate_booking_availability(
 
 
 def validate_booking_window(
-    starts_at: datetime, ends_at: datetime, settings: Settings, *, today: date | None = None,
+    starts_at: datetime,
+    ends_at: datetime,
+    settings: Settings,
+    *,
+    today: date | None = None,
 ) -> BookingWindow:
     """Calendar-day lead time in Bogotá, with an injectable date for deterministic callers."""
     if starts_at.utcoffset() is None or ends_at.utcoffset() is None:
@@ -81,8 +101,9 @@ def validate_booking_window(
     start, end = starts_at.astimezone(BOGOTA), ends_at.astimezone(BOGOTA)
     if start.date() != end.date():
         return BookingWindow(False, "CROSSES_MIDNIGHT")
-    if (start.time() < time.fromisoformat(settings.booking_hours_start)
-            or end.time() > time.fromisoformat(settings.booking_hours_end)):
+    if start.time() < time.fromisoformat(
+        settings.booking_hours_start
+    ) or end.time() > time.fromisoformat(settings.booking_hours_end):
         return BookingWindow(False, "OUTSIDE_HOURS")
     today = today if today is not None else datetime.now(BOGOTA).date()
     if start.date() < today + timedelta(days=settings.booking_min_lead_days):
@@ -91,8 +112,13 @@ def validate_booking_window(
 
 
 async def fetch_booking_context(
-    session: AsyncSession, *, plan: Plan, starts_at: datetime, ends_at: datetime,
-    calendar: CalendarAdapter, settings: Settings,
+    session: AsyncSession,
+    *,
+    plan: Plan,
+    starts_at: datetime,
+    ends_at: datetime,
+    calendar: CalendarAdapter,
+    settings: Settings,
     exclude_reservation_id: UUID | None = None,
 ) -> BookingAvailability:
     """Own a short read transaction, release it, then read Calendar.
@@ -106,19 +132,29 @@ async def fetch_booking_context(
     """
     if session.in_transaction() or session.new or session.dirty or session.deleted:
         raise ValueError("Booking context requires an idle session without pending writes")
-    ids = [value.strip() for value in settings.google_freebusy_calendar_ids.split(",")
-           if value.strip()]
+    ids = [
+        value.strip() for value in settings.google_freebusy_calendar_ids.split(",") if value.strip()
+    ]
     if not ids:
         raise CalendarUnavailableError("No calendars configured for booking availability")
     async with session.begin():
-        reservations = list(await session.scalars(
-            select(Reservation).options(joinedload(Reservation.plan)).where(
-                Reservation.status == "RESERVED", Reservation.starts_at < ends_at,
-                Reservation.ends_at > starts_at,
-                *([Reservation.reservation_id != exclude_reservation_id]
-                  if exclude_reservation_id else []),
-            ).order_by(Reservation.starts_at, Reservation.reservation_id)
-        ))
+        reservations = list(
+            await session.scalars(
+                select(Reservation)
+                .options(joinedload(Reservation.plan))
+                .where(
+                    Reservation.status == "RESERVED",
+                    Reservation.starts_at < ends_at,
+                    Reservation.ends_at > starts_at,
+                    *(
+                        [Reservation.reservation_id != exclude_reservation_id]
+                        if exclude_reservation_id
+                        else []
+                    ),
+                )
+                .order_by(Reservation.starts_at, Reservation.reservation_id)
+            )
+        )
         # Freeze the read objects before commit, including expire_on_commit=True sessions.
         # A detached graph ensures the pure evaluator cannot perform any lazy SQL.
         for reservation in reservations:
@@ -131,6 +167,10 @@ async def fetch_booking_context(
     if exclude_reservation_id:
         events = [event for event in events if event.event_id != exclude_reservation_id.hex]
     return evaluate_booking_availability(
-        plan=plan, starts_at=starts_at, ends_at=ends_at, calendar_events=events,
-        reservations=reservations, exclusivity_keyword=settings.booking_exclusivity_keyword,
+        plan=plan,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        calendar_events=events,
+        reservations=reservations,
+        exclusivity_keyword=settings.booking_exclusivity_keyword,
     )

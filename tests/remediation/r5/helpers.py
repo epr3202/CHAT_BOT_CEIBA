@@ -56,10 +56,16 @@ async def prepare(
         customer = await session.get(Customer, conversation.customer_id)
         customer.full_name = "Cliente Sintetico R5"
         if payment:
-            session.add(Handoff(
-                conversation_id=conversation.id, status=payment, reason="PAYMENT_REVIEW",
-                priority="NORMAL", summary="Caso sintetico R5", assigned_to="Asesor sintetico",
-            ))
+            session.add(
+                Handoff(
+                    conversation_id=conversation.id,
+                    status=payment,
+                    reason="PAYMENT_REVIEW",
+                    priority="NORMAL",
+                    summary="Caso sintetico R5",
+                    assigned_to="Asesor sintetico",
+                )
+            )
     return event
 
 
@@ -67,7 +73,8 @@ async def snapshot(db: Any) -> dict[str, Any]:
     result = await previous_snapshot(db)
     async with db() as session:
         result["payment_evidence"] = [
-            dict(row) for row in (
+            dict(row)
+            for row in (
                 await session.execute(text("SELECT * FROM payment_evidence ORDER BY id"))
             ).mappings()
         ]
@@ -96,8 +103,7 @@ def assert_passive(before: dict[str, Any], final: dict[str, Any], captured: bool
         assert item["review_status"] == "PENDING_REVIEW"
         assert item["storage_path"] is None and item["verified_sha256"] is None
         assert final["handoff"][0]["priority"] == "URGENT"
-        assert f'evidencia #{item["id"]}' in final["handoff"][0]["summary"]
+        assert f"evidencia #{item['id']}" in final["handoff"][0]["summary"]
         for action in ("PAYMENT_EVIDENCE_CREATED", "HANDOFF_PRIORITY_RAISED"):
             assert sum(a["action"] == action for a in final["audit_event"]) == 1
     assert final["inbox_job"][0]["status"] == "COMPLETED"
-

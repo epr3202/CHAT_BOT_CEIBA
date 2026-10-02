@@ -63,21 +63,29 @@ def backoff_seconds(attempts: int, max_backoff_seconds: int) -> int:
 
 
 async def _dependency_blocks_claim(
-    session: AsyncSession, row: Outbox, now: datetime,
+    session: AsyncSession,
+    row: Outbox,
+    now: datetime,
 ) -> bool:
     """Retire blocked PENDING output under its row lock without admitting provider I/O."""
     context = row.delivery_context
     if not isinstance(context, dict) or "after_outbox_id" not in context:
         return False
     predecessor_id = context["after_outbox_id"]
-    if (row.message_kind != "DOCUMENT" or type(predecessor_id) is not int
-            or not 0 < predecessor_id <= 2147483647):
+    if (
+        row.message_kind != "DOCUMENT"
+        or type(predecessor_id) is not int
+        or not 0 < predecessor_id <= 2147483647
+    ):
         stop_delivery(row, "REVIEW", "PRECEDING_TEXT_UNPROVEN", now)
         return True
     predecessor = await session.get(Outbox, predecessor_id)
-    if (predecessor is None or predecessor.message_kind != "TEXT"
-            or predecessor.conversation_id != row.conversation_id
-            or predecessor.message_id != row.message_id):
+    if (
+        predecessor is None
+        or predecessor.message_kind != "TEXT"
+        or predecessor.conversation_id != row.conversation_id
+        or predecessor.message_id != row.message_id
+    ):
         stop_delivery(row, "REVIEW", "PRECEDING_TEXT_UNPROVEN", now)
         return True
     if predecessor.status == "SENT":
@@ -85,8 +93,9 @@ async def _dependency_blocks_claim(
     if predecessor.status in {"PENDING", "SENDING"}:
         return True
     if predecessor.status == "SUPPRESSED":
-        stop_delivery(row, "SUPPRESSED",
-                      predecessor.delivery_reason or "PRECEDING_TEXT_SUPPRESSED", now)
+        stop_delivery(
+            row, "SUPPRESSED", predecessor.delivery_reason or "PRECEDING_TEXT_SUPPRESSED", now
+        )
     elif predecessor.status == "FAILED":
         stop_delivery(row, "SUPPRESSED", "PRECEDING_TEXT_FAILED", now)
     else:
@@ -103,10 +112,16 @@ async def claim_due_outbox_batch(
     dependency = Outbox.delivery_context["after_outbox_id"]
     dependency_text = dependency.as_string()
     # CASE avoids casting arbitrary JSON. A bounded bigint preserves the predecessor PK lookup.
-    dependency_id = case((and_(
-        func.jsonb_typeof(dependency) == "number",
-        dependency_text.op("~")(r"^[1-9][0-9]{0,9}$"),
-    ), cast(dependency_text, BigInteger)), else_=None)
+    dependency_id = case(
+        (
+            and_(
+                func.jsonb_typeof(dependency) == "number",
+                dependency_text.op("~")(r"^[1-9][0-9]{0,9}$"),
+            ),
+            cast(dependency_text, BigInteger),
+        ),
+        else_=None,
+    )
     preceding_text = select(predecessor.id).where(
         predecessor.id == dependency_id,
         predecessor.message_id == Outbox.message_id,
@@ -125,8 +140,11 @@ async def claim_due_outbox_batch(
                 select(Outbox)
                 .where(
                     Outbox.status == "PENDING",
-                    or_(Outbox.next_attempt_at.is_(None),
-                        Outbox.next_attempt_at <= claimed_at, text_blocked),
+                    or_(
+                        Outbox.next_attempt_at.is_(None),
+                        Outbox.next_attempt_at <= claimed_at,
+                        text_blocked,
+                    ),
                     or_(dependency_id.is_(None), text_resolved, ~preceding_text.exists()),
                 )
                 .order_by(Outbox.created_at, Outbox.id)
@@ -165,23 +183,38 @@ async def recover_stale_sending_outbox(
     recovered = 0
 
     async with sessionmaker() as session:
-        candidates = list((await session.scalars(select(Outbox.id).where(
-            Outbox.status == "SENDING",
-            or_(Outbox.claimed_at < stale_before, and_(
-                Outbox.claim_token.is_(None), Outbox.claimed_at.is_(None),
-                Outbox.created_at < stale_before,
-            )),
-        ).order_by(Outbox.created_at))).all())
+        candidates = list(
+            (
+                await session.scalars(
+                    select(Outbox.id)
+                    .where(
+                        Outbox.status == "SENDING",
+                        or_(
+                            Outbox.claimed_at < stale_before,
+                            and_(
+                                Outbox.claim_token.is_(None),
+                                Outbox.claimed_at.is_(None),
+                                Outbox.created_at < stale_before,
+                            ),
+                        ),
+                    )
+                    .order_by(Outbox.created_at)
+                )
+            ).all()
+        )
     for outbox_id in candidates:
         async with sessionmaker() as session, session.begin():
             locked = await lock_delivery_row(session, outbox_id, skip=True)
             if locked is None:
                 continue
             _, outbox_item = locked
-            stale = (outbox_item.claimed_at is not None
-                     and outbox_item.claimed_at < stale_before) or (
-                outbox_item.claimed_at is None and outbox_item.claim_token is None
-                and outbox_item.created_at < stale_before)
+            stale = (
+                outbox_item.claimed_at is not None and outbox_item.claimed_at < stale_before
+            ) or (
+                outbox_item.claimed_at is None
+                and outbox_item.claim_token is None
+                and outbox_item.created_at < stale_before
+            )
             if outbox_item.status == "SENDING" and stale:
                 await _mark_outbox_failure_locked(
                     session,
@@ -329,7 +362,9 @@ async def process_claimed_document_outbox_item(
             )
         except WhatsAppInvalidMediaError:
             if not await reject_media_admission(
-                sessionmaker, outbox_item.id, outbox_item.claim_token,
+                sessionmaker,
+                outbox_item.id,
+                outbox_item.claim_token,
             ):
                 return "DISCARDED"
             await media_service.invalidate_media_cache(

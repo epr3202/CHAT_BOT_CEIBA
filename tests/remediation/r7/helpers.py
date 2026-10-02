@@ -1,4 +1,5 @@
 """R7 synthetic input uses the frozen R6 real channel/provider/R2 harness."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

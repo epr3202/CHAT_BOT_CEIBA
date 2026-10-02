@@ -39,11 +39,20 @@ async def load_plans(sessionmaker: async_sessionmaker[AsyncSession]) -> int:
             PLAN_SEED, start=1
         ):
             result = await session.scalar(
-                insert(Plan).values(
-                    code=code, name=name, event_type=event_type, price_cop=price,
-                    duration_minutes=duration, exclusive=exclusive, weekend_only=weekend,
-                    active=True, sort_order=order,
-                ).on_conflict_do_nothing(index_elements=[Plan.code]).returning(Plan.plan_id)
+                insert(Plan)
+                .values(
+                    code=code,
+                    name=name,
+                    event_type=event_type,
+                    price_cop=price,
+                    duration_minutes=duration,
+                    exclusive=exclusive,
+                    weekend_only=weekend,
+                    active=True,
+                    sort_order=order,
+                )
+                .on_conflict_do_nothing(index_elements=[Plan.code])
+                .returning(Plan.plan_id)
             )
             inserted += int(result is not None)
     return inserted

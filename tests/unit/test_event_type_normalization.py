@@ -99,12 +99,10 @@ def test_catalog_entity_consumer_discards_and_audits_unknown_value() -> None:
     session = Mock()
     classification = classification_with_event_type("FIESTA")
 
-    normalized_classification = (
-        orchestrator_service.normalize_classification_event_type_entities(
-            session,
-            classification,
-            "req-invalid-catalog-event-type",
-        )
+    normalized_classification = orchestrator_service.normalize_classification_event_type_entities(
+        session,
+        classification,
+        "req-invalid-catalog-event-type",
     )
 
     assert classified_catalog_event_type(normalized_classification) is None

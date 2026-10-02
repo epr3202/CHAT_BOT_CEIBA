@@ -57,8 +57,13 @@ async def test_failed_permanent_service_accept_is_rejected(client):
         stored = await session.get(PaymentEvidence, evidence.id, with_for_update=True)
         with pytest.raises(ValueError, match="descarga"):
             await accept_payment(
-                session, evidence=stored, amount_cop=125000, actor="Admin B2",
-                note=None, request_id="failed-download", calendar_blockers=[],
+                session,
+                evidence=stored,
+                amount_cop=125000,
+                actor="Admin B2",
+                note=None,
+                request_id="failed-download",
+                calendar_blockers=[],
             )
         assert stored.review_status == "PENDING_REVIEW"
 
@@ -73,18 +78,25 @@ async def test_failed_permanent_human_rejection_keeps_d5_audits(client: AsyncCli
     )
     assert response.status_code == 200, response.text
     async with app.state.db_sessionmaker() as session:
-        audits = list(await session.scalars(
-            select(AuditEvent).where(AuditEvent.entity == "payment_evidence")
-            .order_by(AuditEvent.id)
-        ))
+        audits = list(
+            await session.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.entity == "payment_evidence")
+                .order_by(AuditEvent.id)
+            )
+        )
         assert [row.action for row in audits] == [
-            "PAYMENT_EVIDENCE_REJECTED", "PAYMENT_EVIDENCE_REVIEWED",
+            "PAYMENT_EVIDENCE_REJECTED",
+            "PAYMENT_EVIDENCE_REVIEWED",
         ]
-        assert all(row.actor == "Admin B2" and row.request_id == "failed-rejection"
-                   and row.reason == note for row in audits)
+        assert all(
+            row.actor == "Admin B2" and row.request_id == "failed-rejection" and row.reason == note
+            for row in audits
+        )
         assert all(row.new_value["evidence_id"] == evidence.id for row in audits)
-        assert audits[1].new_value["customer_notification"] == (
-            response.json()["customer_notification"]
+        assert (
+            audits[1].new_value["customer_notification"]
+            == (response.json()["customer_notification"])
         )
 
 
@@ -92,10 +104,13 @@ async def test_suppressed_outbox_reason_in_admin_timeline(client: AsyncClient):
     evidence = await seed_evidence()
     async with app.state.db_sessionmaker() as session, session.begin():
         row = Outbox(
-            conversation_id=evidence.conversation_id, message_id=evidence.message_id,
-            channel="WHATSAPP", recipient_phone_number="573000000222",
+            conversation_id=evidence.conversation_id,
+            message_id=evidence.message_id,
+            channel="WHATSAPP",
+            recipient_phone_number="573000000222",
             payload={"type": "text", "text": {"body": "Respuesta aprobada"}},
-            status="SUPPRESSED", delivery_reason="AUTOMATION_PAUSED",
+            status="SUPPRESSED",
+            delivery_reason="AUTOMATION_PAUSED",
         )
         session.add(row)
         await session.flush()

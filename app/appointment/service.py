@@ -134,7 +134,8 @@ async def settle_visit_appointment(session: AsyncSession, change: VisitSettlemen
         appointment.appointment_status = "CONFIRMED"
     else:
         if (appointment.appointment_date, appointment.start_time) != (
-            change.previous_date, change.previous_time,
+            change.previous_date,
+            change.previous_time,
         ) or appointment.appointment_status not in ACTIVE_APPOINTMENT_STATUSES:
             raise ValueError("Appointment changed before reschedule settlement")
         appointment.appointment_date = change.visit_date
@@ -142,12 +143,17 @@ async def settle_visit_appointment(session: AsyncSession, change: VisitSettlemen
         appointment.end_time = calculate_visit_end_time(change.visit_time)
         appointment.appointment_status = "RESCHEDULED"
         appointment.reschedule_count += 1
-        session.add(AppointmentChange(
-            appointment_id=change.appointment_id, previous_date=change.previous_date,
-            previous_start_time=change.previous_time, new_date=change.visit_date,
-            new_start_time=change.visit_time, changed_by_type=change.actor,
-            changed_by_id=change.actor,
-        ))
+        session.add(
+            AppointmentChange(
+                appointment_id=change.appointment_id,
+                previous_date=change.previous_date,
+                previous_start_time=change.previous_time,
+                new_date=change.visit_date,
+                new_start_time=change.visit_time,
+                changed_by_type=change.actor,
+                changed_by_id=change.actor,
+            )
+        )
     appointment.reminder_scheduled_at = change.reminder_at
     appointment.requires_reconciliation = False
 
@@ -203,8 +209,8 @@ def resolve_visit_date_text(
     require_absolute_confirmation: bool,
 ) -> VisitDateTextResult:
     normalized = _normalize_spanish_text(message_text)
-    absolute_match = (
-        _NUMERIC_VISIT_DATE.search(normalized) or _TEXTUAL_VISIT_DATE.search(normalized)
+    absolute_match = _NUMERIC_VISIT_DATE.search(normalized) or _TEXTUAL_VISIT_DATE.search(
+        normalized
     )
     absolute = _resolve_absolute_visit_date(normalized, today)
     if absolute is not None:
@@ -221,7 +227,8 @@ def resolve_visit_date_text(
         )
     if _NUMERIC_VISIT_DATE.search(normalized) or _TEXTUAL_VISIT_DATE.search(normalized):
         return VisitDateTextResult(
-            None, needs_confirmation=False,
+            None,
+            needs_confirmation=False,
             next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
         )
     relative = _resolve_relative_visit_date(normalized, today)
@@ -243,7 +250,10 @@ def resolve_visit_date_text(
 
 
 def interpret_visit_time(
-    message_text: str, offered_slots: list[time], *, require_explicit: bool = False,
+    message_text: str,
+    offered_slots: list[time],
+    *,
+    require_explicit: bool = False,
 ) -> VisitTimeResult:
     candidate = parse_visit_time_text(message_text, require_explicit=require_explicit)
     if candidate is None:
@@ -293,11 +303,12 @@ def _date_match_text(message_text: str, match: re.Match[str] | None) -> str | No
         for normalized in unicodedata.normalize("NFKD", character.casefold())
         if not unicodedata.combining(normalized)
     ]
-    return original[offsets[match.start()]:offsets[match.end() - 1] + 1]
+    return original[offsets[match.start()] : offsets[match.end() - 1] + 1]
 
 
 def _resolve_relative_visit_date(
-    normalized: str, today: date,
+    normalized: str,
+    today: date,
 ) -> tuple[date, re.Match[str]] | None:
     for pattern, days in ((r"\bpasado\s+manana\b", 2), (r"\bmanana\b", 1), (r"\bhoy\b", 0)):
         match = re.search(pattern, normalized)
@@ -344,7 +355,8 @@ def _future_date(
     today: date,
 ) -> date | None:
     years = (
-        [year_value] if year_value is not None
+        [year_value]
+        if year_value is not None
         else range(today.year, min(today.year + 8, date.max.year) + 1)
     )
     for year in years:
@@ -375,14 +387,19 @@ def parse_visit_time_text(message_text: str, *, require_explicit: bool) -> time 
     normalized = _normalize_spanish_text(message_text)
     clocks = _DATE_NUMBERS.sub(" ", normalized)
     candidates = list(_CLOCK_CANDIDATES.finditer(clocks))
-    explicit = [m for m in candidates if m.group("prefix") or m.group("minute") is not None
-                or m.group("period")]
+    explicit = [
+        m
+        for m in candidates
+        if m.group("prefix") or m.group("minute") is not None or m.group("period")
+    ]
     if require_explicit and not explicit:
         return None
     selected = next(iter(explicit or candidates), None)
     if selected is None:
-        hour = next((value for word, value in SPANISH_HOURS.items()
-                     if re.search(rf"\b{word}\b", clocks)), None)
+        hour = next(
+            (value for word, value in SPANISH_HOURS.items() if re.search(rf"\b{word}\b", clocks)),
+            None,
+        )
         minute, period = 0, clocks
     else:
         hour = int(selected.group("hour"))
@@ -455,9 +472,7 @@ class VisitSchedulingService:
             variables["event_type"] = visit_reason_summary(normalized_reason)
         return VisitServiceResult(
             response_code=(
-                "RESP-VISIT-CONFIRM-001"
-                if normalized_reason
-                else "RESP-VISIT-CONFIRM-002"
+                "RESP-VISIT-CONFIRM-001" if normalized_reason else "RESP-VISIT-CONFIRM-002"
             ),
             state=ConversationState.APPOINTMENT_PENDING_CONFIRMATION,
             variables=variables,
@@ -555,7 +570,11 @@ class VisitSchedulingService:
             )
 
         settlement = VisitSettlement(
-            "CONFIRM", appointment_id, visit_date, visit_time, event_id,
+            "CONFIRM",
+            appointment_id,
+            visit_date,
+            visit_time,
+            event_id,
             self._reminder_at(visit_date),
         )
         async with self.sessionmaker() as session, session.begin():
@@ -678,8 +697,15 @@ class VisitSchedulingService:
             )
 
         settlement = VisitSettlement(
-            "RESCHEDULE", appointment_id, new_date, new_time, appointment_id.hex,
-            self._reminder_at(new_date), previous_date, previous_time, actor,
+            "RESCHEDULE",
+            appointment_id,
+            new_date,
+            new_time,
+            appointment_id.hex,
+            self._reminder_at(new_date),
+            previous_date,
+            previous_time,
+            actor,
         )
         try:
             async with self.sessionmaker() as session, session.begin():

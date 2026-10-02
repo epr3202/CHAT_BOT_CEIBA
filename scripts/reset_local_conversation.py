@@ -41,8 +41,11 @@ async def reset_local_conversation(
     # opening the database; keep this callable's existing interface for tooling.
     async with sessionmaker() as session, session.begin():
         return await reset_conversation_by_phone(
-            session, raw_phone_number=raw_phone_number, dry_run=dry_run,
-            actor=RESET_ACTOR, reason=RESET_REASON,
+            session,
+            raw_phone_number=raw_phone_number,
+            dry_run=dry_run,
+            actor=RESET_ACTOR,
+            reason=RESET_REASON,
             request_id=request_id or f"local-reset-{uuid.uuid4()}",
         )
 
@@ -66,8 +69,9 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Apply changes. Without this flag the script only prints a dry run.",
     )
-    mode.add_argument("--dry-run", action="store_false", dest="execute",
-                      help="Preview only (the default).")
+    mode.add_argument(
+        "--dry-run", action="store_false", dest="execute", help="Preview only (the default)."
+    )
     parser.set_defaults(execute=False)
     parser.add_argument(
         "--connect-timeout",

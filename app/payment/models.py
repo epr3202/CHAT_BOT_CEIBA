@@ -23,9 +23,7 @@ class PaymentEvidence(Base):
     __tablename__ = "payment_evidence"
     __table_args__ = (
         CheckConstraint(
-            "download_status IN ("
-            "'PENDING', 'DOWNLOADED', 'FAILED_RETRYABLE', 'FAILED_PERMANENT'"
-            ")",
+            "download_status IN ('PENDING', 'DOWNLOADED', 'FAILED_RETRYABLE', 'FAILED_PERMANENT')",
             name="ck_payment_evidence_download_status",
         ),
         CheckConstraint(
@@ -56,26 +54,18 @@ class PaymentEvidence(Base):
     conversation_id: Mapped[int] = mapped_column(
         ForeignKey("conversation.id"), nullable=False, index=True
     )
-    customer_id: Mapped[int] = mapped_column(
-        ForeignKey("customer.id"), nullable=False, index=True
-    )
-    message_id: Mapped[int] = mapped_column(
-        ForeignKey("message.id"), nullable=False, unique=True
-    )
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), nullable=False, index=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("message.id"), nullable=False, unique=True)
     media_id: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     declared_sha256: Mapped[str] = mapped_column(String(128), nullable=False)
     storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     verified_sha256: Mapped[str | None] = mapped_column(String(128), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    download_status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="PENDING"
-    )
+    download_status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
     download_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    review_status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="PENDING_REVIEW"
-    )
+    review_status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING_REVIEW")
     reviewed_by_agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("agent.id"), nullable=True, index=True
     )

@@ -56,7 +56,9 @@ async def claim_one(db: Any) -> Any:
 
 
 async def test_pause_commit_before_admission_blocks_send_under_real_lock(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     conversation_id, _ = await enqueue(db)
     item = await claim_one(db)
@@ -75,14 +77,18 @@ async def test_pause_commit_before_admission_blocks_send_under_real_lock(
     finally:
         await finish_tasks(tasks)
     final = await snapshot(db)
-    evidence(request, uncommitted=uncommitted, final=final,
-             database_waits=waits, sends=sender.sends)
+    evidence(
+        request, uncommitted=uncommitted, final=final, database_waits=waits, sends=sender.sends
+    )
     assert sender.sends == [] and final["outbox"][0]["status"] == "SUPPRESSED"
 
 
 @pytest.mark.parametrize("fail", [False, True])
 async def test_admitted_send_remains_external_truth_after_pause(
-    db: Any, api: Any, request: pytest.FixtureRequest, fail: bool,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    fail: bool,
 ) -> None:
     conversation_id, _ = await enqueue(db)
     item = await claim_one(db)
@@ -110,7 +116,9 @@ async def test_admitted_send_remains_external_truth_after_pause(
 
 
 async def test_admission_commit_can_precede_pause_and_provider_call(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     from app.channel.worker import settle_outbox_success
 
@@ -134,16 +142,27 @@ async def test_admission_commit_can_precede_pause_and_provider_call(
     # Exercise the documented permission-to-HTTP gap: the already committed attempt may call.
     sender = Sender()
     provider_id = await sender.send_text(item.recipient_phone_number, "R9 admitted before pause")
-    await settle_outbox_success(db, item.id, "R9 admitted before pause", provider_id,
-                                datetime.now(UTC), 5, 300, claim_token=item.claim_token)
+    await settle_outbox_success(
+        db,
+        item.id,
+        "R9 admitted before pause",
+        provider_id,
+        datetime.now(UTC),
+        5,
+        300,
+        claim_token=item.claim_token,
+    )
     final = await snapshot(db)
-    evidence(request, before_send=before_send, final=final,
-             database_waits=waits, sends=sender.sends)
+    evidence(
+        request, before_send=before_send, final=final, database_waits=waits, sends=sender.sends
+    )
     assert final["outbox"][0]["status"] == "SENT" and len(final["message"]) == 2
 
 
 async def test_slow_media_upload_requires_new_check_before_send(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     conversation_id, _ = await enqueue(db, "DOCUMENT")
     item = await claim_one(db)
@@ -168,7 +187,9 @@ async def test_slow_media_upload_requires_new_check_before_send(
 
 
 async def test_invalid_media_second_send_needs_fresh_admission(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     conversation_id, _ = await enqueue(db, "DOCUMENT")
     item = await claim_one(db)
@@ -191,7 +212,10 @@ async def test_invalid_media_second_send_needs_fresh_admission(
 
 @pytest.mark.parametrize("operation", ["pause", "suppression", "admission"])
 async def test_deferred_sql_failure_rolls_back_whole_decision(
-    db: Any, api: Any, request: pytest.FixtureRequest, operation: str,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    operation: str,
 ) -> None:
     conversation_id, _ = await enqueue(db)
     item = await claim_one(db)
@@ -200,14 +224,18 @@ async def test_deferred_sql_failure_rolls_back_whole_decision(
     table = "conversation" if operation == "pause" else "outbox"
     before = await snapshot(db)
     async with db() as session, session.begin():
-        await session.execute(text(
-            "CREATE FUNCTION r9_fail_commit() RETURNS trigger LANGUAGE plpgsql AS $$ "
-            "BEGIN RAISE EXCEPTION 'R9 deferred decision failure'; END $$",
-        ))
-        await session.execute(text(
-            f"CREATE CONSTRAINT TRIGGER r9_commit_failure AFTER UPDATE ON {table} "
-            "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION r9_fail_commit()",
-        ))
+        await session.execute(
+            text(
+                "CREATE FUNCTION r9_fail_commit() RETURNS trigger LANGUAGE plpgsql AS $$ "
+                "BEGIN RAISE EXCEPTION 'R9 deferred decision failure'; END $$",
+            )
+        )
+        await session.execute(
+            text(
+                f"CREATE CONSTRAINT TRIGGER r9_commit_failure AFTER UPDATE ON {table} "
+                "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION r9_fail_commit()",
+            )
+        )
     try:
         with pytest.raises(DBAPIError, match="R9 deferred decision failure"):
             if operation == "pause":
@@ -229,7 +257,10 @@ async def test_deferred_sql_failure_rolls_back_whole_decision(
 
 @pytest.mark.parametrize("operation", ["pause", "admission", "suppression"])
 async def test_cancellation_before_commit_preserves_independent_snapshot(
-    db: Any, api: Any, request: pytest.FixtureRequest, operation: str,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    operation: str,
 ) -> None:
     conversation_id, _ = await enqueue(db)
     item = await claim_one(db)
@@ -240,8 +271,11 @@ async def test_cancellation_before_commit_preserves_independent_snapshot(
     task = None
     try:
         async with pause_after_sql(db, lambda s: s.startswith(prefix)) as (entered, release):
-            operation_call = take(api, conversation_id) if operation == "pause" else (
-                admit_outbox(db, item.id, item.claim_token))
+            operation_call = (
+                take(api, conversation_id)
+                if operation == "pause"
+                else (admit_outbox(db, item.id, item.claim_token))
+            )
             task = asyncio.create_task(operation_call)
             await asyncio.wait_for(entered.wait(), 10)
             assert await snapshot(db) == before
@@ -258,7 +292,9 @@ async def test_cancellation_before_commit_preserves_independent_snapshot(
 
 
 async def test_reaper_does_not_retry_revoked_inflight_attempt(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     conversation_id, _ = await enqueue(db)
     item = await claim_one(db)
@@ -267,9 +303,16 @@ async def test_reaper_does_not_retry_revoked_inflight_attempt(
     try:
         await asyncio.wait_for(sender.entered.wait(), 10)
         await take(api, conversation_id)
-        assert await recover_stale_sending_outbox(
-            db, datetime.now(UTC) + timedelta(seconds=121), 120, 5, 300,
-        ) == 1
+        assert (
+            await recover_stale_sending_outbox(
+                db,
+                datetime.now(UTC) + timedelta(seconds=121),
+                120,
+                5,
+                300,
+            )
+            == 1
+        )
         before_callback = await snapshot(db)
         sender.release.set()
         assert await asyncio.wait_for(task, 10) == "DISCARDED"
@@ -283,7 +326,8 @@ async def test_reaper_does_not_retry_revoked_inflight_attempt(
 
 
 async def test_two_consumers_cannot_admit_same_claim_twice(
-    db: Any, request: pytest.FixtureRequest,
+    db: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     await enqueue(db)
     item = await claim_one(db)
@@ -303,7 +347,10 @@ async def test_two_consumers_cannot_admit_same_claim_twice(
 @pytest.mark.parametrize("operation", ["pause", "admission"])
 @pytest.mark.parametrize("boundary", ["before_commit", "after_commit"])
 async def test_killed_owned_process_keeps_committed_boundary(
-    db: Any, request: pytest.FixtureRequest, operation: str, boundary: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    operation: str,
+    boundary: str,
 ) -> None:
     import multiprocessing
     import os
@@ -318,15 +365,25 @@ async def test_killed_owned_process_keeps_committed_boundary(
     parent, child = context.Pipe()
     # Synthetic job URL only; never include it (or its credentials) in evidence.
     url = db.kw["bind"].url.render_as_string(hide_password=False)
-    process = context.Process(target=checkpoint_process, args=(
-        url, child, operation, boundary, conversation_id, item.id, item.claim_token,
-    ))
+    process = context.Process(
+        target=checkpoint_process,
+        args=(
+            url,
+            child,
+            operation,
+            boundary,
+            conversation_id,
+            item.id,
+            item.claim_token,
+        ),
+    )
     process.start()
     try:
         assert await asyncio.wait_for(asyncio.to_thread(parent.poll, 15), 17)
         checkpoint = parent.recv()
-        assert checkpoint == ("COMMITTED" if boundary == "after_commit" else (
-            "SQL_EXECUTED_UNCOMMITTED"))
+        assert checkpoint == (
+            "COMMITTED" if boundary == "after_commit" else ("SQL_EXECUTED_UNCOMMITTED")
+        )
         observed = await snapshot(db)
         if boundary == "before_commit":
             assert observed == before
@@ -346,9 +403,19 @@ async def test_killed_owned_process_keeps_committed_boundary(
             await run_claim(db, item, sender)
             assert len(sender.sends) == int(boundary == "before_commit")
         final = await snapshot(db)
-        evidence(request, before=before, observed=observed, after_kill=after_kill, final=final,
-                 checkpoint=checkpoint, own_child_pid=process.pid, exitcode=process.exitcode,
-                 sends=sender.sends, providers="SIMULATED", guard="inherited R0, new engine")
+        evidence(
+            request,
+            before=before,
+            observed=observed,
+            after_kill=after_kill,
+            final=final,
+            checkpoint=checkpoint,
+            own_child_pid=process.pid,
+            exitcode=process.exitcode,
+            sends=sender.sends,
+            providers="SIMULATED",
+            guard="inherited R0, new engine",
+        )
     finally:
         if process.is_alive():
             process.kill()
@@ -361,12 +428,20 @@ async def wait_for_any_database_lock(db: Any) -> list[dict[str, Any]]:
     async with asyncio.timeout(10):
         while True:
             async with db() as session:
-                rows = (await session.execute(text(
-                    "SELECT pid, pg_blocking_pids(pid) AS blockers, wait_event "
-                    "FROM pg_stat_activity WHERE datname=current_database() "
-                    "AND pid != pg_backend_pid() AND wait_event_type='Lock' "
-                    "AND cardinality(pg_blocking_pids(pid)) > 0",
-                ))).mappings().all()
+                rows = (
+                    (
+                        await session.execute(
+                            text(
+                                "SELECT pid, pg_blocking_pids(pid) AS blockers, wait_event "
+                                "FROM pg_stat_activity WHERE datname=current_database() "
+                                "AND pid != pg_backend_pid() AND wait_event_type='Lock' "
+                                "AND cardinality(pg_blocking_pids(pid)) > 0",
+                            )
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
             if rows:
                 return [dict(row) for row in rows]
             await asyncio.sleep(0)
@@ -374,7 +449,10 @@ async def wait_for_any_database_lock(db: Any) -> list[dict[str, Any]]:
 
 @pytest.mark.parametrize("contender", ["r8_denial", "r5_capture"])
 async def test_delivery_locks_preserve_r8_authorization_and_r5_passive_capture(
-    db: Any, api: Any, request: pytest.FixtureRequest, contender: str,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    contender: str,
 ) -> None:
     import respx
 
@@ -390,8 +468,9 @@ async def test_delivery_locks_preserve_r8_authorization_and_r5_passive_capture(
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         customer = await session.get(Customer, conversation.customer_id)
-        case, _ = await create_handoff(session, conversation, customer, "PAYMENT_REVIEW", "NORMAL",
-                                       "r9", get_settings())
+        case, _ = await create_handoff(
+            session, conversation, customer, "PAYMENT_REVIEW", "NORMAL", "r9", get_settings()
+        )
         await session.flush()
         case_id, phone = case.id, customer.phone_number
     client, actors = api
@@ -416,8 +495,9 @@ async def test_delivery_locks_preserve_r8_authorization_and_r5_passive_capture(
                 tasks.append(asyncio.create_task(run_claim(db, item, sender)))
                 await asyncio.wait_for(entered.wait(), 10)
                 if contender == "r8_denial":
-                    action = client.post(path, headers=actors["B"]["headers"],
-                                         json={"text": "R9 no autorizado"})
+                    action = client.post(
+                        path, headers=actors["B"]["headers"], json={"text": "R9 no autorizado"}
+                    )
                 else:
                     action = inbound.process_webhook_event(event_id, db)
                 tasks.append(asyncio.create_task(action))
@@ -429,13 +509,23 @@ async def test_delivery_locks_preserve_r8_authorization_and_r5_passive_capture(
     finally:
         await finish_tasks(tasks)
     after = await snapshot(db)
-    evidence(request, before=before, contended=contended, after=after, progress=progress,
-             database_waits=waits, sends=sender.sends, contender=contender,
-             status=results[1].status_code if contender == "r8_denial" else None)
+    evidence(
+        request,
+        before=before,
+        contended=contended,
+        after=after,
+        progress=progress,
+        database_waits=waits,
+        sends=sender.sends,
+        contender=contender,
+        status=results[1].status_code if contender == "r8_denial" else None,
+    )
     assert len(sender.sends) == 1
     assert len(after["outbox"]) == 1 and after["outbox"][0]["status"] == "SENT"
-    assert after["conversation"][0]["automation_epoch"] == (
-        before["conversation"][0]["automation_epoch"])
+    assert (
+        after["conversation"][0]["automation_epoch"]
+        == (before["conversation"][0]["automation_epoch"])
+    )
     if contender == "r8_denial":
         assert results[1].status_code == 403
         assert after["conversation"] == before["conversation"]

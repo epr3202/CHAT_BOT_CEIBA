@@ -111,15 +111,17 @@ async def prepare_database() -> Any:
     sessionmaker = await reset_test_database()
     async with sessionmaker() as session:
         async with session.begin():
-            session.add(KnowledgeEntry(
-                code="RESP-AI-ERROR-001",
-                category="Fallback",
-                question_summary="Error",
-                answer_template="Error seguro.",
-                allowed_variables=[],
-                version=1,
-                status="APPROVED",
-            ))
+            session.add(
+                KnowledgeEntry(
+                    code="RESP-AI-ERROR-001",
+                    category="Fallback",
+                    question_summary="Error",
+                    answer_template="Error seguro.",
+                    allowed_variables=[],
+                    version=1,
+                    status="APPROVED",
+                )
+            )
             session.add_all(approved_entry(code) for code in VISIT_TEMPLATE_CODES)
     return sessionmaker
 

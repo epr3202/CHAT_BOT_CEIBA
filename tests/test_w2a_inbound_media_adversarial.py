@@ -177,9 +177,7 @@ def webhook_payload(
                                 "display_phone_number": "15551234567",
                                 "phone_number_id": "123456789",
                             },
-                            "contacts": [
-                                {"profile": {"name": "Cliente"}, "wa_id": PHONE}
-                            ],
+                            "contacts": [{"profile": {"name": "Cliente"}, "wa_id": PHONE}],
                             "messages": [message],
                         },
                     }

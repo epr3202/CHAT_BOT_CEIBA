@@ -169,9 +169,7 @@ def test_date_presenters_accept_exact_formatter_text_and_date(variable: str) -> 
     assert present_variables({variable: "19 de agosto de 2026"}) == {
         variable: "19 de agosto de 2026"
     }
-    assert present_variables({variable: date(2026, 8, 19)}) == {
-        variable: "19 de agosto de 2026"
-    }
+    assert present_variables({variable: date(2026, 8, 19)}) == {variable: "19 de agosto de 2026"}
 
 
 def test_month_presenter_requires_exact_formatter_text() -> None:

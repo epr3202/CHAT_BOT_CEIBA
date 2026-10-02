@@ -15,9 +15,7 @@ PLAN_EVENT_TYPES = ("ROMANTIC_DINNER", "PROPOSAL")
 class Plan(Base):
     __tablename__ = "plan"
     __table_args__ = (
-        CheckConstraint(
-            "event_type IN ('ROMANTIC_DINNER', 'PROPOSAL')", name="ck_plan_event_type"
-        ),
+        CheckConstraint("event_type IN ('ROMANTIC_DINNER', 'PROPOSAL')", name="ck_plan_event_type"),
         CheckConstraint("price_cop > 0", name="ck_plan_price_positive"),
         CheckConstraint("duration_minutes > 0", name="ck_plan_duration_positive"),
     )

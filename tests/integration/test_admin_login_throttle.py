@@ -82,7 +82,9 @@ async def test_throttled_attempt_does_not_record_login_failed(client: AsyncClien
 
     async with app.state.db_sessionmaker() as session:
         failures = await session.scalar(
-            select(func.count()).select_from(AuditEvent).where(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(
                 AuditEvent.action == "ADMIN_LOGIN_FAILED",
                 AuditEvent.new_value["document_id"].as_string() == DOCUMENT_ID,
             )
@@ -107,9 +109,7 @@ async def test_throttled_attempt_does_not_record_login_failed(client: AsyncClien
 @pytest.mark.asyncio
 async def test_window_expiry_allows_login_again(client: AsyncClient) -> None:
     await record_five_failures(client)
-    blocked = await client.post(
-        "/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN}
-    )
+    blocked = await client.post("/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN})
     assert blocked.status_code == 429, blocked.text
 
     # Only this test fixture rewrites timestamps; production audit remains append-only.
@@ -125,18 +125,14 @@ async def test_window_expiry_allows_login_again(client: AsyncClient) -> None:
             )
             assert updated.rowcount == 5
 
-    response = await client.post(
-        "/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN}
-    )
+    response = await client.post("/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN})
     assert response.status_code == 200, response.text
 
 
 @pytest.mark.asyncio
 async def test_failures_are_scoped_by_document_id(client: AsyncClient) -> None:
     await record_five_failures(client)
-    blocked = await client.post(
-        "/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN}
-    )
+    blocked = await client.post("/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN})
     assert blocked.status_code == 429, blocked.text
 
     response = await client.post(
@@ -148,16 +144,12 @@ async def test_failures_are_scoped_by_document_id(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_successful_login_is_not_throttled_by_old_successes(client: AsyncClient) -> None:
     for _ in range(6):
-        response = await client.post(
-            "/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN}
-        )
+        response = await client.post("/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN})
         assert response.status_code == 200, response.text
 
     # Successes leave the complete failure budget available, but do not disable throttling.
     await record_five_failures(client)
-    response = await client.post(
-        "/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN}
-    )
+    response = await client.post("/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN})
     assert response.status_code == 429, response.text
 
 
@@ -182,9 +174,7 @@ async def test_verify_pin_runs_off_the_event_loop(
         return True
 
     monkeypatch.setattr("app.admin.routes.verify_pin", track_verify_pin)
-    response = await client.post(
-        "/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN}
-    )
+    response = await client.post("/admin/login", json={"document_id": DOCUMENT_ID, "pin": PIN})
 
     assert response.status_code == 200, response.text
     assert ran_on_main_thread == [False]

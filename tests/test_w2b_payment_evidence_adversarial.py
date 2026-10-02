@@ -113,9 +113,7 @@ async def payment_http_context(
     payment_context: tuple[async_sessionmaker[AsyncSession], ClassifierCalls],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> AsyncIterator[
-    tuple[async_sessionmaker[AsyncSession], ClassifierCalls, httpx.AsyncClient]
-]:
+) -> AsyncIterator[tuple[async_sessionmaker[AsyncSession], ClassifierCalls, httpx.AsyncClient]]:
     sessionmaker, calls = payment_context
     monkeypatch.setenv("PAYMENT_EVIDENCE_DIR", str(tmp_path / "evidence"))
     get_settings.cache_clear()
@@ -410,9 +408,7 @@ async def test_tc_pay_002_caption_payment_creates_urgent_handoff_then_evidence(
     ) -> IntentClassification:
         del context, conversation_id
         calls.messages.append(message_text)
-        return classification(
-            "PAYMENT_MESSAGE", needs_human=True, handoff_reason="PAYMENT_REVIEW"
-        )
+        return classification("PAYMENT_MESSAGE", needs_human=True, handoff_reason="PAYMENT_REVIEW")
 
     monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_payment)
     await process_whatsapp_webhook(
@@ -649,9 +645,7 @@ async def test_tc_pay_021_metadata_hash_match_does_not_accept_tampered_bytes(
             },
         )
     )
-    respx.get(fresh_url).mock(
-        return_value=httpx.Response(200, content=tampered_bytes)
-    )
+    respx.get(fresh_url).mock(return_value=httpx.Response(200, content=tampered_bytes))
 
     async with httpx.AsyncClient() as http_client:
         await module.process_payment_evidence_once(
@@ -698,9 +692,7 @@ async def test_tc_pay_022_webhook_hash_is_authoritative_when_metadata_omits_hash
             },
         )
     )
-    respx.get(fresh_url).mock(
-        return_value=httpx.Response(200, content=INCIDENT_BYTES)
-    )
+    respx.get(fresh_url).mock(return_value=httpx.Response(200, content=INCIDENT_BYTES))
 
     async with httpx.AsyncClient() as http_client:
         await module.process_payment_evidence_once(
@@ -725,9 +717,7 @@ async def test_tc_pay_008_http_500_schedules_retry_with_backoff(
     module = payment_worker()
     sessionmaker, _calls = payment_context
     await seed_evidence(sessionmaker, media_id="media-pay-008")
-    respx.get(f"{GRAPH_BASE}/v20.0/media-pay-008").mock(
-        return_value=httpx.Response(500)
-    )
+    respx.get(f"{GRAPH_BASE}/v20.0/media-pay-008").mock(return_value=httpx.Response(500))
     now = datetime.now(UTC)
     async with httpx.AsyncClient() as http_client:
         await module.process_payment_evidence_once(
@@ -777,9 +767,7 @@ async def test_tc_pay_010_sixth_failed_attempt_is_permanent(
     module = payment_worker()
     sessionmaker, _calls = payment_context
     await seed_evidence(sessionmaker, media_id="media-pay-010", attempts=5)
-    respx.get(f"{GRAPH_BASE}/v20.0/media-pay-010").mock(
-        return_value=httpx.Response(500)
-    )
+    respx.get(f"{GRAPH_BASE}/v20.0/media-pay-010").mock(return_value=httpx.Response(500))
     async with httpx.AsyncClient() as http_client:
         await module.process_payment_evidence_once(
             sessionmaker,
@@ -954,9 +942,7 @@ async def test_tc_pay_014_admin_list_requires_admin_and_only_pending_review(
     admin_headers = await login_headers(client, "admin-pay")
 
     assert (await client.get("/admin/payment-evidence")).status_code == 401
-    assert (
-        await client.get("/admin/payment-evidence", headers=agent_headers)
-    ).status_code == 403
+    assert (await client.get("/admin/payment-evidence", headers=agent_headers)).status_code == 403
     response = await client.get("/admin/payment-evidence", headers=admin_headers)
     assert response.status_code == 200
     assert [row["id"] for row in response.json()] == [pending.id]
@@ -1096,9 +1082,7 @@ async def test_tc_pay_016_review_transition_is_one_way_and_audited(
         audits = list(
             (
                 await session.scalars(
-                    select(AuditEvent).where(
-                        AuditEvent.action == "PAYMENT_EVIDENCE_REVIEWED"
-                    )
+                    select(AuditEvent).where(AuditEvent.action == "PAYMENT_EVIDENCE_REVIEWED")
                 )
             ).all()
         )

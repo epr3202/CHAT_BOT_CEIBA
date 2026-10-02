@@ -43,12 +43,14 @@ async def transition_reservation(
         )
     reservation_id = str(reservation.reservation_id)
     reservation.status = new_status
-    session.add(AuditEvent(
-        actor=actor,
-        action="RESERVATION_STATUS_CHANGED",
-        entity="reservation",
-        old_value={"status": old_status, "reservation_id": reservation_id},
-        new_value={"status": new_status, "reservation_id": reservation_id},
-        reason=reason,
-        request_id=request_id,
-    ))
+    session.add(
+        AuditEvent(
+            actor=actor,
+            action="RESERVATION_STATUS_CHANGED",
+            entity="reservation",
+            old_value={"status": old_status, "reservation_id": reservation_id},
+            new_value={"status": new_status, "reservation_id": reservation_id},
+            reason=reason,
+            request_id=request_id,
+        )
+    )

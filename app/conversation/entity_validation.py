@@ -1,4 +1,5 @@
 """Pure semantic boundary for the nine conversational entity families."""
+
 from __future__ import annotations
 
 import math
@@ -43,9 +44,12 @@ class Accepted:
     def canonical(self) -> ExtractedEntity:
         value: Any = self.value
         if isinstance(value, EventDateTriplet):
-            value = dict(event_date=value.event_date.isoformat() if value.event_date else None,
-                         event_month=value.event_month, event_date_type=value.event_date_type,
-                         event_date_raw=value.event_date_raw)
+            value = dict(
+                event_date=value.event_date.isoformat() if value.event_date else None,
+                event_month=value.event_month,
+                event_date_type=value.event_date_type,
+                event_date_raw=value.event_date_raw,
+            )
         elif self.entity.entity == "guest_count_range":
             value = dict(min=value[0], max=value[1])
         elif isinstance(value, tuple):
@@ -79,11 +83,13 @@ def technical_type(value: object) -> str:
 
 def rejection(entity: ExtractedEntity, code: str) -> Rejection:
     name = (
-        entity.entity if isinstance(entity.entity, str) and entity.entity in ENTITY_NAMES
+        entity.entity
+        if isinstance(entity.entity, str) and entity.entity in ENTITY_NAMES
         else "UNKNOWN"
     )
-    return Rejection(name, code, technical_type(entity.normalized_value),
-                     entity.quality_status == "CORRECTED")
+    return Rejection(
+        name, code, technical_type(entity.normalized_value), entity.quality_status == "CORRECTED"
+    )
 
 
 def text_value(value: object, *, name: bool = False) -> str:
@@ -197,7 +203,10 @@ def date_value(value: object, raw: str, today: date) -> EventDateTriplet:
                 _fail("UNKNOWN_DATE_KEY")
             kind = value.get("event_date_type")
             if not isinstance(kind, str) or kind not in {
-                "EXACT", "APPROXIMATE", "FLEXIBLE", "UNKNOWN"
+                "EXACT",
+                "APPROXIMATE",
+                "FLEXIBLE",
+                "UNKNOWN",
             }:
                 _fail("INVALID_DATE_DISCRIMINATOR")
             day, month = value.get("event_date"), value.get("event_month")
@@ -214,7 +223,8 @@ def date_value(value: object, raw: str, today: date) -> EventDateTriplet:
             if len(proposed_raw) > 200:
                 _fail("DATE_RAW_OVERFLOW")
             triplet = validate_event_date_triplet(
-                date.fromisoformat(day) if day else None, month, kind, raw)
+                date.fromisoformat(day) if day else None, month, kind, raw
+            )
             if kind in {"UNKNOWN", "FLEXIBLE"} and month is None:
                 return triplet
         elif isinstance(value, str) and value:
@@ -273,23 +283,38 @@ def decode_entities(
             rejected.append(Rejection("UNKNOWN", "UNKNOWN_LEGACY_ENTITY", technical_type(value)))
             continue
         if isinstance(value, dict) and any(
-            key in value for key in (
-                "raw_value", "raw", "normalized_value", "normalized", "quality_status"
-            )
+            key in value
+            for key in ("raw_value", "raw", "normalized_value", "normalized", "quality_status")
         ):
-            data = dict(entity=name, raw_value=value.get("raw_value", value.get("raw", "")),
-                        normalized_value=value.get("normalized_value", value.get("normalized")),
-                        quality_status=value.get("quality_status", "PROVIDED"),
-                        confidence=value.get("confidence", 0.9),
-                        needs_confirmation=value.get("needs_confirmation", False),
-                        validation_errors=value.get("validation_errors", []))
-            if set(value) - {"raw_value", "raw", "normalized_value", "normalized", "quality_status",
-                             "confidence", "needs_confirmation", "validation_errors"}:
+            data = dict(
+                entity=name,
+                raw_value=value.get("raw_value", value.get("raw", "")),
+                normalized_value=value.get("normalized_value", value.get("normalized")),
+                quality_status=value.get("quality_status", "PROVIDED"),
+                confidence=value.get("confidence", 0.9),
+                needs_confirmation=value.get("needs_confirmation", False),
+                validation_errors=value.get("validation_errors", []),
+            )
+            if set(value) - {
+                "raw_value",
+                "raw",
+                "normalized_value",
+                "normalized",
+                "quality_status",
+                "confidence",
+                "needs_confirmation",
+                "validation_errors",
+            }:
                 rejected.append(Rejection(name, "UNKNOWN_LEGACY_KEY", "dict"))
                 continue
         else:
-            data = dict(entity=name, raw_value=value if isinstance(value, str) else "",
-                        normalized_value=value, quality_status="PROVIDED", confidence=0.9)
+            data = dict(
+                entity=name,
+                raw_value=value if isinstance(value, str) else "",
+                normalized_value=value,
+                quality_status="PROVIDED",
+                confidence=0.9,
+            )
         try:
             decoded.append(ExtractedEntity.model_validate(data, strict=True))
         except ValidationError:
@@ -348,8 +373,11 @@ def validate_entity(entity: ExtractedEntity, today: date) -> Accepted:
                     _fail("INVALID_SERVICE_OBJECT")
                 item = item["service_code"]
             text = text_value(item)
-            matches = [text.upper()] if text.upper() in service_catalog_codes() else (
-                match_requested_services(text) or [])
+            matches = (
+                [text.upper()]
+                if text.upper() in service_catalog_codes()
+                else (match_requested_services(text) or [])
+            )
             if not matches:
                 warnings.append(rejection(entity, "UNSUPPORTED_SERVICE_ITEM"))
             codes.extend(code for code in matches if code not in codes)

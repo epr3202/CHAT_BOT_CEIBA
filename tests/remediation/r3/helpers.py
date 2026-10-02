@@ -102,9 +102,7 @@ async def prepare(
             )
             conversation.active_lead_id = lead.lead_id
             conversation.last_question_code = (
-                "RESP-EVENT-DATA-006"
-                if pending == "COLLECT_SERVICES"
-                else "RESP-EVENT-DATA-013"
+                "RESP-EVENT-DATA-006" if pending == "COLLECT_SERVICES" else "RESP-EVENT-DATA-013"
             )
             conversation.pending_fields = [
                 "services" if pending == "COLLECT_SERVICES" else "event_type"

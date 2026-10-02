@@ -120,9 +120,7 @@ async def create_payment_evidence(
                 request_id=request_id,
             )
         )
-    summary_line = (
-        f"[comprobante recibido: {evidence.mime_type}, evidencia #{evidence.id}]"
-    )
+    summary_line = f"[comprobante recibido: {evidence.mime_type}, evidencia #{evidence.id}]"
     if summary_line not in handoff.summary:
         handoff.summary = f"{handoff.summary.rstrip()}\n{summary_line}"
     return evidence
@@ -138,8 +136,7 @@ def payment_media_fields(message: Message) -> dict[str, str] | None:
     mime_type = raw_content.get("mime_type")
     declared_sha256 = raw_content.get("sha256")
     if not all(
-        isinstance(value, str) and value
-        for value in (media_id, mime_type, declared_sha256)
+        isinstance(value, str) and value for value in (media_id, mime_type, declared_sha256)
     ):
         return None
     return {

@@ -36,13 +36,16 @@ async def ordered_outbox(harness: Harness, tmp_path: Path) -> tuple[Outbox, Outb
     return rows[0], rows[1]
 
 
-@pytest.mark.parametrize("text_status,text_reason,pdf_status,pdf_reason", [
-    ("SUPPRESSED", "AUTOMATION_PAUSED", "SUPPRESSED", "AUTOMATION_PAUSED"),
-    ("SUPPRESSED", None, "SUPPRESSED", "PRECEDING_TEXT_SUPPRESSED"),
-    ("FAILED", None, "SUPPRESSED", "PRECEDING_TEXT_FAILED"),
-    ("REVIEW", "EXTERNAL_RESULT_UNCERTAIN", "REVIEW", "PRECEDING_TEXT_REVIEW"),
-    ("DISCARDED", None, "REVIEW", "PRECEDING_TEXT_REVIEW"),
-])
+@pytest.mark.parametrize(
+    "text_status,text_reason,pdf_status,pdf_reason",
+    [
+        ("SUPPRESSED", "AUTOMATION_PAUSED", "SUPPRESSED", "AUTOMATION_PAUSED"),
+        ("SUPPRESSED", None, "SUPPRESSED", "PRECEDING_TEXT_SUPPRESSED"),
+        ("FAILED", None, "SUPPRESSED", "PRECEDING_TEXT_FAILED"),
+        ("REVIEW", "EXTERNAL_RESULT_UNCERTAIN", "REVIEW", "PRECEDING_TEXT_REVIEW"),
+        ("DISCARDED", None, "REVIEW", "PRECEDING_TEXT_REVIEW"),
+    ],
+)
 async def test_terminal_text_retires_pdf_without_http(
     harness: Harness,
     tmp_path: Path,
@@ -66,10 +69,14 @@ async def test_terminal_text_retires_pdf_without_http(
     assert await process_outbox_once(harness.db, ForbiddenSender()) == 0
 
 
-@pytest.mark.parametrize("text_status,retrying", [("PENDING", False), ("SENDING", False),
-                                                 ("PENDING", True)])
+@pytest.mark.parametrize(
+    "text_status,retrying", [("PENDING", False), ("SENDING", False), ("PENDING", True)]
+)
 async def test_unfinished_text_continues_to_block_pdf(
-    harness: Harness, tmp_path: Path, text_status: str, retrying: bool,
+    harness: Harness,
+    tmp_path: Path,
+    text_status: str,
+    retrying: bool,
 ) -> None:
     preceding, dependent = await ordered_outbox(harness, tmp_path)
     now = datetime.now(UTC)
@@ -80,14 +87,16 @@ async def test_unfinished_text_continues_to_block_pdf(
             row.next_attempt_at = now + timedelta(hours=1)
     claims = await claim_due_outbox_batch(harness.db, now, 10)
     assert dependent.id not in [claim.id for claim in claims]
-    assert [claim.id for claim in claims] == ([preceding.id] if text_status == "PENDING"
-                                            and not retrying else [])
+    assert [claim.id for claim in claims] == (
+        [preceding.id] if text_status == "PENDING" and not retrying else []
+    )
     saved = next(row for row in await harness.rows(Outbox) if row.id == dependent.id)
     assert saved.status == "PENDING" and saved.delivery_reason is None
 
 
 async def test_terminal_dependency_preserves_prior_external_uncertainty(
-    harness: Harness, tmp_path: Path,
+    harness: Harness,
+    tmp_path: Path,
 ) -> None:
     preceding, dependent = await ordered_outbox(harness, tmp_path)
     async with harness.db.begin() as session:
@@ -104,7 +113,9 @@ async def test_terminal_dependency_preserves_prior_external_uncertainty(
 
 @pytest.mark.parametrize("dependency", ["invalid", True, 0, None, 99999999])
 async def test_invalid_dependency_does_not_poison_claim_batch_or_send_pdf(
-    harness: Harness, tmp_path: Path, dependency: object,
+    harness: Harness,
+    tmp_path: Path,
+    dependency: object,
 ) -> None:
     preceding, dependent = await ordered_outbox(harness, tmp_path)
     async with harness.db.begin() as session:
@@ -127,22 +138,24 @@ async def test_invalid_dependency_does_not_poison_claim_batch_or_send_pdf(
 
 
 async def test_terminal_dependency_finalization_is_safe_for_concurrent_claims(
-    harness: Harness, tmp_path: Path,
+    harness: Harness,
+    tmp_path: Path,
 ) -> None:
     preceding, dependent = await ordered_outbox(harness, tmp_path)
     async with harness.db.begin() as session:
         text = await session.get(Outbox, preceding.id)
         text.status = "FAILED"
-    results = await asyncio.gather(*(
-        claim_due_outbox_batch(harness.db, datetime.now(UTC), 10) for _ in range(2)
-    ))
+    results = await asyncio.gather(
+        *(claim_due_outbox_batch(harness.db, datetime.now(UTC), 10) for _ in range(2))
+    )
     assert results == [[], []]
     saved = next(row for row in await harness.rows(Outbox) if row.id == dependent.id)
     assert saved.status == "SUPPRESSED" and saved.delivery_reason == "PRECEDING_TEXT_FAILED"
 
 
 async def test_terminal_dependency_cancels_pdf_backoff_immediately(
-    harness: Harness, tmp_path: Path,
+    harness: Harness,
+    tmp_path: Path,
 ) -> None:
     preceding, dependent = await ordered_outbox(harness, tmp_path)
     async with harness.db.begin() as session:
@@ -156,14 +169,16 @@ async def test_terminal_dependency_cancels_pdf_backoff_immediately(
 
 
 async def test_legacy_document_without_dependency_keeps_existing_claim_behavior(
-    harness: Harness, tmp_path: Path,
+    harness: Harness,
+    tmp_path: Path,
 ) -> None:
     preceding, dependent = await ordered_outbox(harness, tmp_path)
     async with harness.db.begin() as session:
         text = await session.get(Outbox, preceding.id)
         text.status = "SENT"
         pdf = await session.get(Outbox, dependent.id)
-        pdf.delivery_context = {key: value for key, value in pdf.delivery_context.items()
-                                if key != "after_outbox_id"}
+        pdf.delivery_context = {
+            key: value for key, value in pdf.delivery_context.items() if key != "after_outbox_id"
+        }
     claims = await claim_due_outbox_batch(harness.db, datetime.now(UTC), 10)
     assert [claim.id for claim in claims] == [dependent.id]

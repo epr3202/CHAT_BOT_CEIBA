@@ -99,8 +99,9 @@ async def seed(db: async_sessionmaker[AsyncSession], kind: str = "TEXT", **field
             await session.flush()
             asset_id = asset.catalog_asset_id
         row = Outbox(
-            delivery_context=automatic_context(conversation, "CATALOG" if kind == "DOCUMENT"
-                                               else "TEMPLATE"),
+            delivery_context=automatic_context(
+                conversation, "CATALOG" if kind == "DOCUMENT" else "TEMPLATE"
+            ),
             conversation_id=conversation.id,
             message_id=inbound.id,
             channel="WHATSAPP",

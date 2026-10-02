@@ -5,6 +5,7 @@ Revises: 20260810_0001
 Create Date: 2026-08-10 00:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -31,4 +32,3 @@ def downgrade() -> None:
     op.drop_column("outbox", "sent_at")
     op.drop_column("outbox", "last_error")
     op.drop_column("outbox", "attempts")
-

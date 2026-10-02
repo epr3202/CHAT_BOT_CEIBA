@@ -118,9 +118,7 @@ async def seed_conversation(
     stored: IntentClassification | None = None,
 ) -> int:
     fallback_body = (
-        await render_response(sessionmaker, "RESP-FALLBACK-004", {})
-        if stored is not None
-        else None
+        await render_response(sessionmaker, "RESP-FALLBACK-004", {}) if stored is not None else None
     )
     async with sessionmaker() as session:
         async with session.begin():
@@ -136,9 +134,7 @@ async def seed_conversation(
                 last_question_code=(
                     "RESP-FALLBACK-004" if stored is not None else "RESP-GREETING-001"
                 ),
-                pending_confirmation=(
-                    pending_payload(stored) if stored is not None else None
-                ),
+                pending_confirmation=(pending_payload(stored) if stored is not None else None),
                 failed_understanding_count=0,
             )
             session.add(conversation)
@@ -251,9 +247,7 @@ async def audit_rows(
     async with sessionmaker() as session:
         return list(
             await session.scalars(
-                select(AuditEvent)
-                .where(AuditEvent.action == action)
-                .order_by(AuditEvent.id)
+                select(AuditEvent).where(AuditEvent.action == action).order_by(AuditEvent.id)
             )
         )
 
@@ -276,9 +270,7 @@ async def outbox_bodies(
     async with sessionmaker() as session:
         rows = list(
             await session.scalars(
-                select(Outbox)
-                .where(Outbox.conversation_id == conversation_id)
-                .order_by(Outbox.id)
+                select(Outbox).where(Outbox.conversation_id == conversation_id).order_by(Outbox.id)
             )
         )
     return [str(row.payload["text"]["body"]) for row in rows]
@@ -334,9 +326,7 @@ async def test_tc_b3_001_confirmed_uncertain_event_dispatches_once_with_uplift(
     assert conversation.last_question_code == "RESP-EVENT-DATA-004"
     assert len(accepted) == 1
     assert len(ask_confirmation) == 1
-    assert (await outbox_bodies(sessionmaker_fixture, conversation_id)).count(
-        fallback_body
-    ) == 1
+    assert (await outbox_bodies(sessionmaker_fixture, conversation_id)).count(fallback_body) == 1
     assert len(uplift) == 1
     assert uplift[0].reason == "CONFIRMATION_UPLIFT"
     assert uplift[0].request_id == request_id

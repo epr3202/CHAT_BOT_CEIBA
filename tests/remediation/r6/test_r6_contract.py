@@ -1,4 +1,5 @@
 """Candidate branch coverage for the local pending-confirmation protocol."""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -25,12 +26,23 @@ from tests.remediation.test_r1_outbox import evidence
 pytestmark = pytest.mark.asyncio
 
 BAD_PENDING = [
-    None, {}, [], [1], 42, "", "legacy", {"type": "UNKNOWN"},
-    {"resolved_intent": "DENY"}, {"resolved_intent": "CONFIRM"},
+    None,
+    {},
+    [],
+    [1],
+    42,
+    "",
+    "legacy",
+    {"type": "UNKNOWN"},
+    {"resolved_intent": "DENY"},
+    {"resolved_intent": "CONFIRM"},
     {"resolved_intent": "DENY", "classification": proposal(confidence=0.65)},
     {"type": "OTHER", "classification": proposal(confidence=0.65)},
-    {"classification": None}, {"classification": []}, {"classification": {"confidence": 0.65}},
-    {"type": "FULL_NAME_CONFIRMATION"}, {"type": "FULL_NAME_CONFIRMATION", "full_name": None},
+    {"classification": None},
+    {"classification": []},
+    {"classification": {"confidence": 0.65}},
+    {"type": "FULL_NAME_CONFIRMATION"},
+    {"type": "FULL_NAME_CONFIRMATION", "full_name": None},
     {"type": "FULL_NAME_CONFIRMATION", "full_name": ""},
     {"type": "FULL_NAME_CONFIRMATION", "full_name": "   "},
     {"type": "FULL_NAME_CONFIRMATION", "full_name": 42},
@@ -56,8 +68,11 @@ async def test_non_authoritative_shapes_never_apply_or_crash(
         conversation.pending_action = "CLASSIFY_MESSAGE"
         conversation.last_question_code = "RESP-FALLBACK-004"
     first = await send(db, "sí", proposal("CONFIRM"), event_id=event)
-    second = await send(db, "Necesito consultar el parqueadero",
-                        proposal("GENERAL_INFORMATION", information_category="parqueadero"))
+    second = await send(
+        db,
+        "Necesito consultar el parqueadero",
+        proposal("GENERAL_INFORMATION", information_category="parqueadero"),
+    )
     evidence(request, legacy_fixture=pending, steps=[first, second], final=second["after"])
     completed(first)
     completed(second)
@@ -78,8 +93,12 @@ async def test_legacy_classification_requires_actual_confirmation_context(
     configure(monkeypatch)
     event = await prepare(db, body="sí")
     stored = proposal(confidence=0.65)
-    legacy = dict(classification=stored, original_intent="QUOTE_REQUEST",
-                  original_confidence=0.65, entities={})
+    legacy = dict(
+        classification=stored,
+        original_intent="QUOTE_REQUEST",
+        original_confidence=0.65,
+        entities={},
+    )
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, 1)
         conversation.pending_confirmation = legacy
@@ -102,8 +121,9 @@ async def test_legacy_name_is_contextual_and_single_use(
     event = await prepare(db, name=None, body="sí")
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, 1)
-        conversation.pending_confirmation = dict(type="FULL_NAME_CONFIRMATION",
-                                                 full_name="Nombre Vigente")
+        conversation.pending_confirmation = dict(
+            type="FULL_NAME_CONFIRMATION", full_name="Nombre Vigente"
+        )
         conversation.pending_action = "COLLECT_CUSTOMER_NAME" if valid_context else None
         conversation.last_question_code = "RESP-CUSTOMER-001" if valid_context else None
     first = await send(db, "sí", proposal(), event_id=event)
@@ -113,7 +133,8 @@ async def test_legacy_name_is_contextual_and_single_use(
     completed(last)
     assert actions(last["after"], "CUSTOMER_NAME_CONFIRMED") == int(valid_context)
     assert last["after"]["customer"][0]["full_name"] == (
-        "Nombre Vigente" if valid_context else None)
+        "Nombre Vigente" if valid_context else None
+    )
 
 
 @pytest.mark.parametrize("mode", ["deny", "correction_with_yes", "faq"])
@@ -123,26 +144,48 @@ async def test_natural_name_lifecycle(
     configure(monkeypatch)
     body = "Mi nombre tal vez sea Nombre Anterior"
     event = await prepare(db, name=None, body=body)
-    first = await send(db, body, proposal(entities=[entity(
-        "full_name", "Nombre Anterior", needs_confirmation=True,
-        quality_status="PENDING_CONFIRMATION")]), event_id=event)
+    first = await send(
+        db,
+        body,
+        proposal(
+            entities=[
+                entity(
+                    "full_name",
+                    "Nombre Anterior",
+                    needs_confirmation=True,
+                    quality_status="PENDING_CONFIRMATION",
+                )
+            ]
+        ),
+        event_id=event,
+    )
     completed(first)
     if mode == "deny":
         middle = await send(db, "no", proposal("DENY"))
         last = await send(db, "sí", proposal())
         expected, confirmations = None, 0
     elif mode == "correction_with_yes":
-        middle = await send(db, "sí, corrijo mi nombre a Nombre Corregido", proposal(entities=[
-            entity("full_name", "Nombre Corregido", quality_status="CORRECTED")]))
+        middle = await send(
+            db,
+            "sí, corrijo mi nombre a Nombre Corregido",
+            proposal(
+                entities=[entity("full_name", "Nombre Corregido", quality_status="CORRECTED")]
+            ),
+        )
         last = await send(db, "sí", proposal(), expected_calls=0)
         expected, confirmations = "Nombre Corregido", 0
     else:
-        middle = await send(db, "¿Hay parqueadero?",
-                            proposal("GENERAL_INFORMATION", information_category="parqueadero"))
+        middle = await send(
+            db,
+            "¿Hay parqueadero?",
+            proposal("GENERAL_INFORMATION", information_category="parqueadero"),
+        )
         last = await send(db, "sí", proposal())
         expected, confirmations = "Nombre Anterior", 1
-        assert middle["after"]["conversation"][0]["pending_confirmation"] == (
-            first["after"]["conversation"][0]["pending_confirmation"])
+        assert (
+            middle["after"]["conversation"][0]["pending_confirmation"]
+            == (first["after"]["conversation"][0]["pending_confirmation"])
+        )
         assert middle["after"]["conversation"][0]["pending_action"] == "COLLECT_CUSTOMER_NAME"
     evidence(request, steps=[first, middle, last], final=last["after"])
     completed(middle)
@@ -165,8 +208,11 @@ async def test_classification_lifecycle(
     completed(first)
     steps = [first]
     if mode == "faq":
-        middle = await send(db, "¿Hay parqueadero?",
-                            proposal("GENERAL_INFORMATION", information_category="parqueadero"))
+        middle = await send(
+            db,
+            "¿Hay parqueadero?",
+            proposal("GENERAL_INFORMATION", information_category="parqueadero"),
+        )
         completed(middle)
         steps.append(middle)
     elif mode == "deny":
@@ -174,8 +220,14 @@ async def test_classification_lifecycle(
         completed(middle)
         steps.append(middle)
     elif mode == "correction":
-        middle = await send(db, "sí, corrijo a cincuenta invitados", proposal(
-            "MODIFY_EVENT_DATA", entities=[entity("guest_count", 50, quality_status="CORRECTED")]))
+        middle = await send(
+            db,
+            "sí, corrijo a cincuenta invitados",
+            proposal(
+                "MODIFY_EVENT_DATA",
+                entities=[entity("guest_count", 50, quality_status="CORRECTED")],
+            ),
+        )
         completed(middle)
         steps.append(middle)
     else:
@@ -184,9 +236,12 @@ async def test_classification_lifecycle(
             conversation.active_lead_id = None
             conversation.state = "BOT_ACTIVE"
     context = (await snapshot(db))["conversation"][0]
-    last = await send(db, "sí", proposal("CONFIRM"),
-                      expected_calls=0 if (context["pending_action"] or "").startswith("CONFIRM_")
-                      else 1)
+    last = await send(
+        db,
+        "sí",
+        proposal("CONFIRM"),
+        expected_calls=0 if (context["pending_action"] or "").startswith("CONFIRM_") else 1,
+    )
     steps.append(last)
     evidence(request, steps=steps, final=last["after"])
     completed(last)
@@ -217,12 +272,17 @@ async def test_r4_precedes_every_pending_family(
     assert not last["after"]["quote_request"]
 
 
-@pytest.mark.parametrize("state,enabled", [
-    ("WAITING_FOR_HUMAN", True), ("HUMAN_ACTIVE", False), ("BOT_ACTIVE", False)])
+@pytest.mark.parametrize(
+    "state,enabled", [("WAITING_FOR_HUMAN", True), ("HUMAN_ACTIVE", False), ("BOT_ACTIVE", False)]
+)
 @pytest.mark.parametrize("kind", ["text", "image"])
 async def test_paused_turn_does_not_consume_or_clean_pending(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
-    state: str, enabled: bool, kind: str
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+    enabled: bool,
+    kind: str,
 ) -> None:
     configure(monkeypatch)
     event = await prepare(db)
@@ -234,19 +294,24 @@ async def test_paused_turn_does_not_consume_or_clean_pending(
     before = await snapshot(db)
     if kind == "image":
         event = await inbound.store_webhook_event(
-            media_payload('image', 'sí', 'r6.media'), db, None)
+            media_payload("image", "sí", "r6.media"), db, None
+        )
         last = await send(db, "sí", event_id=event, expected_calls=0)
     else:
         # R5 skips preliminary IA for media only; no new blanket text optimization in R6.
         last = await send(db, "sí", proposal("CONFIRM"))
     evidence(request, before=before, steps=[last], final=last["after"])
     completed(last)
-    for key in (
-        'pending_confirmation', 'pending_action', 'state', 'bot_enabled', 'active_lead_id'
-    ):
+    for key in ("pending_confirmation", "pending_action", "state", "bot_enabled", "active_lead_id"):
         assert last["after"]["conversation"][0][key] == before["conversation"][0][key]
     for table in (
-        'outbox', 'customer', 'lead', 'event', 'handoff', 'payment_evidence', 'quote_request'
+        "outbox",
+        "customer",
+        "lead",
+        "event",
+        "handoff",
+        "payment_evidence",
+        "quote_request",
     ):
         assert last["after"][table] == before[table]
 
@@ -269,8 +334,12 @@ async def test_legacy_summary_without_confirmation_context_is_not_accepted(
     repeated = await send(db, "sí", proposal())
     completed(repeated)
     assert actions(repeated["after"], "QUOTE_REQUEST_READY") == 0
-    evidence(request, steps=[first, last, repeated], final=repeated["after"],
-             legacy_fixture="Summary context incomplete: " + missing)
+    evidence(
+        request,
+        steps=[first, last, repeated],
+        final=repeated["after"],
+        legacy_fixture="Summary context incomplete: " + missing,
+    )
     completed(last)
     assert actions(last["after"], "QUOTE_REQUEST_READY") == 0
     assert last["after"]["quote_request"][0]["request_status"] == "DRAFT"
@@ -285,12 +354,27 @@ async def test_invalid_name_correction_does_not_replace_a_valid_proposal(
     configure(monkeypatch)
     body = "Mi nombre tal vez sea Nombre Vigente"
     event = await prepare(db, name=None, body=body)
-    first = await send(db, body, proposal(entities=[entity(
-        "full_name", "Nombre Vigente", quality_status="PENDING_CONFIRMATION",
-        needs_confirmation=True)]), event_id=event)
+    first = await send(
+        db,
+        body,
+        proposal(
+            entities=[
+                entity(
+                    "full_name",
+                    "Nombre Vigente",
+                    quality_status="PENDING_CONFIRMATION",
+                    needs_confirmation=True,
+                )
+            ]
+        ),
+        event_id=event,
+    )
     completed(first)
-    last = await send(db, "Intento corregir el nombre", proposal(entities=[
-        entity("full_name", value, quality_status="CORRECTED")]))
+    last = await send(
+        db,
+        "Intento corregir el nombre",
+        proposal(entities=[entity("full_name", value, quality_status="CORRECTED")]),
+    )
     evidence(request, steps=[first, last], final=last["after"])
     completed(last)
     assert last["after"]["customer"][0]["full_name"] is None
@@ -320,9 +404,21 @@ async def test_inferred_replacement_of_existing_name_blocks_summary_until_confir
         lead.budget_data_status = "PROVIDED"
         lead.estimated_budget = Decimal("8000000")
         lead.budget_range = "REFERENCE_RANGE"
-    first = await send(db, body, proposal(entities=[entity(
-        "full_name", "Nombre Nuevo", quality_status="PENDING_CONFIRMATION",
-        needs_confirmation=True)]), event_id=event)
+    first = await send(
+        db,
+        body,
+        proposal(
+            entities=[
+                entity(
+                    "full_name",
+                    "Nombre Nuevo",
+                    quality_status="PENDING_CONFIRMATION",
+                    needs_confirmation=True,
+                )
+            ]
+        ),
+        event_id=event,
+    )
     completed(first)
     assert first["after"]["customer"][0]["full_name"] == "Cliente Sintetico R6"
     assert first["after"]["conversation"][0]["pending_action"] == "COLLECT_CUSTOMER_NAME"
@@ -350,15 +446,22 @@ async def test_affirmation_of_classification_precedes_fresh_faq_guess(
     assert last["after"]["conversation"][0]["last_question_code"] == "RESP-QUOTE-002"
 
 
-@pytest.mark.parametrize("mode", [
-    "valid", "deny", "resolved", "malformed", "absent", "correct", "faq"])
+@pytest.mark.parametrize(
+    "mode", ["valid", "deny", "resolved", "malformed", "absent", "correct", "faq"]
+)
 async def test_visit_name_reader_obeys_same_pending_authority(
     db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
     configure(monkeypatch)
-    body = "no" if mode == "deny" else (
-        "si, corrijo mi nombre a Nombre Corregido" if mode == "correct" else (
-            "Hay parqueadero?" if mode == "faq" else "si"))
+    body = (
+        "no"
+        if mode == "deny"
+        else (
+            "si, corrijo mi nombre a Nombre Corregido"
+            if mode == "correct"
+            else ("Hay parqueadero?" if mode == "faq" else "si")
+        )
+    )
     event = await prepare(db, name=None, body=body)
     pending = dict(type="FULL_NAME_CONFIRMATION", full_name="Nombre Vigente")
     if mode == "resolved":
@@ -367,8 +470,13 @@ async def test_visit_name_reader_obeys_same_pending_authority(
         pending = dict(type="FULL_NAME_CONFIRMATION", full_name=["No coercion"])
     elif mode == "absent":
         pending = None
-    draft = dict(visit_date="2027-02-20", visit_time="09:00", attendee_count=2,
-                 visit_reason="Conocer el lugar", return_to="VISIT_CONFIRMATION_SUMMARY")
+    draft = dict(
+        visit_date="2027-02-20",
+        visit_time="09:00",
+        attendee_count=2,
+        visit_reason="Conocer el lugar",
+        return_to="VISIT_CONFIRMATION_SUMMARY",
+    )
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, 1)
         conversation.state = "WAITING_FOR_APPOINTMENT_SELECTION"
@@ -378,8 +486,10 @@ async def test_visit_name_reader_obeys_same_pending_authority(
         conversation.visit_draft = draft
     response = proposal("SCHEDULE_VISIT")
     if mode == "correct":
-        response = proposal("SCHEDULE_VISIT", entities=[
-            entity("full_name", "Nombre Corregido", quality_status="CORRECTED")])
+        response = proposal(
+            "SCHEDULE_VISIT",
+            entities=[entity("full_name", "Nombre Corregido", quality_status="CORRECTED")],
+        )
     elif mode == "faq":
         response = proposal("GENERAL_INFORMATION", information_category="parqueadero")
     first = await send(db, body, response, event_id=event)
@@ -394,10 +504,17 @@ async def test_visit_name_reader_obeys_same_pending_authority(
         completed(last)
         steps.append(last)
     last = steps[-1]
-    evidence(request, legacy_fixture=dict(pending=pending, visit_draft=draft),
-             steps=steps, final=last["after"])
-    expected = "Nombre Corregido" if mode == "correct" else (
-        "Nombre Vigente" if mode in {"valid", "faq"} else None)
+    evidence(
+        request,
+        legacy_fixture=dict(pending=pending, visit_draft=draft),
+        steps=steps,
+        final=last["after"],
+    )
+    expected = (
+        "Nombre Corregido"
+        if mode == "correct"
+        else ("Nombre Vigente" if mode in {"valid", "faq"} else None)
+    )
     assert last["after"]["customer"][0]["full_name"] == expected
     assert last["after"]["conversation"][0]["pending_confirmation"] is None
     assert actions(last["after"], "CUSTOMER_NAME_CONFIRMED") == int(mode in {"valid", "faq"})

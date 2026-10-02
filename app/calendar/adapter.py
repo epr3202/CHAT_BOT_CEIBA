@@ -52,16 +52,17 @@ class CalendarEvent:
 
 class CalendarAdapter(Protocol):
     async def list_events(
-        self, start: datetime, end: datetime, calendar_ids: Iterable[str],
-    ) -> list[CalendarEvent]:
-        ...
+        self,
+        start: datetime,
+        end: datetime,
+        calendar_ids: Iterable[str],
+    ) -> list[CalendarEvent]: ...
 
     async def get_busy_intervals(
         self,
         target_date: date,
         calendar_ids: Iterable[str],
-    ) -> list[BusyInterval]:
-        ...
+    ) -> list[BusyInterval]: ...
 
     async def create_event(
         self,
@@ -70,8 +71,7 @@ class CalendarAdapter(Protocol):
         start: datetime,
         end: datetime,
         description: str | None = None,
-    ) -> ExternalEventRef:
-        ...
+    ) -> ExternalEventRef: ...
 
     async def update_event(
         self,
@@ -80,14 +80,11 @@ class CalendarAdapter(Protocol):
         start: datetime,
         end: datetime,
         description: str | None = None,
-    ) -> ExternalEventRef:
-        ...
+    ) -> ExternalEventRef: ...
 
-    async def delete_event(self, event_id: str) -> None:
-        ...
+    async def delete_event(self, event_id: str) -> None: ...
 
-    async def get_event(self, event_id: str) -> ExternalEventRef:
-        ...
+    async def get_event(self, event_id: str) -> ExternalEventRef: ...
 
 
 class FakeCalendarAdapter:
@@ -114,7 +111,11 @@ class FakeCalendarAdapter:
         self.query_call_count = 0
 
     def add_event(
-        self, calendar_id: str, summary: str, start: datetime, end: datetime,
+        self,
+        calendar_id: str,
+        summary: str,
+        start: datetime,
+        end: datetime,
         description: str | None = None,
     ) -> CalendarEvent:
         event = CalendarEvent(uuid4().hex, calendar_id, summary, description, start, end)
@@ -122,14 +123,20 @@ class FakeCalendarAdapter:
         return event
 
     async def list_events(
-        self, start: datetime, end: datetime, calendar_ids: Iterable[str],
+        self,
+        start: datetime,
+        end: datetime,
+        calendar_ids: Iterable[str],
     ) -> list[CalendarEvent]:
         if "list_events" in self.raise_on or "query" in self.raise_on:
             raise CalendarUnavailableError("fake calendar listing failed")
         ids = set(calendar_ids)
         return sorted(
-            (event for event in self._listed_events
-             if event.calendar_id in ids and event.start < end and start < event.end),
+            (
+                event
+                for event in self._listed_events
+                if event.calendar_id in ids and event.start < end and start < event.end
+            ),
             key=lambda event: (event.start, event.calendar_id, event.event_id),
         )
 

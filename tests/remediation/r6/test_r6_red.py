@@ -1,4 +1,5 @@
 """Frozen H17 multiturn criteria, first executed against unchanged R5 product."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -38,14 +39,20 @@ async def test_summary_resolution_followed_by_affirmation(
     if mode == "return":
         steps.append(await human_return(db))
     if mode == "deny_correction":
-        corrected = await send(db, "Corrijo la cantidad a cincuenta invitados",
-                               proposal("MODIFY_EVENT_DATA", entities=[
-                                   entity("guest_count", 50, quality_status="CORRECTED")]))
+        corrected = await send(
+            db,
+            "Corrijo la cantidad a cincuenta invitados",
+            proposal(
+                "MODIFY_EVENT_DATA",
+                entities=[entity("guest_count", 50, quality_status="CORRECTED")],
+            ),
+        )
         completed(corrected)
         assert corrected["after"]["event"][0]["guest_count"] == 50
         steps.append(corrected)
-    last = await send(db, "sí", proposal("CONFIRM"),
-                      expected_calls=0 if mode == "deny_correction" else 1)
+    last = await send(
+        db, "sí", proposal("CONFIRM"), expected_calls=0 if mode == "deny_correction" else 1
+    )
     steps.append(last)
     evidence(request, steps=steps, final=last["after"])
     completed(last)
@@ -72,16 +79,31 @@ async def test_current_name_only_can_be_confirmed(
 ) -> None:
     configure(monkeypatch)
     event = await prepare(db, name=None, body="Mi nombre tal vez sea Sintetico Uno")
-    first = await send(db, "Mi nombre tal vez sea Sintetico Uno", proposal(entities=[
-        entity("full_name", "Sintetico Uno", quality_status="PENDING_CONFIRMATION",
-               needs_confirmation=True)]), event_id=event)
+    first = await send(
+        db,
+        "Mi nombre tal vez sea Sintetico Uno",
+        proposal(
+            entities=[
+                entity(
+                    "full_name",
+                    "Sintetico Uno",
+                    quality_status="PENDING_CONFIRMATION",
+                    needs_confirmation=True,
+                )
+            ]
+        ),
+        event_id=event,
+    )
     completed(first)
     assert first["after"]["conversation"][0]["pending_confirmation"]["full_name"] == "Sintetico Uno"
     assert first["after"]["conversation"][0]["last_question_code"] == "RESP-CUSTOMER-001"
     steps = [first]
     if corrected:
-        correction = await send(db, "Corrijo mi nombre a Sintetico Dos", proposal(entities=[
-            entity("full_name", "Sintetico Dos", quality_status="CORRECTED")]))
+        correction = await send(
+            db,
+            "Corrijo mi nombre a Sintetico Dos",
+            proposal(entities=[entity("full_name", "Sintetico Dos", quality_status="CORRECTED")]),
+        )
         completed(correction)
         assert correction["after"]["customer"][0]["full_name"] == "Sintetico Dos"
         steps.append(correction)
@@ -94,7 +116,8 @@ async def test_current_name_only_can_be_confirmed(
     evidence(request, steps=steps, final=last["after"])
     completed(last)
     assert last["after"]["customer"][0]["full_name"] == (
-        "Sintetico Dos" if corrected else "Sintetico Uno")
+        "Sintetico Dos" if corrected else "Sintetico Uno"
+    )
     assert actions(last["after"], "CUSTOMER_NAME_CONFIRMED") == (0 if corrected else 1)
 
 

@@ -360,7 +360,7 @@ async def test_affirmative_message_uses_pending_confirmation(
         conversation = await session.get(Conversation, conversation_id)
         outbox = await session.scalar(select(Outbox))
         discarded = await session.scalar(
-            select(AuditEvent).where(AuditEvent.action == 'PENDING_CONFIRMATION_DISCARDED')
+            select(AuditEvent).where(AuditEvent.action == "PENDING_CONFIRMATION_DISCARDED")
         )
         handoff = await session.scalar(select(Handoff))
         customer = await session.get(Customer, conversation.customer_id)
@@ -374,6 +374,6 @@ async def test_affirmative_message_uses_pending_confirmation(
     assert outbox is not None
     assert audit is None
     assert discarded is not None
-    assert discarded.new_value['discard_reason'] == 'CLASSIFICATION_CONTEXT_MISSING'
+    assert discarded.new_value["discard_reason"] == "CLASSIFICATION_CONTEXT_MISSING"
     assert handoff is None
     assert customer.full_name is None

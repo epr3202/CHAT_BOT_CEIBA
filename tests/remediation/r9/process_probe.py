@@ -16,8 +16,15 @@ from app.customer.models import Customer
 from app.handoff.service import create_handoff
 
 
-def checkpoint_process(url: str, connection: Any, operation: str, boundary: str,
-                       conversation_id: int, outbox_id: int, token: Any) -> None:
+def checkpoint_process(
+    url: str,
+    connection: Any,
+    operation: str,
+    boundary: str,
+    conversation_id: int,
+    outbox_id: int,
+    token: Any,
+) -> None:
     # fork inherits the R0 socket/asyncpg guard, including DB instance/role attestation.
     # A new NullPool engine avoids inheriting any parent's live SQLAlchemy connection.
     async def run() -> None:
@@ -25,8 +32,9 @@ def checkpoint_process(url: str, connection: Any, operation: str, boundary: str,
         db = async_sessionmaker(engine, expire_on_commit=False)
         reached = False
 
-        def pause_before_commit(conn: Any, cursor: Any, statement: str, parameters: Any,
-                                context: Any, many: bool) -> None:
+        def pause_before_commit(
+            conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool
+        ) -> None:
             nonlocal reached
             prefix = "update conversation" if operation == "pause" else "update outbox"
             if not reached and statement.lower().startswith(prefix):
@@ -39,11 +47,19 @@ def checkpoint_process(url: str, connection: Any, operation: str, boundary: str,
         try:
             if operation == "pause":
                 async with db() as session, session.begin():
-                    conversation = await session.get(Conversation, conversation_id,
-                                                     with_for_update=True)
+                    conversation = await session.get(
+                        Conversation, conversation_id, with_for_update=True
+                    )
                     customer = await session.get(Customer, conversation.customer_id)
-                    await create_handoff(session, conversation, customer, "CUSTOMER_REQUEST",
-                                         "NORMAL", "r9-process", get_settings())
+                    await create_handoff(
+                        session,
+                        conversation,
+                        customer,
+                        "CUSTOMER_REQUEST",
+                        "NORMAL",
+                        "r9-process",
+                        get_settings(),
+                    )
             else:
                 assert await admit_outbox(db, outbox_id, token) == "ADMITTED"
             connection.send("COMMITTED")

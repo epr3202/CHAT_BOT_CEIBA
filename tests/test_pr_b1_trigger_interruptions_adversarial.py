@@ -63,10 +63,7 @@ EVENT_TYPE_QUESTION_CODES = frozenset(
     {"RESP-GREETING-001", "RESP-EVENT-DATA-013", "RESP-PRICE-001"}
 )
 MIGRATION_PATH = (
-    Path(__file__).parents[1]
-    / "alembic"
-    / "versions"
-    / "20260824_0023_pr_b1_capture_context.py"
+    Path(__file__).parents[1] / "alembic" / "versions" / "20260824_0023_pr_b1_capture_context.py"
 )
 REAL_CLASSIFY_INTENT = OpenRouterIntentClient.classify_intent
 
@@ -105,9 +102,7 @@ def settings() -> Settings:
 @pytest.fixture
 async def visit_wiring_context(
     monkeypatch: pytest.MonkeyPatch,
-) -> AsyncIterator[
-    tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue]
-]:
+) -> AsyncIterator[tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue]]:
     await configure_test_environment(monkeypatch)
     monkeypatch.setenv("CALENDAR_ADAPTER", "fake")
     monkeypatch.setenv("GOOGLE_FREEBUSY_CALENDAR_IDS", "visits,business-main")
@@ -386,9 +381,7 @@ async def outbox_bodies(
     async with sessionmaker() as session:
         rows = list(
             await session.scalars(
-                select(Outbox)
-                .where(Outbox.conversation_id == conversation_id)
-                .order_by(Outbox.id)
+                select(Outbox).where(Outbox.conversation_id == conversation_id).order_by(Outbox.id)
             )
         )
     return [str(row.payload["text"]["body"]) for row in rows]
@@ -408,26 +401,23 @@ async def test_tc_b1_001_post_greeting_unknown_uses_extraction_bridge_and_instru
         httpx.Response(200, json=completion_payload(classification_payload("UNKNOWN"))),
         httpx.Response(200, json=completion_payload({"event_type": "boda"})),
     ]
-    route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
-        side_effect=responses
-    )
+    route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(side_effect=responses)
 
     await send_turn(sessionmaker_fixture, message_id="tc-b1-001", text="La boda")
 
     async with sessionmaker_fixture() as session:
         event = await session.scalar(select(Event))
-        executions = list(
-            await session.scalars(select(AIExecution).order_by(AIExecution.id))
-        )
+        executions = list(await session.scalars(select(AIExecution).order_by(AIExecution.id)))
     conversation = await conversation_snapshot(sessionmaker_fixture, conversation_id)
     assert route.call_count == 2
     assert event is not None
     assert event.event_type == "WEDDING"
     assert conversation.last_question_code == "RESP-EVENT-DATA-004"
     assert conversation.last_intent == "EVENT_INFORMATION"
-    assert all("RESP-FALLBACK" not in body for body in await outbox_bodies(
-        sessionmaker_fixture, conversation_id
-    ))
+    assert all(
+        "RESP-FALLBACK" not in body
+        for body in await outbox_bodies(sessionmaker_fixture, conversation_id)
+    )
     extraction = next(row for row in executions if row.task == "EVENT_TYPE_EXTRACTION")
     assert extraction.prompt_version == "event_type_extraction_v1"
 
@@ -464,9 +454,7 @@ async def test_tc_b1_002_valid_general_event_at_greeting_skips_extra_extraction(
         event = await session.scalar(select(Event))
     assert extraction_calls == []
     assert event is not None and event.event_type == "WEDDING"
-    assert getattr(inbound_module, "EVENT_TYPE_QUESTION_CODES", None) == (
-        EVENT_TYPE_QUESTION_CODES
-    )
+    assert getattr(inbound_module, "EVENT_TYPE_QUESTION_CODES", None) == (EVENT_TYPE_QUESTION_CODES)
 
 
 @pytest.mark.asyncio
@@ -496,9 +484,7 @@ async def test_tc_b1_003_formal_collect_event_type_still_triggers_extraction(
 
     assert extraction_calls == ["La boda"]
     assert (await event_snapshot(sessionmaker_fixture, event_id)).event_type == "WEDDING"
-    assert getattr(inbound_module, "EVENT_TYPE_QUESTION_CODES", None) == (
-        EVENT_TYPE_QUESTION_CODES
-    )
+    assert getattr(inbound_module, "EVENT_TYPE_QUESTION_CODES", None) == (EVENT_TYPE_QUESTION_CODES)
 
 
 @pytest.mark.asyncio
@@ -533,9 +519,10 @@ async def test_tc_b1_004_payment_interrupts_services_and_preserves_capture_conte
     assert conversation.pending_action == "WAIT_FOR_HUMAN"
     assert conversation.active_lead_id == lead_id
     assert "requested_services" in conversation.pending_fields
-    assert all("identificar los servicios" not in body.casefold() for body in await outbox_bodies(
-        sessionmaker_fixture, conversation_id
-    ))
+    assert all(
+        "identificar los servicios" not in body.casefold()
+        for body in await outbox_bodies(sessionmaker_fixture, conversation_id)
+    )
 
 
 @pytest.mark.asyncio
@@ -691,9 +678,9 @@ async def test_tc_b1_008_free_service_answer_calls_general_then_services_once(
 
     assert general_calls == [text]
     assert service_calls == [text]
-    assert [row.service_name for row in await service_rows(
-        sessionmaker_fixture, event_id
-    )] == ["DECORATION"]
+    assert [row.service_name for row in await service_rows(sessionmaker_fixture, event_id)] == [
+        "DECORATION"
+    ]
 
 
 @pytest.mark.asyncio
@@ -711,9 +698,10 @@ async def test_tc_b1_009_deterministic_match_keeps_absolute_precedence(
         text="espacio y gastronomía",
     )
 
-    assert {row.service_name for row in await service_rows(
-        sessionmaker_fixture, event_id
-    )} == {"VENUE", "FOOD"}
+    assert {row.service_name for row in await service_rows(sessionmaker_fixture, event_id)} == {
+        "VENUE",
+        "FOOD",
+    }
     assert not hasattr(inbound_module, "is_explicit_visit_request")
 
 

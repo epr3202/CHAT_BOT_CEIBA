@@ -190,9 +190,10 @@ async def test_full_handoff_cycle_returns_control_to_bot(
         headers=await admin_headers(client),
     )
     assert taken_after_message.status_code == 200
-    assert "OUTBOUND: Hola, soy Alexandra. Ya reviso tu solicitud." in taken_after_message.json()[
-        0
-    ]["summary"]
+    assert (
+        "OUTBOUND: Hola, soy Alexandra. Ya reviso tu solicitud."
+        in taken_after_message.json()[0]["summary"]
+    )
     conversation_messages = await client.get(
         f"/admin/conversations/{conversation_id}/messages",
         headers=await admin_headers(client),

@@ -202,7 +202,10 @@ async def handle_booking_start(
     turn.conversation.pending_confirmation = None
     if turn.conversation.state == "NEW":
         await transition_conversation(
-            session, turn.conversation, "BOT_ACTIVE", actor="SYSTEM",
+            session,
+            turn.conversation,
+            "BOT_ACTIVE",
+            actor="SYSTEM",
             reason="Primera solicitud de experiencia de precio fijo",
         )
     if turn.conversation.state != "COLLECTING_EVENT_DATA":
@@ -218,23 +221,41 @@ async def handle_booking_start(
     turn.conversation.booking_draft = draft
     turn.conversation.failed_understanding_count = 0
     turn.conversation.pending_fields = []
-    plans = list(await session.scalars(select(Plan).where(Plan.active.is_(True)).order_by(
-        Plan.sort_order, Plan.code,
-    )))
-    named = match_booking_plan(turn.message_text, [
-        {"plan_id": str(plan.plan_id), "name": plan.name} for plan in plans
-    ])
+    plans = list(
+        await session.scalars(
+            select(Plan)
+            .where(Plan.active.is_(True))
+            .order_by(
+                Plan.sort_order,
+                Plan.code,
+            )
+        )
+    )
+    named = match_booking_plan(
+        turn.message_text, [{"plan_id": str(plan.plan_id), "name": plan.name} for plan in plans]
+    )
     if named is not None:
         plan = next(plan for plan in plans if str(plan.plan_id) == named["plan_id"])
         _, event = await core.get_or_create_capture_models(
-            session, turn.conversation, turn.customer, request_id=turn.request_id,
+            session,
+            turn.conversation,
+            turn.customer,
+            request_id=turn.request_id,
         )
         from app.ai.schemas import ExtractedEntity
 
-        core.apply_event_type(session, event, ExtractedEntity(
-            entity="event_type", raw_value=plan.name, normalized_value=plan.event_type,
-            quality_status="PROVIDED", confidence=1.0,
-        ), turn.request_id)
+        core.apply_event_type(
+            session,
+            event,
+            ExtractedEntity(
+                entity="event_type",
+                raw_value=plan.name,
+                normalized_value=plan.event_type,
+                quality_status="PROVIDED",
+                confidence=1.0,
+            ),
+            turn.request_id,
+        )
         draft = {**draft, "plan_id": str(plan.plan_id)}
         turn.conversation.booking_draft = draft
         await continue_slots(session, settings, sm, turn, plan)
@@ -391,15 +412,14 @@ async def handle_booking_step(
     plans = await plans_for_turn(session, turn)
     if action == "SELECT_BOOKING_PLAN":
         normalized = normalize_catalog_event_type_label(turn.message_text)
-        named = match_booking_plan(turn.message_text, [
-            {"plan_id": str(plan.plan_id), "name": plan.name} for plan in plans
-        ])
+        named = match_booking_plan(
+            turn.message_text, [{"plan_id": str(plan.plan_id), "name": plan.name} for plan in plans]
+        )
         plan = next(
             (
                 p
                 for i, p in enumerate(plans, 1)
-                if normalized == str(i) or named is not None
-                and str(p.plan_id) == named["plan_id"]
+                if normalized == str(i) or named is not None and str(p.plan_id) == named["plan_id"]
             ),
             None,
         )

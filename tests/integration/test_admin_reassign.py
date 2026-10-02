@@ -19,11 +19,15 @@ from tests.remediation.test_r1_outbox import db as db
 
 
 async def reassign(
-    client: httpx.AsyncClient, conversation_id: int, actor: dict[str, Any], target_id: int,
+    client: httpx.AsyncClient,
+    conversation_id: int,
+    actor: dict[str, Any],
+    target_id: int,
 ) -> httpx.Response:
     return await client.post(
         f"/admin/conversations/{conversation_id}/reassign",
-        headers=actor["headers"], json={"agent_id": target_id},
+        headers=actor["headers"],
+        json={"agent_id": target_id},
     )
 
 
@@ -49,12 +53,16 @@ async def test_admin_reassigns_taken_case_to_another_active_agent(db: Any, api: 
     audits = [row for row in after["audit_event"] if row["action"] == "HANDOFF_REASSIGNED"]
     assert len(audits) == 1
     assert audits[0]["old_value"] == {
-        "handoff_id": handoff_id, "conversation_id": conversation_id,
-        "assigned_agent_id": actors["A"]["id"], "assigned_to": "R8 A",
+        "handoff_id": handoff_id,
+        "conversation_id": conversation_id,
+        "assigned_agent_id": actors["A"]["id"],
+        "assigned_to": "R8 A",
     }
     assert audits[0]["new_value"] == {
-        "handoff_id": handoff_id, "conversation_id": conversation_id,
-        "assigned_agent_id": actors["B"]["id"], "assigned_to": target_name,
+        "handoff_id": handoff_id,
+        "conversation_id": conversation_id,
+        "assigned_agent_id": actors["B"]["id"],
+        "assigned_to": target_name,
     }
     assert audits[0]["actor"] == "R8 ADMIN"
     assert audits[0]["reason"] == "Admin reassigned human case"
@@ -137,22 +145,28 @@ async def test_reassign_is_locked_against_concurrent_return(db: Any, api: Any) -
 
         try:
             async with pause_after_sql(db, lambda sql: sql.startswith("update handoff")) as (
-                entered, release,
+                entered,
+                release,
             ):
                 first = asyncio.create_task(perform(first_action))
                 reached = asyncio.create_task(entered.wait())
                 tasks.extend((first, reached))
                 done, _ = await asyncio.wait(
-                    (first, reached), timeout=10, return_when=asyncio.FIRST_COMPLETED,
+                    (first, reached),
+                    timeout=10,
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
                 # A missing route must fail RED by assertion, not by a fixture timeout.
                 assert reached in done, (
                     f"Mutation never reached SQL: HTTP {first.result().status_code}"
-                    if first.done() else "Mutation did not reach SQL within 10 seconds"
+                    if first.done()
+                    else "Mutation did not reach SQL within 10 seconds"
                 )
-                second = asyncio.create_task(perform(
-                    "return" if first_action == "reassign" else "reassign",
-                ))
+                second = asyncio.create_task(
+                    perform(
+                        "return" if first_action == "reassign" else "reassign",
+                    )
+                )
                 tasks.append(second)
                 waits = await wait_for_database_lock(db)
                 assert waits, "The competing request must actually wait on a database lock"
@@ -179,7 +193,8 @@ async def test_reassign_is_locked_against_concurrent_return(db: Any, api: Any) -
             assert handoff["status"] == "RETURNED"
             assert handoff["assigned_agent_id"] is None and handoff["assigned_to"] is None
         decisive_audits = [
-            row for row in after["audit_event"]
+            row
+            for row in after["audit_event"]
             if row["action"] in {"HANDOFF_REASSIGNED", "HANDOFF_RETURNED"}
             and row["new_value"]["handoff_id"] == ids[1]
         ]

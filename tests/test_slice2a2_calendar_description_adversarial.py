@@ -49,9 +49,7 @@ def service(sessionmaker: Any, fake: FakeCalendarAdapter) -> VisitSchedulingServ
     )
 
 
-async def seed_customer(
-    sessionmaker: Any, *, with_lead: bool
-) -> tuple[int, int, Any | None]:
+async def seed_customer(sessionmaker: Any, *, with_lead: bool) -> tuple[int, int, Any | None]:
     async with sessionmaker() as session:
         async with session.begin():
             customer = Customer(phone_number="+573001112233", full_name="Natalia Pérez")
@@ -85,9 +83,7 @@ async def seed_confirmed_appointment(
     *,
     external_exists: bool,
 ) -> Appointment:
-    customer_id, _conversation_id, lead_id = await seed_customer(
-        sessionmaker, with_lead=True
-    )
+    customer_id, _conversation_id, lead_id = await seed_customer(sessionmaker, with_lead=True)
     appointment = Appointment(
         appointment_id=uuid4(),
         customer_id=customer_id,
@@ -125,14 +121,17 @@ def test_tc_caldesc_001_pure_builder_formats_all_fields_in_documented_order() ->
     builder = getattr(appointment_service, "build_visit_description", None)
     assert callable(builder), "build_visit_description must be a pure public helper"
 
-    assert builder(
-        customer_name="Natalia Pérez",
-        phone_number="+573001112233",
-        event_type="WEDDING",
-        event_guest_count=80,
-        visit_attendee_count=2,
-        visit_reason="Conocer el salón",
-    ) == FULL_DESCRIPTION
+    assert (
+        builder(
+            customer_name="Natalia Pérez",
+            phone_number="+573001112233",
+            event_type="WEDDING",
+            event_guest_count=80,
+            visit_attendee_count=2,
+            visit_reason="Conocer el salón",
+        )
+        == FULL_DESCRIPTION
+    )
 
 
 def test_tc_caldesc_002_pure_builder_omits_missing_lines_without_placeholders() -> None:
@@ -233,9 +232,7 @@ async def test_tc_caldesc_004_confirmation_without_lead_omits_event_lines() -> N
 async def test_tc_caldesc_005_reschedule_rebuilds_description_without_duplication() -> None:
     sessionmaker = await reset_test_database()
     fake = FakeCalendarAdapter()
-    appointment = await seed_confirmed_appointment(
-        sessionmaker, fake, external_exists=True
-    )
+    appointment = await seed_confirmed_appointment(sessionmaker, fake, external_exists=True)
 
     result = await service(sessionmaker, fake).reschedule_appointment(
         appointment_id=appointment.appointment_id,
@@ -256,9 +253,7 @@ async def test_tc_caldesc_005_reschedule_rebuilds_description_without_duplicatio
 async def test_tc_caldesc_006_event_not_found_reconciliation_recreates_description() -> None:
     sessionmaker = await reset_test_database()
     fake = FakeCalendarAdapter()
-    appointment = await seed_confirmed_appointment(
-        sessionmaker, fake, external_exists=False
-    )
+    appointment = await seed_confirmed_appointment(sessionmaker, fake, external_exists=False)
 
     result = await service(sessionmaker, fake).reschedule_appointment(
         appointment_id=appointment.appointment_id,

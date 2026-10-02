@@ -1,4 +1,5 @@
 """Pure discrimination of local proposal authority; no I/O, clocks or business actions."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,12 +12,18 @@ from app.conversation.entity_validation import validated_name
 from app.conversation.faq_catalog import FAQ_CATEGORY_VALUES
 
 NAME_ACTIONS = {
-    "COLLECT_EVENT_TYPE", "COLLECT_GUEST_COUNT", "COLLECT_EVENT_DATE",
-    "COLLECT_CUSTOMER_NAME", "COLLECT_BUDGET", "COLLECT_SERVICES",
+    "COLLECT_EVENT_TYPE",
+    "COLLECT_GUEST_COUNT",
+    "COLLECT_EVENT_DATE",
+    "COLLECT_CUSTOMER_NAME",
+    "COLLECT_BUDGET",
+    "COLLECT_SERVICES",
 }
 NAME_STATES = {
-    "COLLECTING_EVENT_DATA", "WAITING_FOR_APPOINTMENT_DATE",
-    "WAITING_FOR_APPOINTMENT_SELECTION", "APPOINTMENT_PENDING_CONFIRMATION",
+    "COLLECTING_EVENT_DATA",
+    "WAITING_FOR_APPOINTMENT_DATE",
+    "WAITING_FOR_APPOINTMENT_SELECTION",
+    "APPOINTMENT_PENDING_CONFIRMATION",
 }
 
 
@@ -37,8 +44,12 @@ def name_value(value: object) -> str | None:
 
 
 def read_pending(
-    value: object, *, state: str, pending_action: str | None,
-    last_question_code: str | None, active_lead_id: object,
+    value: object,
+    *,
+    state: str,
+    pending_action: str | None,
+    last_question_code: str | None,
+    active_lead_id: object,
 ) -> PendingProposal:
     if value is None or value == {}:
         return PendingProposal("ABSENT")

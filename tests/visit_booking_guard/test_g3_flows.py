@@ -28,9 +28,7 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.parametrize("reason", [REASON, "sí, una boda", "sí, es para una boda"])
-async def test_g3_h_reason_summary_matches_approved_template(
-    harness: Harness, reason: str
-) -> None:
+async def test_g3_h_reason_summary_matches_approved_template(harness: Harness, reason: str) -> None:
     await harness.seed(
         state="WAITING_FOR_APPOINTMENT_SELECTION",
         pending="COLLECT_VISIT_REASON",
@@ -43,10 +41,16 @@ async def test_g3_h_reason_summary_matches_approved_template(
     assert conversation.visit_draft["visit_reason"] == reason
     assert (await harness.rows(Event))[0].event_type == "ROMANTIC_DINNER"
     bodies = await harness.bodies()
-    assert bodies[-1] == await render_response(harness.db, "RESP-VISIT-CONFIRM-001", {
-        "visit_date": "7 de octubre de 2026", "visit_time": "08:00",
-        "visit_attendee_count": "3", "event_type": "una boda",
-    })
+    assert bodies[-1] == await render_response(
+        harness.db,
+        "RESP-VISIT-CONFIRM-001",
+        {
+            "visit_date": "7 de octubre de 2026",
+            "visit_time": "08:00",
+            "visit_attendee_count": "3",
+            "event_type": "una boda",
+        },
+    )
     await harness.send(CONFIRM, intent="CONFIRM")
     await harness.assert_completed()
     appointment = (await harness.rows(Appointment))[0]
@@ -58,8 +62,11 @@ async def test_g3_h_reason_summary_matches_approved_template(
 
 async def test_g3_a_booking_words_in_visit_reason_keep_visit_flow(harness: Harness) -> None:
     """Added in G3 at Emerson's explicit request (A), not part of G2."""
-    await harness.seed(state="WAITING_FOR_APPOINTMENT_SELECTION", pending="COLLECT_VISIT_REASON",
-                       draft=time_draft(visit_time="08:00", attendee_count=3))
+    await harness.seed(
+        state="WAITING_FOR_APPOINTMENT_SELECTION",
+        pending="COLLECT_VISIT_REASON",
+        draft=time_draft(visit_time="08:00", attendee_count=3),
+    )
     await harness.send("para reservar la terraza", intent="SCHEDULE_VISIT")
     await harness.assert_completed()
     conversation = await harness.conversation()
@@ -71,7 +78,8 @@ async def test_g3_a_booking_words_in_visit_reason_keep_visit_flow(harness: Harne
 
 
 async def test_g3_a_changed_lead_type_retries_before_applying_guard(
-    harness: Harness, monkeypatch: pytest.MonkeyPatch,
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await harness.seed()
     original = inbound.classify_message
@@ -93,10 +101,14 @@ async def test_g3_a_changed_lead_type_retries_before_applying_guard(
 
 
 async def test_g3_c5_confirmed_appointment_survives_turn_failure(
-    harness: Harness, monkeypatch: pytest.MonkeyPatch,
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await harness.seed(state="APPOINTMENT_PENDING_CONFIRMATION", pending="CONFIRM_APPOINTMENT",
-                       draft=time_draft(visit_time="08:00", attendee_count=3, visit_reason=REASON))
+    await harness.seed(
+        state="APPOINTMENT_PENDING_CONFIRMATION",
+        pending="CONFIRM_APPOINTMENT",
+        draft=time_draft(visit_time="08:00", attendee_count=3, visit_reason=REASON),
+    )
     original = orchestrator.enqueue_template
 
     async def fail_confirmation_notice(*args: object, **kwargs: object) -> None:
@@ -122,26 +134,43 @@ async def test_g3_c5_confirmed_appointment_survives_turn_failure(
 
 @pytest.mark.parametrize("fail_notice", [False, True], ids=["commit", "rollback"])
 async def test_g3_c5_reschedule_closes_before_conversation_turn(
-    harness: Harness, monkeypatch: pytest.MonkeyPatch, fail_notice: bool,
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
+    fail_notice: bool,
 ) -> None:
     appointment_id = uuid4()
     new_date = date(2026, 10, 8)
     await harness.seed(
-        state="APPOINTMENT_PENDING_CONFIRMATION", pending="CONFIRM_RESCHEDULE",
-        draft={"mode": "RESCHEDULE", "resume": None, "appointment_id": str(appointment_id),
-               "visit_date": new_date.isoformat(), "visit_time": "09:00"},
+        state="APPOINTMENT_PENDING_CONFIRMATION",
+        pending="CONFIRM_RESCHEDULE",
+        draft={
+            "mode": "RESCHEDULE",
+            "resume": None,
+            "appointment_id": str(appointment_id),
+            "visit_date": new_date.isoformat(),
+            "visit_time": "09:00",
+        },
     )
     conversation = await harness.conversation()
     async with harness.db() as session, session.begin():
-        session.add(Appointment(
-            appointment_id=appointment_id, customer_id=conversation.customer_id,
-            lead_id=conversation.active_lead_id, appointment_date=VISIT_DATE,
-            start_time=time(8), attendee_count=3, visit_reason=REASON,
-            appointment_status="CONFIRMED", external_calendar_id=appointment_id.hex,
-        ))
+        session.add(
+            Appointment(
+                appointment_id=appointment_id,
+                customer_id=conversation.customer_id,
+                lead_id=conversation.active_lead_id,
+                appointment_date=VISIT_DATE,
+                start_time=time(8),
+                attendee_count=3,
+                visit_reason=REASON,
+                appointment_status="CONFIRMED",
+                external_calendar_id=appointment_id.hex,
+            )
+        )
     await harness.calendar.create_event(
-        appointment_id.hex, "Visita comercial La Ceiba Club House",
-        slot_datetime(VISIT_DATE, time(8)), slot_datetime(VISIT_DATE, time(8, 45)),
+        appointment_id.hex,
+        "Visita comercial La Ceiba Club House",
+        slot_datetime(VISIT_DATE, time(8)),
+        slot_datetime(VISIT_DATE, time(8, 45)),
     )
     original = orchestrator.enqueue_template
 
@@ -174,4 +203,3 @@ async def test_g3_c5_reschedule_closes_before_conversation_turn(
         assert len(await harness.rows(AppointmentChange)) == 1
         assert conversation.state == "APPOINTMENT_CONFIRMED"
         assert conversation.pending_action is None and conversation.visit_draft is None
-

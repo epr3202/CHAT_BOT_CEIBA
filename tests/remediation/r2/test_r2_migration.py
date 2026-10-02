@@ -109,15 +109,21 @@ async def test_0025_legacy_is_not_mass_replayed_and_new_head_parity(
         commands.append("upgrade 0027 before current consumer")
         current = await snapshot(db)
         assert all(row["automation_epoch"] is not None for row in current["conversation"])
-        assert current == {**upgraded, "outbox": [
-            {**row, **NEW_OUTBOX_COLUMNS} for row in upgraded["outbox"]], "conversation": [
-            {**old, "automation_epoch": new["automation_epoch"]}
-            for old, new in zip(upgraded["conversation"], current["conversation"], strict=True)]}
+        assert current == {
+            **upgraded,
+            "outbox": [{**row, **NEW_OUTBOX_COLUMNS} for row in upgraded["outbox"]],
+            "conversation": [
+                {**old, "automation_epoch": new["automation_epoch"]}
+                for old, new in zip(upgraded["conversation"], current["conversation"], strict=True)
+            ],
+        }
         await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "head")
         commands.append("upgrade head before the current consumer (booking_draft in 0031)")
         upgraded = await snapshot(db)
-        assert upgraded == {**current, "conversation": [
-            {**row, "booking_draft": None} for row in current["conversation"]]}
+        assert upgraded == {
+            **current,
+            "conversation": [{**row, "booking_draft": None} for row in current["conversation"]],
+        }
         before["outbox"] = [{**row, **NEW_OUTBOX_COLUMNS} for row in before["outbox"]]
         with respx.mock(assert_all_called=False):
             await inbox.process_inbox_once(db)

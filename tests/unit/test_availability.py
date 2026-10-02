@@ -21,15 +21,21 @@ def dt(day: date, hour: int, minute: int = 0) -> datetime:
 def test_validate_visit_date_prioritizes_visit_rules_without_io() -> None:
     today = date(2026, 8, 14)
 
-    assert validate_visit_date(
-        date(2026, 8, 17), today=today, holidays=set(), blocked_dates=set()
-    ).response_code == "RESP-VISIT-006"
-    assert validate_visit_date(
-        date(2026, 8, 18),
-        today=date(2026, 8, 16),
-        holidays=set(),
-        blocked_dates=set(),
-    ).response_code == "RESP-VISIT-004"
+    assert (
+        validate_visit_date(
+            date(2026, 8, 17), today=today, holidays=set(), blocked_dates=set()
+        ).response_code
+        == "RESP-VISIT-006"
+    )
+    assert (
+        validate_visit_date(
+            date(2026, 8, 18),
+            today=date(2026, 8, 16),
+            holidays=set(),
+            blocked_dates=set(),
+        ).response_code
+        == "RESP-VISIT-004"
+    )
 
 
 async def test_available_slots_applies_local_and_freebusy_intersection() -> None:

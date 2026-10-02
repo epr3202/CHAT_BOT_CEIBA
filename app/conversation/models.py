@@ -53,7 +53,8 @@ class Conversation(Base):
         CheckConstraint("channel IN ('WHATSAPP')", name="ck_conversation_channel"),
         CheckConstraint(
             "pending_action IS NULL OR pending_action IN ("
-            + ", ".join(f"'{value}'" for value in PENDING_ACTIONS) + ")",
+            + ", ".join(f"'{value}'" for value in PENDING_ACTIONS)
+            + ")",
             name="ck_conversation_pending_action",
         ),
     )
@@ -77,12 +78,12 @@ class Conversation(Base):
         UUID(as_uuid=True), ForeignKey("lead.lead_id"), index=True, nullable=True
     )
     failed_understanding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    services_failed_understanding_count: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
+    services_failed_understanding_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bot_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     automation_epoch: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, default=uuid.uuid4,
+        UUID(as_uuid=True),
+        nullable=False,
+        default=uuid.uuid4,
         server_default=func.gen_random_uuid(),
     )
     assigned_agent_id: Mapped[int | None] = mapped_column(

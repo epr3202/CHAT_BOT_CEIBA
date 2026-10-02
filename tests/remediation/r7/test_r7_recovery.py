@@ -1,4 +1,5 @@
 """Real commit/cancellation boundaries and independent-session ownership races."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,8 +28,19 @@ from tests.remediation.test_r1_outbox import db as db
 from tests.remediation.test_r1_outbox import evidence
 
 pytestmark = pytest.mark.asyncio
-DOMAIN_TABLES = ("customer", "conversation", "lead", "event", "event_service_request",
-                 "quote_request", "message", "outbox", "audit_event", "handoff", "appointment")
+DOMAIN_TABLES = (
+    "customer",
+    "conversation",
+    "lead",
+    "event",
+    "event_service_request",
+    "quote_request",
+    "message",
+    "outbox",
+    "audit_event",
+    "handoff",
+    "appointment",
+)
 
 
 async def pending_turn(db: Any, family: str = "classification") -> int:
@@ -38,10 +50,12 @@ async def pending_turn(db: Any, family: str = "classification") -> int:
 
 
 def candidate() -> dict[str, Any]:
-    return proposal(entities=[
-        entity("guest_count", -5, quality_status="CORRECTED"),
-        entity("special_requests", "Acceso amplio", quality_status="CORRECTED"),
-    ])
+    return proposal(
+        entities=[
+            entity("guest_count", -5, quality_status="CORRECTED"),
+            entity("special_requests", "Acceso amplio", quality_status="CORRECTED"),
+        ]
+    )
 
 
 async def process(db: Any, current: inbox.InboxClaim) -> str:
@@ -80,7 +94,7 @@ async def test_commit_rollback_recovery_and_projection_replay(
     finally:
         await remove_commit_failure(db)
     resumed = await claim(db, datetime.now(UTC) + timedelta(seconds=5))
-    assert await process(db, resumed) == 'COMPLETED'
+    assert await process(db, resumed) == "COMPLETED"
     final = await snapshot(db)
     accepted_once(final, "classification")
     # The commit happened, but the webhook projection has not been refreshed.
@@ -128,8 +142,7 @@ async def test_cancel_after_real_effects_before_commit(
 
 @pytest.mark.parametrize("mode", ["context_replaced", "ownership_lost"])
 async def test_stale_acquisition_cannot_consume_replacement(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
-    mode: str
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
     configure(monkeypatch)
     await pending_turn(db)
@@ -167,8 +180,13 @@ async def test_stale_acquisition_cannot_consume_replacement(
     assert final["conversation"][0]["pending_confirmation"] == replacement
     if mode == "ownership_lost":
         assert final["inbox_job"] == before["inbox_job"]
-    evidence(request, before=before, final=final, result=result,
-             boundary="Real classification finished; replacement fixture committed before apply")
+    evidence(
+        request,
+        before=before,
+        final=final,
+        result=result,
+        boundary="Real classification finished; replacement fixture committed before apply",
+    )
 
 
 @pytest.mark.parametrize("mode", ["sequential", "concurrent"])
@@ -206,7 +224,8 @@ async def test_same_message_redelivery_applies_confirmation_once(
         else:
             await inbox.process_event(event, db)
         await inbound.process_whatsapp_webhook(
-            message_payload("r6.first", "Corrijo los datos de mi evento"), db,
+            message_payload("r6.first", "Corrijo los datos de mi evento"),
+            db,
         )
     provider.exhausted()
     final = await snapshot(db)

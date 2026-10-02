@@ -262,17 +262,24 @@ async def classify_message(
                 priority="NORMAL",
                 reasoning_code=EXPLICIT_HUMAN_REASON,
             ),
-            None, "DETERMINISTIC", None, False, False,
+            None,
+            "DETERMINISTIC",
+            None,
+            False,
+            False,
         )
     settings = get_settings()
     # Confirmations and booking proposals precede generic service capture. The
     # explicit human guard above still owns every human request.
     classification = deterministic_confirmation_classification(
-        persisted.message_text, persisted.context,
+        persisted.message_text,
+        persisted.context,
     )
     if classification is None:
         classification = deterministic_booking_or_catalog_classification(
-            persisted.message_text, persisted.context, settings,
+            persisted.message_text,
+            persisted.context,
+            settings,
         )
     ai_error_reason: AIErrorReason | None = None
     services_resolution_failed = False
@@ -486,21 +493,33 @@ async def route_non_text_in_session(
         from app.orchestrator.service import OrchestrationInput, create_handoff_and_pause
         from app.reservation.models import Reservation
 
-        booking = await session.scalar(select(Reservation.reservation_id).where(
-            Reservation.conversation_id == conversation.id,
-            Reservation.status == "PAYMENT_PENDING",
-        ).limit(1))
+        booking = await session.scalar(
+            select(Reservation.reservation_id)
+            .where(
+                Reservation.conversation_id == conversation.id,
+                Reservation.status == "PAYMENT_PENDING",
+            )
+            .limit(1)
+        )
         if booking is not None:
             await create_handoff_and_pause(
-                session, settings, sessionmaker,
+                session,
+                settings,
+                sessionmaker,
                 OrchestrationInput(conversation, customer, message, caption or "", request_id),
                 IntentClassification(
-                    primary_intent="PAYMENT_MESSAGE", sub_intent=None, confidence=0,
-                    requested_action="CREATE_HANDOFF", needs_confirmation=False, needs_human=True,
-                    handoff_reason="PAYMENT_REVIEW", priority="URGENT",
+                    primary_intent="PAYMENT_MESSAGE",
+                    sub_intent=None,
+                    confidence=0,
+                    requested_action="CREATE_HANDOFF",
+                    needs_confirmation=False,
+                    needs_human=True,
+                    handoff_reason="PAYMENT_REVIEW",
+                    priority="URGENT",
                     reasoning_code="BOOKING_EVIDENCE",
                 ),
-                reason="PAYMENT_REVIEW", priority="URGENT",
+                reason="PAYMENT_REVIEW",
+                priority="URGENT",
                 response_code_override="RESP-BOOKING-EVIDENCE-001",
             )
             return True

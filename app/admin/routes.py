@@ -479,12 +479,17 @@ async def update_plan(
         old_value = {field: getattr(plan, field) for field in changes}
         for field, value in changes.items():
             setattr(plan, field, value)
-        session.add(AuditEvent(
-            actor=actor, action="PLAN_UPDATED", entity="plan",
-            old_value={"plan_id": str(plan_id), **old_value},
-            new_value={"plan_id": str(plan_id), **changes},
-            reason="Administrador actualizó el plan.", request_id=request_id or str(uuid4()),
-        ))
+        session.add(
+            AuditEvent(
+                actor=actor,
+                action="PLAN_UPDATED",
+                entity="plan",
+                old_value={"plan_id": str(plan_id), **old_value},
+                new_value={"plan_id": str(plan_id), **changes},
+                reason="Administrador actualizó el plan.",
+                request_id=request_id or str(uuid4()),
+            )
+        )
         await session.flush()
         await session.refresh(plan)
         payload = PlanPayload.model_validate(plan)
@@ -518,14 +523,18 @@ async def list_reservations(
         query = query.where(Reservation.starts_at <= to_at)
     rows = await session.execute(query)
     return [
-        ReservationPayload.model_validate(reservation).model_copy(update={
-            "plan_name": plan_name, "customer_name": customer_name,
-            "customer_phone": customer_phone,
-            "deposit_amount_cop": deposit_amount(reservation.price_cop),
-            "missing_cop": max(
-                0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop,
-            ),
-        })
+        ReservationPayload.model_validate(reservation).model_copy(
+            update={
+                "plan_name": plan_name,
+                "customer_name": customer_name,
+                "customer_phone": customer_phone,
+                "deposit_amount_cop": deposit_amount(reservation.price_cop),
+                "missing_cop": max(
+                    0,
+                    deposit_amount(reservation.price_cop) - reservation.amount_paid_cop,
+                ),
+            }
+        )
         for reservation, plan_name, customer_name, customer_phone in rows
     ]
 
@@ -536,10 +545,13 @@ async def reservation_payload(
 ) -> ReservationPayload:
     await session.refresh(reservation)
     plan_name = await session.scalar(select(Plan.name).where(Plan.plan_id == reservation.plan_id))
-    customer = (await session.execute(
-        select(Customer.full_name, Customer.phone_number)
-        .where(Customer.id == reservation.customer_id)
-    )).one()
+    customer = (
+        await session.execute(
+            select(Customer.full_name, Customer.phone_number).where(
+                Customer.id == reservation.customer_id
+            )
+        )
+    ).one()
     return ReservationPayload.model_validate(reservation).model_copy(
         update={
             "plan_name": plan_name,
@@ -586,17 +598,24 @@ async def reservation_availability(
     window = validate_booking_window(starts_at, ends_at, settings)
     try:
         availability = await fetch_booking_context(
-            session, plan=plan, starts_at=starts_at, ends_at=ends_at,
-            calendar=get_calendar_adapter(settings), settings=settings,
+            session,
+            plan=plan,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            calendar=get_calendar_adapter(settings),
+            settings=settings,
         )
     except CalendarUnavailableError as exc:
         raise HTTPException(
             status_code=503, detail="No se pudo consultar la disponibilidad. Intenta nuevamente."
         ) from exc
     return BookingAvailabilityPayload(
-        available=window.ok and availability.available, blockers=availability.blockers,
-        starts_at=starts_at, ends_at=ends_at,
-        deposit_amount_cop=deposit_amount(plan), window=window,
+        available=window.ok and availability.available,
+        blockers=availability.blockers,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        deposit_amount_cop=deposit_amount(plan),
+        window=window,
     )
 
 
@@ -978,12 +997,18 @@ async def payment_evidence_detail(
         raise HTTPException(404, "El comprobante no existe.")
     customer = await session.get(Customer, evidence.customer_id)
     return PaymentEvidencePayload(
-        id=evidence.id, conversation_id=evidence.conversation_id,
-        customer_id=evidence.customer_id, customer_name=customer.full_name,
-        customer_phone=customer.phone_number, mime_type=evidence.mime_type,
-        download_status=evidence.download_status, review_status=evidence.review_status,
-        size_bytes=evidence.size_bytes, reservation_id=evidence.reservation_id,
-        amount_cop=evidence.amount_cop, created_at=evidence.created_at,
+        id=evidence.id,
+        conversation_id=evidence.conversation_id,
+        customer_id=evidence.customer_id,
+        customer_name=customer.full_name,
+        customer_phone=customer.phone_number,
+        mime_type=evidence.mime_type,
+        download_status=evidence.download_status,
+        review_status=evidence.review_status,
+        size_bytes=evidence.size_bytes,
+        reservation_id=evidence.reservation_id,
+        amount_cop=evidence.amount_cop,
+        created_at=evidence.created_at,
         review=review_payload(await latest_review(session, evidence.id)),
     )
 
@@ -1008,8 +1033,14 @@ async def retry_payment_prereview(
             raise HTTPException(409, "El comprobante ya fue revisado por un asesor.")
         if evidence.download_status not in {"DOWNLOADED", "FAILED_PERMANENT"}:
             raise HTTPException(409, "El comprobante aún no está disponible.")
-        review = await prereview_evidence(session, evidence, settings=settings,
-            now=datetime.now(UTC), force=True, request_id=request_id)
+        review = await prereview_evidence(
+            session,
+            evidence,
+            settings=settings,
+            now=datetime.now(UTC),
+            force=True,
+            request_id=request_id,
+        )
         payload = review_payload(review)
     return {"id": evidence_id, "review": payload}
 
@@ -1226,8 +1257,12 @@ async def notify_payment_after_commit(
         evidence = await session.get(PaymentEvidence, evidence_id)
         if evidence.reservation_id is not None:
             return await notify_booking_payment(
-                session, sm, evidence=evidence, kind=kind,
-                settings=get_settings(), request_id=request_id,
+                session,
+                sm,
+                evidence=evidence,
+                kind=kind,
+                settings=get_settings(),
+                request_id=request_id,
             )
         code = "RESP-PAYMENT-004" if evidence.review_status == "ACCEPTED" else "RESP-PAYMENT-005"
         latest = await session.scalar(
@@ -1300,9 +1335,7 @@ async def list_blocked_dates(
     authorization: Annotated[str | None, Header()] = None,
 ) -> list[BlockedDatePayload]:
     await authenticated_admin(session, authorization)
-    rows = (
-        await session.scalars(select(BlockedDate).order_by(BlockedDate.blocked_date))
-    ).all()
+    rows = (await session.scalars(select(BlockedDate).order_by(BlockedDate.blocked_date))).all()
     return [blocked_date_payload(row) for row in rows]
 
 
@@ -1507,9 +1540,7 @@ async def upload_catalog(
     validate_catalog_event_type_mappings([mapping])
     await session.rollback()
 
-    stored_path, file_hash, file_size, created_new_file = await store_catalog_upload(
-        request, file
-    )
+    stored_path, file_hash, file_size, created_new_file = await store_catalog_upload(request, file)
     try:
         async with session.begin():
             asset = CatalogAsset(
@@ -1711,15 +1742,18 @@ async def _verify_pin_off_loop(pin: str, password_hash: str) -> bool:
 async def login(body: LoginRequest, request: Request, session: DbSession) -> LoginPayload:
     document_id = body.document_id.strip()
     settings: Settings = getattr(request.app.state, "settings", None) or get_settings()
-    recent_failures = await session.scalar(
-        text(
-            "SELECT count(*) FROM audit_event "
-            "WHERE action = 'ADMIN_LOGIN_FAILED' "
-            "AND new_value->>'document_id' = :document_id "
-            "AND created_at > now() - make_interval(mins => :window)"
-        ),
-        {"document_id": document_id, "window": settings.admin_login_window_minutes},
-    ) or 0
+    recent_failures = (
+        await session.scalar(
+            text(
+                "SELECT count(*) FROM audit_event "
+                "WHERE action = 'ADMIN_LOGIN_FAILED' "
+                "AND new_value->>'document_id' = :document_id "
+                "AND created_at > now() - make_interval(mins => :window)"
+            ),
+            {"document_id": document_id, "window": settings.admin_login_window_minutes},
+        )
+        or 0
+    )
     if recent_failures >= settings.admin_login_max_failures:
         session.add(
             AuditEvent(
@@ -1860,7 +1894,10 @@ async def create_agent(
 
 def agent_payload(agent: Agent) -> AgentPayload:
     return AgentPayload(
-        id=agent.id, name=agent.name, role=agent.role, active=agent.active,
+        id=agent.id,
+        name=agent.name,
+        role=agent.role,
+        active=agent.active,
         document_id=agent.document_id,
         has_credentials=bool(agent.document_id and agent.password_hash),
         created_at=agent.created_at,
@@ -1881,14 +1918,23 @@ async def _count_other_active_admins(session: AsyncSession, agent_id: int) -> in
     # Lock in the same order before locking the target in PATCH/deactivate. Recount
     # after waiting so concurrent demotions/deactivations cannot remove every admin.
     await session.execute(
-        select(Agent.id).where(Agent.role == "ADMIN", Agent.active.is_(True))
-        .order_by(Agent.id).with_for_update()
+        select(Agent.id)
+        .where(Agent.role == "ADMIN", Agent.active.is_(True))
+        .order_by(Agent.id)
+        .with_for_update()
     )
-    return await session.scalar(
-        select(func.count()).select_from(Agent).where(
-            Agent.role == "ADMIN", Agent.active.is_(True), Agent.id != agent_id,
+    return (
+        await session.scalar(
+            select(func.count())
+            .select_from(Agent)
+            .where(
+                Agent.role == "ADMIN",
+                Agent.active.is_(True),
+                Agent.id != agent_id,
+            )
         )
-    ) or 0
+        or 0
+    )
 
 
 @router.get("/agents/{agent_id}")
@@ -1929,12 +1975,17 @@ async def update_agent(
             await session.flush()
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Agent name already exists") from exc
-        session.add(AuditEvent(
-            actor=admin_name, action="AGENT_UPDATED", entity="agent",
-            old_value={"agent_id": agent.id, **old_value},
-            new_value={"agent_id": agent.id, **changes},
-            reason="Admin updated agent", request_id=None,
-        ))
+        session.add(
+            AuditEvent(
+                actor=admin_name,
+                action="AGENT_UPDATED",
+                entity="agent",
+                old_value={"agent_id": agent.id, **old_value},
+                new_value={"agent_id": agent.id, **changes},
+                reason="Admin updated agent",
+                request_id=None,
+            )
+        )
     return agent_payload(agent)
 
 
@@ -1953,12 +2004,17 @@ async def activate_agent(
             raise HTTPException(status_code=404, detail="Agent not found")
         if not agent.active:
             agent.active = True
-            session.add(AuditEvent(
-                actor=admin_name, action="AGENT_ACTIVATED", entity="agent",
-                old_value={"agent_id": agent.id, "active": False},
-                new_value={"agent_id": agent.id, "active": True},
-                reason="Admin activated agent", request_id=None,
-            ))
+            session.add(
+                AuditEvent(
+                    actor=admin_name,
+                    action="AGENT_ACTIVATED",
+                    entity="agent",
+                    old_value={"agent_id": agent.id, "active": False},
+                    new_value={"agent_id": agent.id, "active": True},
+                    reason="Admin activated agent",
+                    request_id=None,
+                )
+            )
     return agent_payload(agent)
 
 
@@ -2082,8 +2138,12 @@ async def reset_conversation(
     await session.rollback()
     async with session.begin():
         summary = await reset_conversation_by_phone(
-            session, raw_phone_number=body.phone_number, dry_run=body.dry_run,
-            actor=admin_name, reason=body.reason, request_id=request_id,
+            session,
+            raw_phone_number=body.phone_number,
+            dry_run=body.dry_run,
+            actor=admin_name,
+            reason=body.reason,
+            request_id=request_id,
         )
     return {**asdict(summary), "request_id": request_id}
 
@@ -2221,7 +2281,8 @@ async def take_conversation(
 
     async with session.begin():
         conversation, cases = await lock_human_case(
-            session, conversation_id=conversation_id,
+            session,
+            conversation_id=conversation_id,
         )
         customer = await session.get(Customer, conversation.customer_id)
         if customer is None:
@@ -2398,7 +2459,8 @@ async def reassign_conversation(
                 actor=actor,
                 action="HANDOFF_REASSIGNED",
                 entity="handoff",
-                old_value=previous | {
+                old_value=previous
+                | {
                     "handoff_id": handoff.id,
                     "conversation_id": conversation.id,
                 },
@@ -2488,7 +2550,8 @@ async def create_agent_message(
 
     async with session.begin():
         conversation, cases = await lock_human_case(
-            session, conversation_id=conversation_id,
+            session,
+            conversation_id=conversation_id,
         )
         active_handoff = require_case_owner(conversation, cases, actor_id)
 

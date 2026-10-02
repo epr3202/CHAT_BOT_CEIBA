@@ -155,7 +155,5 @@ def _strip_accents(value: str) -> str:
     import unicodedata
 
     return "".join(
-        char
-        for char in unicodedata.normalize("NFD", value)
-        if unicodedata.category(char) != "Mn"
+        char for char in unicodedata.normalize("NFD", value) if unicodedata.category(char) != "Mn"
     )

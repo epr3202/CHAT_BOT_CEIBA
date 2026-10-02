@@ -253,9 +253,7 @@ async def test_slice1_greeting_faq_and_farewell_follow_documented_templates(
     assert faq_conversation.last_question_code == "RESP-LOCATION-002"
     assert faq_conversation.state == "BOT_ACTIVE"
     assert faq_outbox is not None
-    assert "https://maps.app.goo.gl/hvxQH8UFN7upKMwU8?g_st=iw" in faq_outbox.payload["text"][
-        "body"
-    ]
+    assert "https://maps.app.goo.gl/hvxQH8UFN7upKMwU8?g_st=iw" in faq_outbox.payload["text"]["body"]
     assert await handoffs_for_conversation(faq_conversation.id) == []
 
     phone_location = "573101001012"

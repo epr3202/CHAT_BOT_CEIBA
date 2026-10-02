@@ -202,9 +202,7 @@ async def orchestrate_inbound_message(
         )
     finally:
         state_after = ConversationState(conversation.state).value
-        transition = (
-            f"{state_before}->{state_after}" if state_before != state_after else None
-        )
+        transition = f"{state_before}->{state_after}" if state_before != state_after else None
         logger.info(
             "orchestrator_decision",
             request_id=(
@@ -296,7 +294,11 @@ async def _orchestrate_inbound_message(
         and classification.reasoning_code == FIXED_PRICE_BOOKING_REASON
     ):
         await handle_fixed_price_booking(
-            session, settings, knowledge_sessionmaker, orchestration_input, classification,
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
         )
         return
 
@@ -320,15 +322,19 @@ async def _orchestrate_inbound_message(
 
     _, envelope_errors = decode_entities(classification)
     envelope_errors = [
-        item for item in envelope_errors
-        if item.code in {"INVALID_ENVELOPE", "INVALID_LEGACY"}
+        item for item in envelope_errors if item.code in {"INVALID_ENVELOPE", "INVALID_LEGACY"}
     ]
     if envelope_errors:
         for item in envelope_errors:
             audit_entity_rejection(session, item, orchestration_input.request_id, conversation)
         await enqueue_template(
-            session, knowledge_sessionmaker, conversation, customer, inbound_message,
-            "RESP-FALLBACK-004", {},
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            customer,
+            inbound_message,
+            "RESP-FALLBACK-004",
+            {},
         )
         return
 
@@ -362,14 +368,15 @@ async def _orchestrate_inbound_message(
             classification,
         )
         return
-    catalog_handled, understanding_failure_already_counted = (
-        await resolve_catalog_event_type_capture(
-            session,
-            settings,
-            knowledge_sessionmaker,
-            orchestration_input,
-            classification,
-        )
+    (
+        catalog_handled,
+        understanding_failure_already_counted,
+    ) = await resolve_catalog_event_type_capture(
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
     )
     if catalog_handled:
         return
@@ -419,12 +426,20 @@ async def _orchestrate_inbound_message(
         if batch.rejected:
             for item in batch.rejected:
                 audit_entity_rejection(
-                    session, item, orchestration_input.request_id, conversation,
+                    session,
+                    item,
+                    orchestration_input.request_id,
+                    conversation,
                 )
             set_pending_action(conversation, "CLASSIFY_MESSAGE")
             await enqueue_template(
-                session, knowledge_sessionmaker, conversation, customer, inbound_message,
-                "RESP-FALLBACK-004", {},
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                customer,
+                inbound_message,
+                "RESP-FALLBACK-004",
+                {},
             )
             return
         audit_confidence_decision(
@@ -436,7 +451,8 @@ async def _orchestrate_inbound_message(
             request_id=orchestration_input.request_id,
         )
         conversation.pending_confirmation = {
-            "type": "CLASSIFICATION_CONFIRMATION", "version": 1,
+            "type": "CLASSIFICATION_CONFIRMATION",
+            "version": 1,
             "context": proposal_context(conversation.state, conversation.active_lead_id),
             "classification": classification.model_dump(mode="json"),
             "original_intent": classification.primary_intent,
@@ -478,11 +494,14 @@ def conversation_context(conversation: Conversation) -> dict[str, Any]:
 
 
 async def booking_event_context(
-    session: AsyncSession, conversation: Conversation,
+    session: AsyncSession,
+    conversation: Conversation,
 ) -> dict[str, Any] | None:
     self_service = get_settings().self_service_booking_enabled
     if not booking_guard_eligible(
-        conversation.state, conversation.pending_action, conversation.bot_enabled,
+        conversation.state,
+        conversation.pending_action,
+        conversation.bot_enabled,
         self_service=self_service,
     ):
         return None
@@ -490,83 +509,147 @@ async def booking_event_context(
     event = await active_event(session, await active_lead(session, conversation))
     if event is not None:
         event = await session.get(
-            Event, event.event_id, with_for_update=True, populate_existing=True,
+            Event,
+            event.event_id,
+            with_for_update=True,
+            populate_existing=True,
         )
     if event is None and not self_service:
         return None
-    catalog_sent = await session.scalar(select(CatalogSend.catalog_send_id).join(
-        Outbox, Outbox.id == CatalogSend.outbound_message_id,
-    ).where(CatalogSend.lead_id == event.lead_id, Outbox.status == "SENT").limit(1)
-    ) if event is not None else None
-    plans = await session.scalars(select(Plan).where(
-        Plan.active.is_(True), Plan.event_type.in_(FIXED_PRICE_EVENT_TYPES),
-    ).order_by(Plan.sort_order, Plan.code)) if self_service else []
-    return {"event_id": str(event.event_id) if event is not None else None,
-            "event_type": event.event_type if event is not None else None,
-            "catalog_sent": "yes" if catalog_sent is not None else None,
-            "plans": [{"plan_id": str(plan.plan_id), "name": plan.name,
-                       "event_type": plan.event_type} for plan in plans]}
+    catalog_sent = (
+        await session.scalar(
+            select(CatalogSend.catalog_send_id)
+            .join(
+                Outbox,
+                Outbox.id == CatalogSend.outbound_message_id,
+            )
+            .where(CatalogSend.lead_id == event.lead_id, Outbox.status == "SENT")
+            .limit(1)
+        )
+        if event is not None
+        else None
+    )
+    plans = (
+        await session.scalars(
+            select(Plan)
+            .where(
+                Plan.active.is_(True),
+                Plan.event_type.in_(FIXED_PRICE_EVENT_TYPES),
+            )
+            .order_by(Plan.sort_order, Plan.code)
+        )
+        if self_service
+        else []
+    )
+    return {
+        "event_id": str(event.event_id) if event is not None else None,
+        "event_type": event.event_type if event is not None else None,
+        "catalog_sent": "yes" if catalog_sent is not None else None,
+        "plans": [
+            {"plan_id": str(plan.plan_id), "name": plan.name, "event_type": plan.event_type}
+            for plan in plans
+        ],
+    }
 
 
 def deterministic_booking_or_catalog_classification(
-    message_text: str, context: dict[str, Any],
+    message_text: str,
+    context: dict[str, Any],
     settings: Settings | None = None,
 ) -> IntentClassification | None:
     # Precedence: pending_action routes → D1 guard → CATALOG_CAPTURE/type resolution → LLM.
     facts = context.get("booking_event") or {}
     if context.get("pending_action") in BOOKING_ACTIONS:
         return IntentClassification(
-            primary_intent="UNKNOWN", sub_intent=None, confidence=0, requested_action=None,
-            needs_confirmation=False, needs_human=False, handoff_reason=None, priority="NORMAL",
+            primary_intent="UNKNOWN",
+            sub_intent=None,
+            confidence=0,
+            requested_action=None,
+            needs_confirmation=False,
+            needs_human=False,
+            handoff_reason=None,
+            priority="NORMAL",
             reasoning_code="BOOKING_STEP",
         )
     self_service = settings is not None and settings.self_service_booking_enabled
     named_plan = match_booking_plan(message_text, facts.get("plans", [])) if self_service else None
-    explicit_date = resolve_visit_date_text(
-        message_text, today=current_bogota_datetime().date(), require_absolute_confirmation=True,
-    ) if self_service and facts.get("catalog_sent") == "yes" else None
+    explicit_date = (
+        resolve_visit_date_text(
+            message_text,
+            today=current_bogota_datetime().date(),
+            require_absolute_confirmation=True,
+        )
+        if self_service and facts.get("catalog_sent") == "yes"
+        else None
+    )
     if booking_guard_eligible(
-        context.get("state"), context.get("pending_action"), context.get("bot_enabled", True),
+        context.get("state"),
+        context.get("pending_action"),
+        context.get("bot_enabled", True),
         self_service=self_service,
-    ) and (named_plan is not None or is_fixed_price_booking(
-        message_text, facts.get("event_type"),
-    ) or (
-        self_service and facts.get("event_type") in FIXED_PRICE_EVENT_TYPES
-        and explicit_date is not None and explicit_date.resolved_date is not None
-        and explicit_date.interpretation == "EXACTA"
-        and parse_visit_time_text(message_text, require_explicit=True) is not None
-    )):
+    ) and (
+        named_plan is not None
+        or is_fixed_price_booking(
+            message_text,
+            facts.get("event_type"),
+        )
+        or (
+            self_service
+            and facts.get("event_type") in FIXED_PRICE_EVENT_TYPES
+            and explicit_date is not None
+            and explicit_date.resolved_date is not None
+            and explicit_date.interpretation == "EXACTA"
+            and parse_visit_time_text(message_text, require_explicit=True) is not None
+        )
+    ):
         return IntentClassification(
-            primary_intent="HUMAN_REQUEST", sub_intent=None, confidence=0, needs_human=True,
-            needs_confirmation=False, priority="NORMAL",
-            handoff_reason="RESERVATION_CONFIRMATION", requested_action="CREATE_HANDOFF",
-            reasoning_code=(SELF_SERVICE_BOOKING_REASON if self_service
-                            else FIXED_PRICE_BOOKING_REASON),
+            primary_intent="HUMAN_REQUEST",
+            sub_intent=None,
+            confidence=0,
+            needs_human=True,
+            needs_confirmation=False,
+            priority="NORMAL",
+            handoff_reason="RESERVATION_CONFIRMATION",
+            requested_action="CREATE_HANDOFF",
+            reasoning_code=(
+                SELF_SERVICE_BOOKING_REASON if self_service else FIXED_PRICE_BOOKING_REASON
+            ),
         )
     if context.get("pending_action") == CATALOG_CAPTURE_ACTION and (
         resolve_catalog_event_type_label(message_text) is not None
     ):
         return IntentClassification(
-            primary_intent="UNKNOWN", sub_intent=None, confidence=0,
-            requested_action=None, needs_confirmation=False, needs_human=False,
-            handoff_reason=None, priority="NORMAL", reasoning_code="CATALOG_LABEL_MATCH",
+            primary_intent="UNKNOWN",
+            sub_intent=None,
+            confidence=0,
+            requested_action=None,
+            needs_confirmation=False,
+            needs_human=False,
+            handoff_reason=None,
+            priority="NORMAL",
+            reasoning_code="CATALOG_LABEL_MATCH",
         )
     return None
 
 
 async def handle_fixed_price_booking(
-    session: AsyncSession, settings: Settings, knowledge_sessionmaker: Any,
-    orchestration_input: OrchestrationInput, classification: IntentClassification,
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
 ) -> None:
     conversation = orchestration_input.conversation
     facts = await booking_event_context(session, conversation)
     if not facts or not is_fixed_price_booking(
-        orchestration_input.message_text, facts["event_type"],
+        orchestration_input.message_text,
+        facts["event_type"],
     ):
         raise ValueError("Fixed-price booking context changed before settlement")
     event = await session.get(Event, UUID(facts["event_id"]))
     decision = resolve_visit_date_text(
-        orchestration_input.message_text, today=current_bogota_datetime().date(),
+        orchestration_input.message_text,
+        today=current_bogota_datetime().date(),
         require_absolute_confirmation=True,
     )
     detail = f"Nueva solicitud de reserva para {format_event_type(event.event_type)}."
@@ -578,21 +661,32 @@ async def handle_fixed_price_booking(
             event.event_date_type = "EXACT"
         event.event_date_raw = decision.matched_text
         audit_domain_change(
-            session, "EVENT_DATE_CAPTURED", "event", old, date_snapshot(event),
+            session,
+            "EVENT_DATE_CAPTURED",
+            "event",
+            old,
+            date_snapshot(event),
             "Fecha solicitada para reserva; confirmación humana si es relativa o contradictoria",
             orchestration_input.request_id,
         )
         detail += f" Fecha solicitada: {format_date_natural(decision.resolved_date)}"
         detail += " (pendiente de confirmación)." if decision.needs_confirmation else "."
     await create_handoff_and_pause(
-        session, settings, knowledge_sessionmaker, orchestration_input, classification,
-        reason="RESERVATION_CONFIRMATION", priority="NORMAL", detail=detail,
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
+        reason="RESERVATION_CONFIRMATION",
+        priority="NORMAL",
+        detail=detail,
     )
 
 
 def current_pending(conversation: Conversation) -> PendingProposal:
     return read_pending(
-        conversation.pending_confirmation, state=conversation.state,
+        conversation.pending_confirmation,
+        state=conversation.state,
         pending_action=conversation.pending_action,
         last_question_code=conversation.last_question_code,
         active_lead_id=conversation.active_lead_id,
@@ -600,14 +694,20 @@ def current_pending(conversation: Conversation) -> PendingProposal:
 
 
 def discard_pending(
-    session: AsyncSession, conversation: Conversation, pending: PendingProposal,
-    request_id: str | None, reason: str,
+    session: AsyncSession,
+    conversation: Conversation,
+    pending: PendingProposal,
+    request_id: str | None,
+    reason: str,
 ) -> None:
     audit_orchestrator_event(
         session,
-        "AI_CONFIRMATION_DISCARDED" if pending.kind == "CLASSIFICATION"
+        "AI_CONFIRMATION_DISCARDED"
+        if pending.kind == "CLASSIFICATION"
         else "PENDING_CONFIRMATION_DISCARDED",
-        conversation, reason=reason, request_id=request_id,
+        conversation,
+        reason=reason,
+        request_id=request_id,
         extra={"pending_type": pending.kind, "discard_reason": reason},
     )
     conversation.pending_confirmation = None
@@ -628,9 +728,11 @@ async def resolve_pending_confirmation(
             pending.reason == "INVALID_NAME_SHAPE"
             and conversation.pending_action == "COLLECT_CUSTOMER_NAME"
         ):
-            conversation.pending_fields = list(dict.fromkeys(
-                [*(conversation.pending_fields or []), "full_name"],
-            ))
+            conversation.pending_fields = list(
+                dict.fromkeys(
+                    [*(conversation.pending_fields or []), "full_name"],
+                )
+            )
         discard_pending(session, conversation, pending, request_id, pending.reason or "INVALID")
         return PendingConfirmationResolution(classification, False)
 
@@ -647,7 +749,8 @@ async def resolve_pending_confirmation(
         if "version" not in conversation.pending_confirmation:
             conversation.pending_confirmation = {
                 **conversation.pending_confirmation,
-                "type": "FULL_NAME_CONFIRMATION" if pending.kind == "NAME"
+                "type": "FULL_NAME_CONFIRMATION"
+                if pending.kind == "NAME"
                 else "CLASSIFICATION_CONFIRMATION",
                 "version": 1,
                 "context": proposal_context(conversation.state, conversation.active_lead_id),
@@ -665,10 +768,15 @@ async def resolve_pending_confirmation(
         # The discriminator guarantees this model; unexpected programming faults propagate.
         assert confirmed is not None
         audit_orchestrator_event(
-            session, "AI_CONFIRMATION_ACCEPTED", conversation,
-            reason="Customer confirmed tentative classification", request_id=request_id,
-            extra={"confirmed_intent": confirmed.primary_intent,
-                   "original_confidence": confirmed.confidence},
+            session,
+            "AI_CONFIRMATION_ACCEPTED",
+            conversation,
+            reason="Customer confirmed tentative classification",
+            request_id=request_id,
+            extra={
+                "confirmed_intent": confirmed.primary_intent,
+                "original_confidence": confirmed.confidence,
+            },
         )
         conversation.pending_confirmation = None
         if conversation.pending_action == "CLASSIFY_MESSAGE":
@@ -1116,7 +1224,11 @@ async def start_visit_scheduling(
     persist_classification_context(conversation, classification)
     conversation.failed_understanding_count = 0
     await handle_waiting_for_appointment_date(
-        session, settings, knowledge_sessionmaker, orchestration_input, classification,
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
     )
 
 
@@ -1130,8 +1242,7 @@ async def handle_appointment_flow_state(
     state = ConversationState(orchestration_input.conversation.state)
     if (
         state == ConversationState.WAITING_FOR_APPOINTMENT_SELECTION
-        and orchestration_input.conversation.pending_action
-        in DIRECT_APPOINTMENT_ANSWER_ACTIONS
+        and orchestration_input.conversation.pending_action in DIRECT_APPOINTMENT_ANSWER_ACTIONS
     ):
         await handle_waiting_for_appointment_selection(
             session,
@@ -1325,12 +1436,17 @@ async def handle_waiting_for_appointment_date(
     )
     set_pending_action(conversation, "SELECT_VISIT_TIME")
     selected = interpret_visit_time(
-        orchestration_input.message_text, [slot.start_time for slot in availability.slots],
+        orchestration_input.message_text,
+        [slot.start_time for slot in availability.slots],
         require_explicit=True,
     )
     if selected.accepted:
         await handle_waiting_for_appointment_selection(
-            session, settings, knowledge_sessionmaker, orchestration_input, classification,
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
         )
         return
     await enqueue_template(
@@ -1470,7 +1586,11 @@ async def handle_waiting_for_appointment_selection(
             and normalize_confirmation_text(message_text) not in DENIALS
         ):
             await handle_general_information(
-                session, settings, knowledge_sessionmaker, orchestration_input, classification,
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
             )
             return
         corrected = any(
@@ -1478,31 +1598,48 @@ async def handle_waiting_for_appointment_selection(
         )
         confirmed = (
             await maybe_apply_name_confirmation(
-                session, conversation, orchestration_input.customer,
-                message_text, orchestration_input.request_id,
-            ) if not corrected else False
+                session,
+                conversation,
+                orchestration_input.customer,
+                message_text,
+                orchestration_input.request_id,
+            )
+            if not corrected
+            else False
         )
         name_rejected = False
         # A bare answer cannot become a fresh name through the direct-text fallback.
         if not confirmed and (
-            corrected or (
+            corrected
+            or (
                 not is_affirmative(message_text)
                 and normalize_confirmation_text(message_text) not in DENIALS
             )
         ):
             name_entity = direct_customer_name_entity(classification, message_text)
-            name_rejected = checked_entity(
-                session, name_entity, orchestration_input.request_id, conversation,
-            ) is None
+            name_rejected = (
+                checked_entity(
+                    session,
+                    name_entity,
+                    orchestration_input.request_id,
+                    conversation,
+                )
+                is None
+            )
             if not name_rejected:
                 await apply_full_name(
-                    session, conversation, orchestration_input.customer,
-                    name_entity, orchestration_input.request_id,
+                    session,
+                    conversation,
+                    orchestration_input.customer,
+                    name_entity,
+                    orchestration_input.request_id,
                 )
         if name_rejected:
-            conversation.pending_fields = list(dict.fromkeys(
-                [*(conversation.pending_fields or []), "full_name"],
-            ))
+            conversation.pending_fields = list(
+                dict.fromkeys(
+                    [*(conversation.pending_fields or []), "full_name"],
+                )
+            )
         elif confirmed or (
             not is_affirmative(message_text)
             and current_pending(conversation).kind != "NAME"
@@ -1512,7 +1649,8 @@ async def handle_waiting_for_appointment_selection(
                 field for field in (conversation.pending_fields or []) if field != "full_name"
             ]
         if (
-            name_rejected or current_pending(conversation).kind == "NAME"
+            name_rejected
+            or current_pending(conversation).kind == "NAME"
             or "full_name" in (conversation.pending_fields or [])
             or not (orchestration_input.customer.full_name or "").strip()
         ):
@@ -1975,12 +2113,12 @@ async def clear_visit_draft_and_resume_capture(
         event,
         conversation,
     )
-    unresolved = [
-        field for field in (conversation.pending_fields or []) if field in ENTITY_ACTION
-    ]
-    conversation.pending_fields = list(dict.fromkeys(
-        [*pending_fields_for(progress), *unresolved],
-    ))
+    unresolved = [field for field in (conversation.pending_fields or []) if field in ENTITY_ACTION]
+    conversation.pending_fields = list(
+        dict.fromkeys(
+            [*pending_fields_for(progress), *unresolved],
+        )
+    )
     next_action = select_next_question(progress)
     if next_action is None and unresolved:
         next_action = ENTITY_ACTION[unresolved[0]]
@@ -2033,26 +2171,28 @@ async def move_to_appointment_date(
 
 
 def visit_scheduling_service(settings: Settings, sessionmaker: Any) -> VisitSchedulingService:
-    return defer_agenda_service(VisitSchedulingService(
-        sessionmaker=sessionmaker,
-        calendar_adapter=get_calendar_adapter(settings),
-        freebusy_calendar_ids=freebusy_calendar_ids(settings),
-    ))
+    return defer_agenda_service(
+        VisitSchedulingService(
+            sessionmaker=sessionmaker,
+            calendar_adapter=get_calendar_adapter(settings),
+            freebusy_calendar_ids=freebusy_calendar_ids(settings),
+        )
+    )
 
 
 def availability_service(settings: Settings, sessionmaker: Any) -> AvailabilityService:
-    return defer_agenda_service(AvailabilityService(
-        sessionmaker=sessionmaker,
-        calendar_adapter=get_calendar_adapter(settings),
-        freebusy_calendar_ids=freebusy_calendar_ids(settings),
-    ))
+    return defer_agenda_service(
+        AvailabilityService(
+            sessionmaker=sessionmaker,
+            calendar_adapter=get_calendar_adapter(settings),
+            freebusy_calendar_ids=freebusy_calendar_ids(settings),
+        )
+    )
 
 
 def freebusy_calendar_ids(settings: Settings) -> list[str]:
     calendar_ids = [
-        value.strip()
-        for value in settings.google_freebusy_calendar_ids.split(",")
-        if value.strip()
+        value.strip() for value in settings.google_freebusy_calendar_ids.split(",") if value.strip()
     ]
     if settings.google_calendar_id.strip() and settings.google_calendar_id not in calendar_ids:
         calendar_ids.append(settings.google_calendar_id)
@@ -2101,11 +2241,7 @@ def direct_customer_name_entity(
     message_text: str,
 ) -> ExtractedEntity:
     extracted_name = next(
-        (
-            entity
-            for entity in normalized_entities(classification)
-            if entity.entity == "full_name"
-        ),
+        (entity for entity in normalized_entities(classification) if entity.entity == "full_name"),
         None,
     )
     if extracted_name is not None:
@@ -2181,28 +2317,32 @@ async def handle_general_information(
 
     category = classification.information_category
     event_type_entities = [
-        entity for entity in normalized_entities(classification)
-        if entity.entity == "event_type"
-        and entity.quality_status in {"PROVIDED", "CORRECTED"}
+        entity
+        for entity in normalized_entities(classification)
+        if entity.entity == "event_type" and entity.quality_status in {"PROVIDED", "CORRECTED"}
     ]
     fixed_price_entities = [
-        entity for entity in event_type_entities
+        entity
+        for entity in event_type_entities
         if not entity.needs_confirmation
         and normalize_event_type(entity.normalized_value or entity.raw_value)
         in FIXED_PRICE_EVENT_TYPES
     ]
-    fixed_price_entity = next((
-        entity for entity in fixed_price_entities
-        if normalize_event_type(entity.normalized_value or entity.raw_value) == "PROPOSAL"
-    ), fixed_price_entities[0] if fixed_price_entities else None)
+    fixed_price_entity = next(
+        (
+            entity
+            for entity in fixed_price_entities
+            if normalize_event_type(entity.normalized_value or entity.raw_value) == "PROPOSAL"
+        ),
+        fixed_price_entities[0] if fixed_price_entities else None,
+    )
     mentioned_event_type = resolve_fixed_price_information_type(orchestration_input.message_text)
     if mentioned_event_type is not None and (
         not event_type_entities
         or all(
             not entity.needs_confirmation
-            and normalize_event_type(
-                entity.normalized_value or entity.raw_value
-            ) == "ROMANTIC_DINNER"
+            and normalize_event_type(entity.normalized_value or entity.raw_value)
+            == "ROMANTIC_DINNER"
             for entity in event_type_entities
         )
     ):
@@ -2276,10 +2416,7 @@ async def handle_general_information(
             set_pending_action(conversation, previous_pending_action)
 
         target_state = previous_state
-        if (
-            not catalog_result_requires_human(result)
-            and conversation.state != target_state.value
-        ):
+        if not catalog_result_requires_human(result) and conversation.state != target_state.value:
             await transition_conversation(
                 session,
                 conversation,
@@ -2290,16 +2427,23 @@ async def handle_general_information(
         return
     if fixed_price_entity is not None:
         lead, event = await get_or_create_capture_models(
-            session, conversation, orchestration_input.customer,
+            session,
+            conversation,
+            orchestration_input.customer,
             request_id=orchestration_input.request_id,
         )
         apply_event_type(session, event, fixed_price_entity, orchestration_input.request_id)
         if not settings.self_service_booking_enabled:
             await enqueue_fixed_price_catalogs(
-                session, knowledge_sessionmaker, orchestration_input, lead, event,
+                session,
+                knowledge_sessionmaker,
+                orchestration_input,
+                lead,
+                event,
             )
         response_code = (
-            "RESP-EVENTS-PROPOSAL-001" if event.event_type == "PROPOSAL"
+            "RESP-EVENTS-PROPOSAL-001"
+            if event.event_type == "PROPOSAL"
             else "RESP-EVENTS-ROMANTIC-001"
         )
     if response_code == "RESP-LOCATION-001" and wants_location_link(
@@ -2335,13 +2479,23 @@ async def handle_general_information(
     except KnowledgeRenderError:
         from app.orchestrator.booking_flow import handoff
 
-        await handoff(session, settings, knowledge_sessionmaker, orchestration_input,
-                      "Texto de experiencia de precio fijo no aprobado o incompleto",
-                      reason="TEMPLATE_UNAVAILABLE")
+        await handoff(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            "Texto de experiencia de precio fijo no aprobado o incompleto",
+            reason="TEMPLATE_UNAVAILABLE",
+        )
         return
     if fixed_price_entity is not None and settings.self_service_booking_enabled:
         await enqueue_fixed_price_catalogs(
-            session, knowledge_sessionmaker, orchestration_input, lead, event, ordered=True,
+            session,
+            knowledge_sessionmaker,
+            orchestration_input,
+            lead,
+            event,
+            ordered=True,
         )
         if previous_pending_action in GENERIC_CAPTURE_ACTIONS:
             previous_pending_action = None
@@ -2354,7 +2508,8 @@ async def handle_general_information(
 
     target_state = (
         previous_state
-        if preserve_name_context or (
+        if preserve_name_context
+        or (
             previous_state != ConversationState.ANSWERING_INFORMATION
             and previous_state in ALLOWED_TRANSITIONS[ConversationState.ANSWERING_INFORMATION]
         )
@@ -2372,22 +2527,40 @@ async def handle_general_information(
 
 
 async def enqueue_fixed_price_catalogs(
-    session: AsyncSession, sm: Any, turn: OrchestrationInput, lead: Lead, event: Event,
-    *, ordered: bool = False,
+    session: AsyncSession,
+    sm: Any,
+    turn: OrchestrationInput,
+    lead: Lead,
+    event: Event,
+    *,
+    ordered: bool = False,
 ) -> None:
     after_outbox_id = None
     if ordered:
         await session.flush()
-        after_outbox_id = await session.scalar(select(Outbox.id).where(
-            Outbox.message_id == turn.inbound_message.id, Outbox.message_kind == "TEXT",
-            Outbox.conversation_id == turn.conversation.id,
-        ).order_by(Outbox.id.desc()).limit(1))
+        after_outbox_id = await session.scalar(
+            select(Outbox.id)
+            .where(
+                Outbox.message_id == turn.inbound_message.id,
+                Outbox.message_kind == "TEXT",
+                Outbox.conversation_id == turn.conversation.id,
+            )
+            .order_by(Outbox.id.desc())
+            .limit(1)
+        )
         if after_outbox_id is None:
             raise ValueError("Fixed-price catalog requires its approved text outbox")
     try:
         sent_count = await enqueue_proactive_catalogs_for_event_type(
-            session, sm, turn.conversation, turn.customer, turn.inbound_message,
-            lead.lead_id, event.event_type, turn.request_id, after_outbox_id=after_outbox_id,
+            session,
+            sm,
+            turn.conversation,
+            turn.customer,
+            turn.inbound_message,
+            lead.lead_id,
+            event.event_type,
+            turn.request_id,
+            after_outbox_id=after_outbox_id,
         )
     except CatalogCaptionTooLong:
         sent_count = 0
@@ -2396,11 +2569,16 @@ async def enqueue_fixed_price_catalogs(
         actions.append("ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO")
     for action in actions:
         audit_orchestrator_event(
-            session, action, turn.conversation,
+            session,
+            action,
+            turn.conversation,
             reason="Fixed-price event information triggers proactive catalog selection",
             request_id=turn.request_id,
-            extra={"event_type": event.event_type, "lead_id": str(lead.lead_id),
-                   "sent_count": sent_count},
+            extra={
+                "event_type": event.event_type,
+                "lead_id": str(lead.lead_id),
+                "sent_count": sent_count,
+            },
         )
 
 
@@ -2480,7 +2658,8 @@ async def handle_collecting_event_data(
     )
     original_entities = entities
     batch = validate_entities(
-        classification.model_copy(update={"extracted_entities": entities}), entity_today(),
+        classification.model_copy(update={"extracted_entities": entities}),
+        entity_today(),
     )
     for item in batch.rejected:
         audit_entity_rejection(session, item, orchestration_input.request_id, conversation)
@@ -2488,11 +2667,15 @@ async def handle_collecting_event_data(
     held_fields = list(conversation.pending_fields or [])
     handled_name_confirmation = (
         await maybe_apply_name_confirmation(
-            session, conversation, customer,
-            orchestration_input.message_text, orchestration_input.request_id,
+            session,
+            conversation,
+            customer,
+            orchestration_input.message_text,
+            orchestration_input.request_id,
         )
         if not any(entity.quality_status == "CORRECTED" for entity in original_entities)
-        and not any(item.entity == "full_name" for item in batch.rejected) else False
+        and not any(item.entity == "full_name" for item in batch.rejected)
+        else False
     )
     captured_requested_services = any(
         entity.entity == "requested_services" and entity.quality_status != "INVALID"
@@ -2508,8 +2691,9 @@ async def handle_collecting_event_data(
             entities,
             orchestration_input.request_id,
         )
-        if not (settings.self_service_booking_enabled
-                and event.event_type in FIXED_PRICE_EVENT_TYPES):
+        if not (
+            settings.self_service_booking_enabled and event.event_type in FIXED_PRICE_EVENT_TYPES
+        ):
             await maybe_enqueue_proactive_catalogs(
                 session,
                 knowledge_sessionmaker,
@@ -2529,28 +2713,49 @@ async def handle_collecting_event_data(
         conversation.failed_understanding_count = 0
         persist_classification_context(conversation, classification)
         await transition_conversation(
-            session, conversation, "BOT_ACTIVE", actor=SYSTEM_ACTOR,
+            session,
+            conversation,
+            "BOT_ACTIVE",
+            actor=SYSTEM_ACTOR,
             reason="Precio fijo: se omite captura genérica bajo autoservicio",
         )
         try:
             await enqueue_template(
-                session, knowledge_sessionmaker, conversation, customer, inbound_message,
-                "RESP-EVENTS-PROPOSAL-001" if event.event_type == "PROPOSAL"
-                else "RESP-EVENTS-ROMANTIC-001", {}, strict=True,
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                customer,
+                inbound_message,
+                "RESP-EVENTS-PROPOSAL-001"
+                if event.event_type == "PROPOSAL"
+                else "RESP-EVENTS-ROMANTIC-001",
+                {},
+                strict=True,
             )
         except KnowledgeRenderError:
             from app.orchestrator.booking_flow import handoff
 
-            await handoff(session, settings, knowledge_sessionmaker, orchestration_input,
-                          "Texto de experiencia de precio fijo no aprobado o incompleto",
-                          reason="TEMPLATE_UNAVAILABLE")
+            await handoff(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                "Texto de experiencia de precio fijo no aprobado o incompleto",
+                reason="TEMPLATE_UNAVAILABLE",
+            )
             return
         await enqueue_fixed_price_catalogs(
-            session, knowledge_sessionmaker, orchestration_input, lead, event, ordered=True,
+            session,
+            knowledge_sessionmaker,
+            orchestration_input,
+            lead,
+            event,
+            ordered=True,
         )
         return
     declined_by_evasion = (
-        not fixed_price_event and not batch.rejected
+        not fixed_price_event
+        and not batch.rejected
         and should_mark_budget_declined_by_evasion(lead, entities)
     )
     if declined_by_evasion:
@@ -2558,9 +2763,13 @@ async def handle_collecting_event_data(
 
     progress = await capture_progress(session, customer, lead, event, conversation)
     unresolved = [
-        field for field in held_fields
-        if field in ENTITY_ACTION and field not in {
-            canonical_field(item.entity) for item in entities
+        field
+        for field in held_fields
+        if field in ENTITY_ACTION
+        and field
+        not in {
+            canonical_field(item.entity)
+            for item in entities
             if item.entity != "budget_declined" or item.normalized_value is True
         }
     ]
@@ -2569,17 +2778,22 @@ async def handle_collecting_event_data(
     if declined_by_evasion or fixed_price_event:
         unresolved = [field for field in unresolved if field != "estimated_budget"]
     rejected_fields = [
-        canonical_field(item.entity) for item in batch.rejected
+        canonical_field(item.entity)
+        for item in batch.rejected
         if item.code != "UNSUPPORTED_SERVICE_ITEM" and item.entity != "UNKNOWN"
     ]
     if fixed_price_event:
         rejected_fields = [field for field in rejected_fields if field != "estimated_budget"]
-    conversation.pending_fields = list(dict.fromkeys(
-        [*pending_fields_for(progress), *unresolved, *rejected_fields]
-    ))
+    conversation.pending_fields = list(
+        dict.fromkeys([*pending_fields_for(progress), *unresolved, *rejected_fields])
+    )
     next_action = next(
-        (ENTITY_ACTION[field] for field in [*rejected_fields, *unresolved]
-         if field in ENTITY_ACTION), select_next_question(progress),
+        (
+            ENTITY_ACTION[field]
+            for field in [*rejected_fields, *unresolved]
+            if field in ENTITY_ACTION
+        ),
+        select_next_question(progress),
     )
     persist_classification_context(conversation, classification)
     conversation.failed_understanding_count = 0
@@ -2591,8 +2805,13 @@ async def handle_collecting_event_data(
     ):
         set_pending_action(conversation, "CLASSIFY_MESSAGE")
         await enqueue_template(
-            session, knowledge_sessionmaker, conversation, customer, inbound_message,
-            "RESP-FALLBACK-004", {},
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            customer,
+            inbound_message,
+            "RESP-FALLBACK-004",
+            {},
         )
         return
 
@@ -2664,9 +2883,13 @@ async def handle_quote_request_ready(
         persist_classification_context(conversation, classification)
         return
 
-    if classification.primary_intent == "MODIFY_EVENT_DATA" or validate_entities(
-        classification, entity_today(),
-    ).rejected:
+    if (
+        classification.primary_intent == "MODIFY_EVENT_DATA"
+        or validate_entities(
+            classification,
+            entity_today(),
+        ).rejected
+    ):
         await transition_conversation(
             session,
             conversation,
@@ -2687,11 +2910,16 @@ async def handle_quote_request_ready(
         conversation.pending_action != "CONFIRM_QUOTE_REQUEST"
         or not conversation.last_question_code
     ):
-        if conversation.pending_action == 'CONFIRM_QUOTE_REQUEST':
+        if conversation.pending_action == "CONFIRM_QUOTE_REQUEST":
             set_pending_action(conversation, None)
         await enqueue_template(
-            session, knowledge_sessionmaker, conversation, customer,
-            orchestration_input.inbound_message, "RESP-FALLBACK-004", {},
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            customer,
+            orchestration_input.inbound_message,
+            "RESP-FALLBACK-004",
+            {},
         )
         return
 
@@ -2946,7 +3174,8 @@ ENTITY_ACTION = {
 
 def canonical_field(name: str) -> str:
     return {"guest_count_range": "guest_count", "budget_declined": "estimated_budget"}.get(
-        name, name,
+        name,
+        name,
     )
 
 
@@ -2955,26 +3184,37 @@ def entity_today() -> date:
 
 
 def audit_entity_rejection(
-    session: AsyncSession, item: Rejection, request_id: str | None,
+    session: AsyncSession,
+    item: Rejection,
+    request_id: str | None,
     conversation: Conversation | None = None,
 ) -> None:
     action = "PENDING_CONFIRMATION_INVALID_NAME" if item.entity == "full_name" else "ENTITY_INVALID"
     audit_domain_change(
-        session, action, "conversation", None,
+        session,
+        action,
+        "conversation",
+        None,
         {"entity": item.entity, "code": item.code, "value_type": item.value_type},
-        "Entity rejected before domain mutation", request_id,
+        "Entity rejected before domain mutation",
+        request_id,
     )
     if conversation is not None and item.entity == "full_name" and item.correction:
         pending = conversation.pending_confirmation
         if isinstance(pending, dict) and pending.get("type") == "FULL_NAME_CONFIRMATION":
             discard_pending(
-                session, conversation, PendingProposal("NAME"), request_id,
+                session,
+                conversation,
+                PendingProposal("NAME"),
+                request_id,
                 "INVALID_NAME_CORRECTION",
             )
 
 
 def checked_entity(
-    session: AsyncSession, entity: ExtractedEntity, request_id: str | None,
+    session: AsyncSession,
+    entity: ExtractedEntity,
+    request_id: str | None,
     conversation: Conversation | None = None,
 ) -> Accepted | None:
     try:
@@ -3037,21 +3277,31 @@ async def apply_full_name(
     name = accepted.value
     if entity.needs_confirmation or entity.quality_status in {"PENDING_CONFIRMATION", "INFERRED"}:
         conversation.pending_confirmation = {
-            "type": "FULL_NAME_CONFIRMATION", "version": 1, "full_name": name,
+            "type": "FULL_NAME_CONFIRMATION",
+            "version": 1,
+            "full_name": name,
             "context": proposal_context(conversation.state, conversation.active_lead_id),
         }
         return
     pending = conversation.pending_confirmation
     if isinstance(pending, dict) and pending.get("type") == "FULL_NAME_CONFIRMATION":
         discard_pending(
-            session, conversation, PendingProposal("NAME"), request_id, "NAME_REPLACED",
+            session,
+            conversation,
+            PendingProposal("NAME"),
+            request_id,
+            "NAME_REPLACED",
         )
     old = {"full_name": customer.full_name}
     customer.full_name = name
     audit_domain_change(
-        session, "CUSTOMER_NAME_CAPTURED", "customer", old,
+        session,
+        "CUSTOMER_NAME_CAPTURED",
+        "customer",
+        old,
         {"customer_id": customer.id, "full_name": name},
-        "Customer name captured during quote data collection", request_id,
+        "Customer name captured during quote data collection",
+        request_id,
     )
 
 
@@ -3073,9 +3323,13 @@ async def maybe_apply_name_confirmation(
     customer.full_name = name
     conversation.pending_confirmation = None
     audit_domain_change(
-        session, "CUSTOMER_NAME_CONFIRMED", "customer", old,
+        session,
+        "CUSTOMER_NAME_CONFIRMED",
+        "customer",
+        old,
         {"customer_id": customer.id, "full_name": name},
-        "Customer confirmed inferred name", request_id,
+        "Customer confirmed inferred name",
+        request_id,
     )
     return True
 
@@ -3460,9 +3714,7 @@ def normalize_event_type_entities(
         if event_type is None:
             audit_discarded_event_type(session, entity, request_id)
             continue
-        normalized_entities_list.append(
-            entity.model_copy(update={"normalized_value": event_type})
-        )
+        normalized_entities_list.append(entity.model_copy(update={"normalized_value": event_type}))
     return normalized_entities_list
 
 
@@ -3895,8 +4147,11 @@ async def enqueue_template(
     if notice_case is not None and rendered_code in TRANSFER_RESPONSE_CODES:
         context = await handoff_context(session, conversation, notice_case)
     elif payment_decision is not None and rendered_code in {
-        "RESP-PAYMENT-004", "RESP-PAYMENT-005", "RESP-BOOKING-CONFIRMED-001",
-        "RESP-BOOKING-PARTIAL-001", "RESP-BOOKING-REJECTED-001",
+        "RESP-PAYMENT-004",
+        "RESP-PAYMENT-005",
+        "RESP-BOOKING-CONFIRMED-001",
+        "RESP-BOOKING-PARTIAL-001",
+        "RESP-BOOKING-REJECTED-001",
     }:
         context = payment_review_context(payment_decision)
     session.add(
@@ -3988,12 +4243,8 @@ def audit_uncertain_entity_rescue(
         request_id=request_id,
         extra={
             "decision": "UNCERTAIN_ENTITY_RESCUE",
-            "original_global_confidence": context_reference.get(
-                "original_global_confidence"
-            ),
-            "rescued_entity_confidence": context_reference.get(
-                "rescued_entity_confidence"
-            ),
+            "original_global_confidence": context_reference.get("original_global_confidence"),
+            "rescued_entity_confidence": context_reference.get("rescued_entity_confidence"),
             "last_question_code": context_reference.get("last_question_code"),
             "original_reasoning_code": context_reference.get("original_reasoning_code"),
         },

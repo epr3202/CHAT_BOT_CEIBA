@@ -77,7 +77,9 @@ def visit_reason_summary(visit_reason: str) -> str:
     """Recognize an affirmative event label for display without rewriting stored intent."""
     normalized = normalize_catalog_event_type_label(visit_reason)
     label = re.sub(
-        r"^(?:si\b[,\s]*)?(?:es\s+)?(?:para\s+)?(?:(?:un|una)\s+)?", "", normalized,
+        r"^(?:si\b[,\s]*)?(?:es\s+)?(?:para\s+)?(?:(?:un|una)\s+)?",
+        "",
+        normalized,
     )
     for event_type, aliases in CATALOG_EVENT_TYPE_LABELS.items():
         if label in {normalize_catalog_event_type_label(alias) for alias in aliases}:
@@ -121,8 +123,9 @@ def _present_plan_options(value: Any) -> str:
     if any(not isinstance(plan, Plan) or not plan.active for plan in value):
         raise TypeError("Expected active catalog plans")
     plans = sorted(value, key=lambda plan: (plan.sort_order, plan.code))
-    return "\n".join(f"{index}. {_present_plan_name(plan)}"
-                     for index, plan in enumerate(plans, start=1))
+    return "\n".join(
+        f"{index}. {_present_plan_name(plan)}" for index, plan in enumerate(plans, start=1)
+    )
 
 
 def _present_bank(value: Any, field: str) -> str:

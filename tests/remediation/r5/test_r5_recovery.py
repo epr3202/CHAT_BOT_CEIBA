@@ -29,7 +29,9 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_real_commit_failure_then_recovery(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure(monkeypatch)
     event = await prepare(db, caption="Pago", payment="TAKEN")
@@ -58,7 +60,9 @@ async def test_real_commit_failure_then_recovery(
 
 
 async def test_lost_owner_cannot_apply_passive_effects(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure(monkeypatch)
     await prepare(db, payment="TAKEN")
@@ -76,12 +80,19 @@ async def test_lost_owner_cannot_apply_passive_effects(
 
 @pytest.mark.parametrize("change", ["pause", "activate", "close_case"])
 async def test_state_and_case_are_rechecked_at_apply(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, change: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
 ) -> None:
     configure(monkeypatch)
-    await prepare(db, caption="Pago", payment="TAKEN",
-                  state="BOT_ACTIVE" if change == "pause" else "HUMAN_ACTIVE",
-                  enabled=change == "pause")
+    await prepare(
+        db,
+        caption="Pago",
+        payment="TAKEN",
+        state="BOT_ACTIVE" if change == "pause" else "HUMAN_ACTIVE",
+        enabled=change == "pause",
+    )
     current = await claim(db)
     turn = None
     with respx.mock(assert_all_called=False) as router:
@@ -109,8 +120,9 @@ async def test_state_and_case_are_rechecked_at_apply(
             assert resumed_provider.calls == {MAIN: 1}
         recovered = await snapshot(db)
         assert recovered["message"] == before["message"]
-        evidence(request, before=before, retry=final, recovered=recovered,
-                 calls=resumed_provider.calls)
+        evidence(
+            request, before=before, retry=final, recovered=recovered, calls=resumed_provider.calls
+        )
     else:
         assert result == "COMPLETED"
         assert_passive(before, final, change == "pause")
@@ -118,7 +130,10 @@ async def test_state_and_case_are_rechecked_at_apply(
 
 @pytest.mark.parametrize("mode", ["sequential", "concurrent", "distinct"])
 async def test_redelivery_and_distinct_messages(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, mode: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
 ) -> None:
     configure(monkeypatch)
     event = await prepare(db, payment="TAKEN")
@@ -128,8 +143,9 @@ async def test_redelivery_and_distinct_messages(
         await inbox.process_event(event, db)
     else:
         await inbox.process_event(event, db)
-        await inbound.process_whatsapp_webhook(media_payload(
-            external_id="r5.distinct" if mode == "distinct" else "r5.synthetic"), db)
+        await inbound.process_whatsapp_webhook(
+            media_payload(external_id="r5.distinct" if mode == "distinct" else "r5.synthetic"), db
+        )
     final = await snapshot(db)
     evidence(request, before=before, final=final)
     count = 2 if mode == "distinct" else 1
@@ -142,7 +158,10 @@ async def test_redelivery_and_distinct_messages(
 
 @pytest.mark.parametrize("status", ["FAILED", "REVIEW", "EXTERNAL"])
 async def test_prior_blocker_is_not_bypassed(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, status: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
 ) -> None:
     configure(monkeypatch)
     await prepare(db, payment="TAKEN")
@@ -164,7 +183,9 @@ async def test_prior_blocker_is_not_bypassed(
 
 
 async def test_cancel_before_commit_and_reacquire(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure(monkeypatch)
     await prepare(db, payment="TAKEN")
@@ -197,7 +218,9 @@ async def test_cancel_before_commit_and_reacquire(
 
 
 async def test_busy_handoff_rolls_back_without_waiting_under_conversation_lock(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure(monkeypatch)
     await prepare(db, payment="TAKEN")
@@ -212,15 +235,21 @@ async def test_busy_handoff_rolls_back_without_waiting_under_conversation_lock(
     failed = await snapshot(db)
     for table in ("payment_evidence", "handoff", "audit_event", "outbox"):
         assert failed[table] == before[table]
-    assert await inbox.process_claimed_inbox(
-        db, await claim(db, datetime.now(UTC) + timedelta(seconds=5))) == "COMPLETED"
+    assert (
+        await inbox.process_claimed_inbox(
+            db, await claim(db, datetime.now(UTC) + timedelta(seconds=5))
+        )
+        == "COMPLETED"
+    )
     final = await snapshot(db)
     assert_passive(before, final, True)
     evidence(request, before=before, failed=failed, final=final)
 
 
 async def test_two_consumers_of_same_claim_commit_only_once(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure(monkeypatch)
     await prepare(db, payment="TAKEN")

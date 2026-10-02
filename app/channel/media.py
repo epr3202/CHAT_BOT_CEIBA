@@ -111,9 +111,7 @@ async def download_inbound_media(
             async for chunk in media_response.aiter_bytes():
                 size_bytes += len(chunk)
                 if size_bytes > max_bytes:
-                    raise InboundMediaTooLarge(
-                        "Inbound media exceeds the configured size limit"
-                    )
+                    raise InboundMediaTooLarge("Inbound media exceeds the configured size limit")
                 chunks.append(chunk)
 
         content = b"".join(chunks)
@@ -122,9 +120,7 @@ async def download_inbound_media(
         calculated_base64 = base64.b64encode(calculated_digest).decode()
         if declared_hash is not None:
             if not isinstance(declared_hash, str) or not declared_hash.strip():
-                raise InboundMediaHashMismatch(
-                    "Inbound media metadata sha256 is invalid"
-                )
+                raise InboundMediaHashMismatch("Inbound media metadata sha256 is invalid")
             try:
                 metadata_hex = normalize_sha256(declared_hash)
             except ValueError as error:
@@ -132,9 +128,7 @@ async def download_inbound_media(
                     "Inbound media metadata sha256 is invalid"
                 ) from error
             if metadata_hex != calculated_hex:
-                raise InboundMediaHashMismatch(
-                    "Inbound media sha256 verification failed"
-                )
+                raise InboundMediaHashMismatch("Inbound media sha256 verification failed")
         return InboundMediaFile(
             bytes=content,
             mime_type=str(mime_type),
@@ -153,8 +147,7 @@ async def download_inbound_media(
 
 def inbound_media_metadata_url(settings: Settings, media_id: str) -> str:
     return (
-        f"{settings.whatsapp_api_base_url.rstrip('/')}/"
-        f"{settings.meta_graph_api_version}/{media_id}"
+        f"{settings.whatsapp_api_base_url.rstrip('/')}/{settings.meta_graph_api_version}/{media_id}"
     )
 
 

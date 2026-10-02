@@ -62,10 +62,13 @@ async def test_patch_agent_name_role_conflicts_and_empty_body(client: AsyncClien
     async with app.state.db_sessionmaker() as session:
         agent = await session.get(Agent, target_id)
         assert (agent.name, agent.role) == ("Nuevo", "ADMIN")
-        events = list(await session.scalars(
-            select(AuditEvent).where(AuditEvent.action == "AGENT_UPDATED")
-            .order_by(AuditEvent.id)
-        ))
+        events = list(
+            await session.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.action == "AGENT_UPDATED")
+                .order_by(AuditEvent.id)
+            )
+        )
         assert len(events) == 2
         assert events[0].old_value["name"] == "Agent"
         assert events[0].new_value["name"] == "Nuevo"
@@ -84,9 +87,9 @@ async def test_activate_agent_is_idempotent(client: AsyncClient) -> None:
         assert response.status_code == 200
         assert response.json()["active"] is True
     async with app.state.db_sessionmaker() as session:
-        events = list(await session.scalars(
-            select(AuditEvent).where(AuditEvent.action == "AGENT_ACTIVATED")
-        ))
+        events = list(
+            await session.scalars(select(AuditEvent).where(AuditEvent.action == "AGENT_ACTIVATED"))
+        )
         assert len(events) == 1
         assert events[0].actor == "Admin"
 
@@ -100,7 +103,9 @@ async def test_last_active_admin_is_protected(client: AsyncClient, operation: st
         if operation == "deactivate":
             return await client.post(f"/admin/agents/{target_id}/deactivate", headers=headers)
         return await client.patch(
-            f"/admin/agents/{target_id}", headers=headers, json={"role": "AGENT"},
+            f"/admin/agents/{target_id}",
+            headers=headers,
+            json={"role": "AGENT"},
         )
 
     rejected = await change()
@@ -128,8 +133,11 @@ async def test_agent_cannot_use_any_agent_management_endpoint(client: AsyncClien
         ("PATCH", f"/admin/agents/{target_id}", {"name": "Forbidden"}),
         ("POST", f"/admin/agents/{target_id}/activate", None),
         ("POST", f"/admin/agents/{target_id}/deactivate", None),
-        ("POST", f"/admin/agents/{target_id}/credentials",
-         {"document_id": "70000000", "pin": "123456"}),
+        (
+            "POST",
+            f"/admin/agents/{target_id}/credentials",
+            {"document_id": "70000000", "pin": "123456"},
+        ),
     ]
     for method, path, body in requests:
         response = await client.request(method, path, headers=headers, json=body)

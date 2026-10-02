@@ -23,7 +23,9 @@ from tests.remediation.r8.helpers import seed_case
 
 
 async def enqueue(
-    db: Any, kind: str = "TEXT", conversation_id: int | None = None,
+    db: Any,
+    kind: str = "TEXT",
+    conversation_id: int | None = None,
 ) -> tuple[int, int]:
     await load_knowledge_entries(db, list(iter_seed_entries()))
     if conversation_id is None:
@@ -31,34 +33,62 @@ async def enqueue(
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         customer = await session.get(Customer, conversation.customer_id)
-        inbound = await session.scalar(select(Message).where(
-            Message.conversation_id == conversation_id, Message.direction == "INBOUND",
-        ).order_by(Message.id.desc()))
+        inbound = await session.scalar(
+            select(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.direction == "INBOUND",
+            )
+            .order_by(Message.id.desc())
+        )
         if kind == "DOCUMENT":
             pdf = b"%PDF-1.4\n% Synthetic R9 catalog\n%%EOF\n"
             storage = Path(get_settings().catalog_storage_dir)
             storage.mkdir(parents=True, exist_ok=True)
             filename = "r9-" + uuid4().hex + ".pdf"
             (storage / filename).write_bytes(pdf)
-            asset = CatalogAsset(name="R9 synthetic", file_path=filename,
-                                 file_hash=hashlib.sha256(pdf).hexdigest(), file_size=len(pdf),
-                                 media_id="r9-cached-media", media_uploaded_at=datetime.now(UTC))
+            asset = CatalogAsset(
+                name="R9 synthetic",
+                file_path=filename,
+                file_hash=hashlib.sha256(pdf).hexdigest(),
+                file_size=len(pdf),
+                media_id="r9-cached-media",
+                media_uploaded_at=datetime.now(UTC),
+            )
             session.add(asset)
             await session.flush()
-            session.add(CatalogEventTypeMap(catalog_asset_id=asset.catalog_asset_id,
-                                           event_type="BIRTHDAY", send_mode="ON_REQUEST"))
+            session.add(
+                CatalogEventTypeMap(
+                    catalog_asset_id=asset.catalog_asset_id,
+                    event_type="BIRTHDAY",
+                    send_mode="ON_REQUEST",
+                )
+            )
             await session.flush()
             result = await handle_explicit_catalog_request(
-                session, db, conversation, customer, inbound, None, "BIRTHDAY", None, "r9",
+                session,
+                db,
+                conversation,
+                customer,
+                inbound,
+                None,
+                "BIRTHDAY",
+                None,
+                "r9",
             )
             assert result.sent_count >= 1, "Real catalog producer precondition"
         else:
-            await enqueue_template(session, db, conversation, customer, inbound,
-                                   "RESP-CATALOG-002", {})
+            await enqueue_template(
+                session, db, conversation, customer, inbound, "RESP-CATALOG-002", {}
+            )
         await session.flush()
-        row = await session.scalar(select(Outbox).where(
-            Outbox.conversation_id == conversation_id,
-        ).order_by(Outbox.id.desc()))
+        row = await session.scalar(
+            select(Outbox)
+            .where(
+                Outbox.conversation_id == conversation_id,
+            )
+            .order_by(Outbox.id.desc())
+        )
         assert row is not None and row.status == "PENDING"
         assert row.message_kind == kind and row.payload.get("agent") is not True
         return conversation_id, row.id
@@ -66,8 +96,9 @@ async def enqueue(
 
 async def take(api: Any, conversation_id: int, actor: str = "A") -> int:
     client, actors = api
-    response = await client.post(f"/admin/conversations/{conversation_id}/take",
-                                 headers=actors[actor]["headers"])
+    response = await client.post(
+        f"/admin/conversations/{conversation_id}/take", headers=actors[actor]["headers"]
+    )
     assert response.status_code == 200, "Real authenticated takeover precondition"
     assert response.json()["assigned_agent"]["id"] == actors[actor]["id"]
     return response.json()["id"]

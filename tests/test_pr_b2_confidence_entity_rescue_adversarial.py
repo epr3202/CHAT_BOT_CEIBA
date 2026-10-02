@@ -198,9 +198,7 @@ async def rescue_audits(
             )
         )
     return [
-        row
-        for row in rows
-        if (row.new_value or {}).get("decision") == "UNCERTAIN_ENTITY_RESCUE"
+        row for row in rows if (row.new_value or {}).get("decision") == "UNCERTAIN_ENTITY_RESCUE"
     ]
 
 
@@ -398,9 +396,7 @@ async def test_tc_b2_007_rejects_inferred_event_type(
     conversation_id = await seed_conversation(sessionmaker_fixture)
 
     async def classify_general(*_args: object, **_kwargs: object) -> IntentClassification:
-        return uncertain_classification(
-            entity=event_type_entity(quality_status="INFERRED")
-        )
+        return uncertain_classification(entity=event_type_entity(quality_status="INFERRED"))
 
     monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_general)
     await send_turn(sessionmaker_fixture, message_id="tc-b2-007")
@@ -423,9 +419,7 @@ async def test_tc_b2_008_rejects_entity_that_needs_confirmation(
     conversation_id = await seed_conversation(sessionmaker_fixture)
 
     async def classify_general(*_args: object, **_kwargs: object) -> IntentClassification:
-        return uncertain_classification(
-            entity=event_type_entity(needs_confirmation=True)
-        )
+        return uncertain_classification(entity=event_type_entity(needs_confirmation=True))
 
     monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_general)
     await send_turn(sessionmaker_fixture, message_id="tc-b2-008")

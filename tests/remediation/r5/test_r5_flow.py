@@ -26,10 +26,17 @@ from tests.remediation.test_r1_outbox import db as db
 from tests.remediation.test_r1_outbox import evidence
 
 pytestmark = pytest.mark.asyncio
-STATES = [("WAITING_FOR_HUMAN", True), ("WAITING_FOR_HUMAN", False),
-          ("HUMAN_ACTIVE", False), ("BOT_ACTIVE", False)]
-MEDIA = [(kind, caption) for kind in ("image", "document", "video")
-         for caption in (None, "", "   ", "Comprobante sintetico")]
+STATES = [
+    ("WAITING_FOR_HUMAN", True),
+    ("WAITING_FOR_HUMAN", False),
+    ("HUMAN_ACTIVE", False),
+    ("BOT_ACTIVE", False),
+]
+MEDIA = [
+    (kind, caption)
+    for kind in ("image", "document", "video")
+    for caption in (None, "", "   ", "Comprobante sintetico")
+]
 MEDIA += [("audio", None)]
 
 
@@ -37,16 +44,23 @@ MEDIA += [("audio", None)]
 @pytest.mark.parametrize("kind,caption", MEDIA)
 @pytest.mark.parametrize("payment", [None, "TAKEN"])
 async def test_paused_media_matrix(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
-    state: str, enabled: bool, kind: str, caption: str | None, payment: str | None,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+    enabled: bool,
+    kind: str,
+    caption: str | None,
+    payment: str | None,
 ) -> None:
     configure(monkeypatch)
     data = media_payload(kind, caption)
     if kind in {"audio", "video"}:
         raw = data["entry"][0]["changes"][0]["value"]["messages"][0][kind]
         raw["mime_type"] = "audio/ogg" if kind == "audio" else "video/mp4"
-    event = await prepare(db, kind=kind, caption=caption, state=state,
-                          enabled=enabled, payment=payment, data=data)
+    event = await prepare(
+        db, kind=kind, caption=caption, state=state, enabled=enabled, payment=payment, data=data
+    )
     before = await snapshot(db)
     with respx.mock(assert_all_called=False) as router:
         provider = Provider(router, {MAIN: [valid()]})
@@ -75,8 +89,12 @@ OTHER = {
 @pytest.mark.parametrize("kind", list(OTHER))
 @pytest.mark.parametrize("state,enabled", STATES)
 async def test_other_materialized_types_share_pause(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
-    kind: str, state: str, enabled: bool,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    state: str,
+    enabled: bool,
 ) -> None:
     configure(monkeypatch)
     data = media_payload(kind)
@@ -93,18 +111,33 @@ async def test_other_materialized_types_share_pause(
     assert final["message"][0]["message_type"] == ("unknown" if kind == "future_type" else kind)
 
 
-@pytest.mark.parametrize("case", ["pending", "resolved", "returned", "other_reason",
-                                  "other_conversation", "missing_mime", "missing_hash", "closed"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "pending",
+        "resolved",
+        "returned",
+        "other_reason",
+        "other_conversation",
+        "missing_mime",
+        "missing_hash",
+        "closed",
+    ],
+)
 async def test_evidence_eligibility(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, case: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
 ) -> None:
     configure(monkeypatch)
     data = media_payload(caption="Quiero hablar con un asesor")
     raw = data["entry"][0]["changes"][0]["value"]["messages"][0]["image"]
     if case in {"missing_mime", "missing_hash"}:
         raw.pop("mime_type" if case == "missing_mime" else "sha256")
-    event = await prepare(db, data=data, payment="PENDING",
-                          state="CLOSED" if case == "closed" else "HUMAN_ACTIVE")
+    event = await prepare(
+        db, data=data, payment="PENDING", state="CLOSED" if case == "closed" else "HUMAN_ACTIVE"
+    )
     async with db() as session, session.begin():
         handoff = await session.get(Handoff, 1)
         if case in {"resolved", "returned"}:
@@ -128,13 +161,19 @@ async def test_evidence_eligibility(
     assert_passive(before, final, case == "pending")
     assert provider.calls == {}
     if case.startswith("missing_"):
-        assert any(a["new_value"].get("capture_result") == "MISSING_METADATA"
-                   for a in final["audit_event"] if isinstance(a["new_value"], dict))
+        assert any(
+            a["new_value"].get("capture_result") == "MISSING_METADATA"
+            for a in final["audit_event"]
+            if isinstance(a["new_value"], dict)
+        )
 
 
 @pytest.mark.parametrize("kind", ["image", "document", "audio", "video"])
 async def test_active_no_caption_routes_unchanged(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, kind: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
 ) -> None:
     configure(monkeypatch)
     data = media_payload(kind)
@@ -158,18 +197,29 @@ async def admin_client(db: Any) -> httpx.AsyncClient:
         agent = Agent(name="Asesor Sintetico R5", role="ADMIN", active=True)
         session.add(agent)
         await session.flush()
-        session.add(AgentSession(agent_id=agent.id, token_hash=hash_agent_token(credential),
-                                 expires_at=datetime.now(UTC) + timedelta(hours=1)))
+        session.add(
+            AgentSession(
+                agent_id=agent.id,
+                token_hash=hash_agent_token(credential),
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
     app = FastAPI()
     app.state.db_sessionmaker = db
     app.include_router(admin_router)
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test",
-                            headers={"Authorization": "Bearer " + credential})
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": "Bearer " + credential},
+    )
 
 
 @pytest.mark.parametrize("payment", [False, True])
 async def test_operational_admin_visibility_and_human_output(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, payment: bool,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    payment: bool,
 ) -> None:
     configure(monkeypatch)
     data = media_payload(caption="Pago sintetico") if payment else message_payload("r5.ask")
@@ -177,8 +227,9 @@ async def test_operational_admin_visibility_and_human_output(
     with respx.mock(assert_all_called=False) as router:
         response = valid()
         if payment:
-            response.update(primary_intent="PAYMENT_MESSAGE", needs_human=True,
-                            handoff_reason="PAYMENT_REVIEW")
+            response.update(
+                primary_intent="PAYMENT_MESSAGE", needs_human=True, handoff_reason="PAYMENT_REVIEW"
+            )
         provider = Provider(router, {MAIN: [response]})
         await inbound.process_webhook_event(event, db)
     async with await admin_client(db) as client:
@@ -205,14 +256,22 @@ async def test_operational_admin_visibility_and_human_output(
         assert len(files.json()) == (3 if payment else 0)
         if payment:
             assert "evidencia #" in updated.json()[0]["summary"]
-        human = await client.post("/admin/conversations/1/messages",
-                                  json={"text": "Respuesta humana sintetica"})
+        human = await client.post(
+            "/admin/conversations/1/messages", json={"text": "Respuesta humana sintetica"}
+        )
         assert human.status_code == 200
     after_human = await snapshot(db)
-    evidence(request, before=before, final=final, after_human=after_human,
-             waiting=waiting, after_waiting=after_waiting,
-             administrative_evidence=files.json(), administrative_cases=updated.json(),
-             calls=provider.calls)
+    evidence(
+        request,
+        before=before,
+        final=final,
+        after_human=after_human,
+        waiting=waiting,
+        after_waiting=after_waiting,
+        administrative_evidence=files.json(),
+        administrative_cases=updated.json(),
+        calls=provider.calls,
+    )
     assert final["outbox"] == before["outbox"]  # U12c remains outside R5.
     assert len(final["handoff"]) == 1
     assert final["ai_execution"] == before["ai_execution"]
@@ -225,30 +284,42 @@ async def test_operational_admin_visibility_and_human_output(
 
 @pytest.mark.parametrize("kind", ["image", "document", "audio", "video"])
 async def test_missing_provider_media_id_is_rejected(
-    request: pytest.FixtureRequest, kind: str,
+    request: pytest.FixtureRequest,
+    kind: str,
 ) -> None:
     data = media_payload(kind)
     data["entry"][0]["changes"][0]["value"]["messages"][0][kind].pop("id")
     parsed = inbound.extract_inbound_messages(data)
-    evidence(request, parser_result_count=len(parsed),
-             boundary="Parser only; no Message materialized")
+    evidence(
+        request, parser_result_count=len(parsed), boundary="Parser only; no Message materialized"
+    )
     assert parsed == []
 
 
 async def test_confirmed_context_and_pending_proposals_are_preserved(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
+    db: Any,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure(monkeypatch)
     event = await prepare(db, payment="TAKEN", caption="Quiero hablar con un asesor")
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, 1)
-        lead = Lead(customer_id=conversation.customer_id, channel="WHATSAPP",
-                    lead_status="QUALIFYING")
+        lead = Lead(
+            customer_id=conversation.customer_id, channel="WHATSAPP", lead_status="QUALIFYING"
+        )
         session.add(lead)
         await session.flush()
-        session.add(Event(lead_id=lead.lead_id, event_type="BIRTHDAY",
-                          event_date=date(2027, 2, 20), event_date_type="EXACT",
-                          guest_count=40, guest_count_status="PROVIDED"))
+        session.add(
+            Event(
+                lead_id=lead.lead_id,
+                event_type="BIRTHDAY",
+                event_date=date(2027, 2, 20),
+                event_date_type="EXACT",
+                guest_count=40,
+                guest_count_status="PROVIDED",
+            )
+        )
         conversation.active_lead_id = lead.lead_id
         conversation.pending_action = "CONFIRM_QUOTE_REQUEST"
         conversation.pending_fields = ["requested_services"]

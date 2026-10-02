@@ -63,9 +63,7 @@ class ClassifierQueue:
 @pytest.fixture
 async def wiring_context(
     monkeypatch: pytest.MonkeyPatch,
-) -> AsyncIterator[
-    tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue]
-]:
+) -> AsyncIterator[tuple[async_sessionmaker[AsyncSession], FakeCalendarAdapter, ClassifierQueue]]:
     await configure_test_environment(monkeypatch)
     monkeypatch.setenv("CALENDAR_ADAPTER", "fake")
     monkeypatch.setenv("GOOGLE_FREEBUSY_CALENDAR_IDS", "visits,business-main")
@@ -200,9 +198,7 @@ async def seed_capture(
                 channel=Channel.WHATSAPP,
                 state=ConversationState.COLLECTING_EVENT_DATA,
                 active_lead_id=lead.lead_id,
-                pending_action=(
-                    "COLLECT_BUDGET" if include_pending_budget else "COLLECT_SERVICES"
-                ),
+                pending_action=("COLLECT_BUDGET" if include_pending_budget else "COLLECT_SERVICES"),
                 pending_fields=(
                     ["estimated_budget", "requested_services"]
                     if include_pending_budget
@@ -409,9 +405,7 @@ async def test_tc_wire_004_low_confidence_does_not_interrupt_capture(
     assert conversation.state == ConversationState.COLLECTING_EVENT_DATA
     assert conversation.visit_draft is None
     assert appointment_count == 0
-    assert (
-        ConversationState(conversation.state) not in orchestrator_module.APPOINTMENT_FLOW_STATES
-    )
+    assert ConversationState(conversation.state) not in orchestrator_module.APPOINTMENT_FLOW_STATES
 
 
 @pytest.mark.asyncio
@@ -614,9 +608,9 @@ async def test_tc_wire_012_calendar_failure_during_confirmation_is_safe(
     conversation = await conversation_snapshot(sessionmaker)
     async with sessionmaker() as session:
         confirmed_count = await session.scalar(
-            select(func.count()).select_from(Appointment).where(
-                Appointment.appointment_status == "CONFIRMED"
-            )
+            select(func.count())
+            .select_from(Appointment)
+            .where(Appointment.appointment_status == "CONFIRMED")
         )
     assert conversation.state == ConversationState.WAITING_FOR_HUMAN
     assert conversation.last_question_code == "RESP-CALENDAR-ERROR-001"
@@ -643,9 +637,7 @@ async def test_tc_wire_013_no_active_appointment_uses_service_code_and_handoff(
     conversation = await conversation_snapshot(sessionmaker)
     assert conversation.state == ConversationState.WAITING_FOR_HUMAN
     assert conversation.last_question_code == (
-        "RESP-RESCHEDULE-006"
-        if intent == "RESCHEDULE_VISIT"
-        else "RESP-CANCEL-VISIT-005"
+        "RESP-RESCHEDULE-006" if intent == "RESCHEDULE_VISIT" else "RESP-CANCEL-VISIT-005"
     )
 
 

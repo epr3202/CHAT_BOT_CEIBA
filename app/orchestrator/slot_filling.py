@@ -49,10 +49,10 @@ class CaptureProgress:
 
     @property
     def needs_budget(self) -> bool:
-        return (
-            self.event_type not in FIXED_PRICE_EVENT_TYPES
-            and self.budget_data_status in {"NOT_ASKED", "ASKED_PENDING"}
-        )
+        return self.event_type not in FIXED_PRICE_EVENT_TYPES and self.budget_data_status in {
+            "NOT_ASKED",
+            "ASKED_PENDING",
+        }
 
 
 def select_next_question(progress: CaptureProgress) -> str | None:

@@ -44,8 +44,11 @@ async def test_r1_all_25_reservation_transitions(old: str, new: str) -> None:
         # Deliberately no payment/calendar data: D2 validates only the matrix here.
         await transition(session, reservation, new, **kwargs)
         assert reservation.status == new
-        audits = [call.args[0] for call in session.add.call_args_list
-                  if isinstance(call.args[0], AuditEvent)]
+        audits = [
+            call.args[0]
+            for call in session.add.call_args_list
+            if isinstance(call.args[0], AuditEvent)
+        ]
         assert len(audits) == 1
         audit = audits[0]
         assert audit.action == "RESERVATION_STATUS_CHANGED"
@@ -96,8 +99,9 @@ def test_r2_plan_registered_as_text_with_database_check() -> None:
     assert isinstance(table.c.event_type.type, String)
     assert not getattr(table.c.event_type.type, "native_enum", False)
     checks = [str(item.sqltext) for item in table.constraints if isinstance(item, CheckConstraint)]
-    assert any("event_type" in sql and "ROMANTIC_DINNER" in sql and "PROPOSAL" in sql
-               for sql in checks)
+    assert any(
+        "event_type" in sql and "ROMANTIC_DINNER" in sql and "PROPOSAL" in sql for sql in checks
+    )
 
 
 def test_r5_payment_evidence_nullable_reservation_foreign_key() -> None:
@@ -122,9 +126,12 @@ def test_r3_one_migration_directly_after_0027() -> None:
 def test_r3_deploy_seeds_plans_after_knowledge_before_start() -> None:
     script = Path("deploy.sh").read_text()
     assert "python scripts/load_plans.py" in script, "B1a: falta el seed en deploy.sh"
-    assert (script.index("alembic upgrade head") < script.index("python scripts/load_knowledge.py")
-            < script.index("python scripts/load_plans.py")
-            < script.index("docker compose up -d --no-deps app worker"))
+    assert (
+        script.index("alembic upgrade head")
+        < script.index("python scripts/load_knowledge.py")
+        < script.index("python scripts/load_plans.py")
+        < script.index("docker compose up -d --no-deps app worker")
+    )
 
 
 def test_r3_cinema_duration_has_explicit_seed_todo() -> None:

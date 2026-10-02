@@ -145,9 +145,7 @@ def test_event_type_migration_declares_exact_upgrade_and_downgrade_catalogs() ->
         created_constraint_values(downgrade, "ck_catalog_event_type_map_event_type")
         == EVENT_TYPES_BEFORE
     )
-    cleanup_sql = "\n".join(
-        call[1][0] for call in downgrade.calls if call[0] == "execute"
-    )
+    cleanup_sql = "\n".join(call[1][0] for call in downgrade.calls if call[0] == "execute")
     assert "GENDER_REVEAL" in cleanup_sql
     assert "event" in cleanup_sql
     assert "catalog_event_type_map" in cleanup_sql
@@ -169,9 +167,7 @@ def test_handoff_reason_migration_uses_verified_exact_before_and_after_catalogs(
     migration.op = downgrade
     migration.downgrade()
     assert created_constraint_values(downgrade, "ck_handoff_reason") == HANDOFF_REASONS_BEFORE
-    cleanup_sql = "\n".join(
-        call[1][0] for call in downgrade.calls if call[0] == "execute"
-    )
+    cleanup_sql = "\n".join(call[1][0] for call in downgrade.calls if call[0] == "execute")
     assert "TEMPLATE_UNAVAILABLE" in cleanup_sql
     assert "CATALOG_NOT_AVAILABLE" in cleanup_sql
     assert "SET reason = 'OTHER'" in cleanup_sql

@@ -23,41 +23,64 @@ async def seed_reset_state(inbox_status: str = "PENDING") -> dict[str, object]:
         session.add(customer)
         await session.flush()
         conversation = Conversation(
-            customer_id=customer.id, channel="WHATSAPP", state="COLLECTING_EVENT_DATA",
-            pending_action="COLLECT_EVENT_TYPE", pending_fields=["event_type"],
-            pending_confirmation={"field": "event_type"}, last_question_code="RESP-TEST",
-            visit_draft={"reason": "prueba"}, last_intent="QUOTE_REQUEST",
-            failed_understanding_count=2, services_failed_understanding_count=1,
+            customer_id=customer.id,
+            channel="WHATSAPP",
+            state="COLLECTING_EVENT_DATA",
+            pending_action="COLLECT_EVENT_TYPE",
+            pending_fields=["event_type"],
+            pending_confirmation={"field": "event_type"},
+            last_question_code="RESP-TEST",
+            visit_draft={"reason": "prueba"},
+            last_intent="QUOTE_REQUEST",
+            failed_understanding_count=2,
+            services_failed_understanding_count=1,
             bot_enabled=False,
         )
         session.add(conversation)
         await session.flush()
         message = Message(
-            external_message_id=f"reset-{uuid4()}", conversation_id=conversation.id,
-            customer_id=customer.id, channel="WHATSAPP", direction="INBOUND",
-            message_type="text", content={"text": {"body": "prueba"}},
+            external_message_id=f"reset-{uuid4()}",
+            conversation_id=conversation.id,
+            customer_id=customer.id,
+            channel="WHATSAPP",
+            direction="INBOUND",
+            message_type="text",
+            content={"text": {"body": "prueba"}},
         )
         session.add(message)
         await session.flush()
         handoff = Handoff(
-            conversation_id=conversation.id, status="PENDING", reason="OTHER", summary="Prueba",
+            conversation_id=conversation.id,
+            status="PENDING",
+            reason="OTHER",
+            summary="Prueba",
         )
         job = InboxJob(
-            conversation_id=conversation.id, message_id=message.id, status=inbox_status,
+            conversation_id=conversation.id,
+            message_id=message.id,
+            status=inbox_status,
             claim_token=uuid4() if inbox_status in {"PROCESSING", "EXTERNAL"} else None,
             claimed_at=datetime.now(UTC) if inbox_status in {"PROCESSING", "EXTERNAL"} else None,
         )
         outbox = Outbox(
-            conversation_id=conversation.id, message_id=message.id, channel="WHATSAPP",
-            recipient_phone_number=PHONE, payload={"text": {"body": "Pendiente"}},
+            conversation_id=conversation.id,
+            message_id=message.id,
+            channel="WHATSAPP",
+            recipient_phone_number=PHONE,
+            payload={"text": {"body": "Pendiente"}},
             status="PENDING",
             delivery_context={"mode": "AUTO", "epoch": str(conversation.automation_epoch)},
         )
         session.add_all([handoff, job, outbox])
         await session.flush()
-        return {"customer": customer.id, "conversation": conversation.id,
-                "handoff": handoff.id, "job": job.id, "outbox": outbox.id,
-                "epoch": conversation.automation_epoch}
+        return {
+            "customer": customer.id,
+            "conversation": conversation.id,
+            "handoff": handoff.id,
+            "job": job.id,
+            "outbox": outbox.id,
+            "epoch": conversation.automation_epoch,
+        }
 
 
 async def snapshot() -> dict[str, list[dict]]:
@@ -74,7 +97,8 @@ async def test_reset_dry_run_counts_without_changing_database(client: AsyncClien
     ids = await seed_reset_state()
     before = await snapshot()
     response = await client.post(
-        "/admin/conversations/reset", headers=headers,
+        "/admin/conversations/reset",
+        headers=headers,
         json={"phone_number": PHONE, "dry_run": True},
     )
     assert response.status_code == 200
@@ -82,8 +106,13 @@ async def test_reset_dry_run_counts_without_changing_database(client: AsyncClien
     assert body["dry_run"] is True
     assert body["phone_number"] == PHONE
     assert body["customer_id"] == ids["customer"]
-    for field in ("conversations_found", "conversations_closed", "handoffs_resolved",
-                  "inbox_jobs_completed", "pending_outbox_suppressed"):
+    for field in (
+        "conversations_found",
+        "conversations_closed",
+        "handoffs_resolved",
+        "inbox_jobs_completed",
+        "pending_outbox_suppressed",
+    ):
         assert body[field] == 1
     assert body["customer_name_cleared"] is True
     assert await snapshot() == before
@@ -91,13 +120,15 @@ async def test_reset_dry_run_counts_without_changing_database(client: AsyncClien
 
 @pytest.mark.parametrize("inbox_status", ["PENDING", "FAILED", "REVIEW"])
 async def test_reset_closes_and_fences_work_and_audits(
-    client: AsyncClient, inbox_status: str,
+    client: AsyncClient,
+    inbox_status: str,
 ) -> None:
     headers = await login_headers(client, "90000000")
     ids = await seed_reset_state(inbox_status)
     before = await snapshot()
     response = await client.post(
-        "/admin/conversations/reset", headers=headers,
+        "/admin/conversations/reset",
+        headers=headers,
         json={"phone_number": PHONE, "dry_run": False, "reason": "prueba"},
     )
     assert response.status_code == 200
@@ -143,29 +174,40 @@ async def test_reset_closes_and_fences_work_and_audits(
 async def test_unknown_phone_is_empty_and_invalid_phone_is_422(client: AsyncClient) -> None:
     headers = await login_headers(client, "90000000")
     response = await client.post(
-        "/admin/conversations/reset", headers=headers, json={"phone_number": PHONE},
+        "/admin/conversations/reset",
+        headers=headers,
+        json={"phone_number": PHONE},
     )
     assert response.status_code == 200
     body = response.json()
     assert body["customer_id"] is None
-    for field in ("conversations_found", "conversations_closed", "handoffs_resolved",
-                  "inbox_jobs_completed", "pending_outbox_suppressed"):
+    for field in (
+        "conversations_found",
+        "conversations_closed",
+        "handoffs_resolved",
+        "inbox_jobs_completed",
+        "pending_outbox_suppressed",
+    ):
         assert body[field] == 0
     invalid = await client.post(
-        "/admin/conversations/reset", headers=headers, json={"phone_number": "invalid"},
+        "/admin/conversations/reset",
+        headers=headers,
+        json={"phone_number": "invalid"},
     )
     assert invalid.status_code == 422
 
 
 @pytest.mark.parametrize("inbox_status", ["PROCESSING", "EXTERNAL"])
 async def test_reset_rejects_inflight_processing_without_mutation(
-    client: AsyncClient, inbox_status: str,
+    client: AsyncClient,
+    inbox_status: str,
 ) -> None:
     headers = await login_headers(client, "90000000")
     await seed_reset_state(inbox_status)
     before = await snapshot()
     response = await client.post(
-        "/admin/conversations/reset", headers=headers,
+        "/admin/conversations/reset",
+        headers=headers,
         json={"phone_number": PHONE, "dry_run": False, "reason": "prueba"},
     )
     assert response.status_code == 409
@@ -176,7 +218,9 @@ async def test_reset_rejects_inflight_processing_without_mutation(
 async def test_agent_cannot_reset_conversation(client: AsyncClient) -> None:
     headers = await login_headers(client, "80000000")
     response = await client.post(
-        "/admin/conversations/reset", headers=headers, json={"phone_number": PHONE},
+        "/admin/conversations/reset",
+        headers=headers,
+        json={"phone_number": PHONE},
     )
     assert response.status_code == 403
 
@@ -185,7 +229,8 @@ async def test_execute_reset_requires_nonempty_reason(client: AsyncClient) -> No
     headers = await login_headers(client, "90000000")
     for reason in (None, "", "   "):
         response = await client.post(
-            "/admin/conversations/reset", headers=headers,
+            "/admin/conversations/reset",
+            headers=headers,
             json={"phone_number": PHONE, "dry_run": False, "reason": reason},
         )
         assert response.status_code == 422

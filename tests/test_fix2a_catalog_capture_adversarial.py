@@ -42,9 +42,7 @@ PHONE = "+57300999%04d"
 
 
 @pytest.fixture(autouse=True)
-async def test_environment(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> AsyncIterator[None]:
+async def test_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncIterator[None]:
     await configure_test_environment(monkeypatch)
     monkeypatch.setenv("CATALOG_STORAGE_DIR", str(tmp_path))
     get_settings.cache_clear()
@@ -260,9 +258,7 @@ async def outboxes(
         return list((await session.scalars(query)).all())
 
 
-async def audit(
-    sessionmaker: async_sessionmaker[AsyncSession], action: str
-) -> AuditEvent | None:
+async def audit(sessionmaker: async_sessionmaker[AsyncSession], action: str) -> AuditEvent | None:
     async with sessionmaker() as session:
         return await session.scalar(select(AuditEvent).where(AuditEvent.action == action))
 
@@ -561,9 +557,7 @@ async def test_tc_catcap_011_duplicate_webhook_enqueues_one_catalog(
         conversation_id: int | None = None,
         **_kwargs: object,
     ) -> IntentClassification:
-        return classification(
-            "GENERAL_INFORMATION", confidence=0.65, event_type="ROMANTIC_DINNER"
-        )
+        return classification("GENERAL_INFORMATION", confidence=0.65, event_type="ROMANTIC_DINNER")
 
     monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_capture_reply)
     payload = json.loads(
@@ -685,9 +679,7 @@ async def test_tc_catcap_014_explicit_gender_reveal_without_mapping_hands_off(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "reply", ["revelación de género", "revelacion de genero", "gender reveal"]
-)
+@pytest.mark.parametrize("reply", ["revelación de género", "revelacion de genero", "gender reveal"])
 async def test_tc_catcap_015_gender_reveal_labels_resolve_and_handoff(
     sessionmaker_fixture: async_sessionmaker[AsyncSession], reply: str
 ) -> None:
@@ -735,9 +727,7 @@ async def test_tc_catcap_016_duplicate_unavailable_webhook_creates_one_handoff(
     ) -> IntentClassification:
         return catalog_request(event_type="GENDER_REVEAL")
 
-    monkeypatch.setattr(
-        OpenRouterIntentClient, "classify_intent", classify_gender_reveal_request
-    )
+    monkeypatch.setattr(OpenRouterIntentClient, "classify_intent", classify_gender_reveal_request)
     payload = json.loads(
         whatsapp_message_payload(
             "wamid.catcap.016",

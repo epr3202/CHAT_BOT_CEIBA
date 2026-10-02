@@ -68,11 +68,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "UPDATE event SET event_type = 'OTHER' WHERE event_type = 'GENDER_REVEAL'"
-    )
-    op.execute(
-        "DELETE FROM catalog_event_type_map WHERE event_type = 'GENDER_REVEAL'"
-    )
+    op.execute("UPDATE event SET event_type = 'OTHER' WHERE event_type = 'GENDER_REVEAL'")
+    op.execute("DELETE FROM catalog_event_type_map WHERE event_type = 'GENDER_REVEAL'")
     drop_constraints()
     create_constraints(EVENT_TYPES_BEFORE)

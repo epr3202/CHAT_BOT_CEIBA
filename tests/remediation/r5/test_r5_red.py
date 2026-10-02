@@ -57,8 +57,10 @@ async def test_existing_controls(
 ) -> None:
     configure(monkeypatch)
     event = await prepare(
-        db, state="HUMAN_ACTIVE" if case == "paused_text" else "BOT_ACTIVE",
-        enabled=case != "paused_text", caption="Hola" if case == "active_caption" else None,
+        db,
+        state="HUMAN_ACTIVE" if case == "paused_text" else "BOT_ACTIVE",
+        enabled=case != "paused_text",
+        caption="Hola" if case == "active_caption" else None,
         data=message_payload("r5.text") if "text" in case else None,
     )
     before = await snapshot(db)

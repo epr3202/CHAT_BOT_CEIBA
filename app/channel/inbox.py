@@ -46,7 +46,8 @@ def silent_reason(conversation: Conversation) -> str | None:
 
 
 def fingerprint(
-    conversation: Conversation, customer: Customer,
+    conversation: Conversation,
+    customer: Customer,
     booking_event: dict[str, Any] | None = None,
 ) -> str:
     # Local processing order plus this check cover relevant concurrent human/context changes.
@@ -302,8 +303,10 @@ async def apply_turn(
         retire(job, "COMPLETED")
         job.completed_at = datetime.now(UTC)
         job.completion_reason = (
-            silent + "_NON_TEXT" if handled and silent
-            else "ROUTED_NON_TEXT" if handled
+            silent + "_NON_TEXT"
+            if handled and silent
+            else "ROUTED_NON_TEXT"
+            if handled
             else silent or "ORCHESTRATED"
         )
     logger.info(
@@ -352,7 +355,8 @@ async def process_claimed_inbox(sm: SessionMaker, claim: InboxClaim) -> str:
         passive = claim.silent and claim.persisted.message_type != "text"
         turn = (
             await inbound.classify_message(claim.persisted, sm, claim.request_id)
-            if text and not passive else None
+            if text and not passive
+            else None
         )
         results = AgendaResults()
         for _ in range(12):  # Bound the number of deferred agenda reads/calls in one turn.

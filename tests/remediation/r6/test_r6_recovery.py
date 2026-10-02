@@ -1,4 +1,5 @@
 """Real commit/cancellation boundaries and independent-session ownership races."""
+
 from __future__ import annotations
 
 import asyncio
@@ -29,18 +30,40 @@ from tests.remediation.test_r1_outbox import db as db
 from tests.remediation.test_r1_outbox import evidence
 
 pytestmark = pytest.mark.asyncio
-DOMAIN_TABLES = ("customer", "conversation", "lead", "event", "event_service_request",
-                 "quote_request", "message", "outbox", "audit_event", "handoff", "appointment")
+DOMAIN_TABLES = (
+    "customer",
+    "conversation",
+    "lead",
+    "event",
+    "event_service_request",
+    "quote_request",
+    "message",
+    "outbox",
+    "audit_event",
+    "handoff",
+    "appointment",
+)
 
 
 async def pending_turn(db: Any, family: str = "classification") -> int:
     body = (
-        'Mi nombre tal vez sea Nombre Vigente' if family == 'name' else 'Quiero cotizar mi evento'
+        "Mi nombre tal vez sea Nombre Vigente" if family == "name" else "Quiero cotizar mi evento"
     )
     event = await prepare(db, body=body, name=None if family == "name" else "Cliente Sintetico R6")
-    response = proposal(entities=[entity(
-        "full_name", "Nombre Vigente", quality_status="PENDING_CONFIRMATION",
-        needs_confirmation=True)]) if family == "name" else proposal(confidence=0.65)
+    response = (
+        proposal(
+            entities=[
+                entity(
+                    "full_name",
+                    "Nombre Vigente",
+                    quality_status="PENDING_CONFIRMATION",
+                    needs_confirmation=True,
+                )
+            ]
+        )
+        if family == "name"
+        else proposal(confidence=0.65)
+    )
     first = await send(db, body, response, event_id=event)
     completed(first)
     event = await inbound.store_webhook_event(message_payload("r6.confirm", "sí"), db, None)
@@ -85,7 +108,7 @@ async def test_commit_rollback_recovery_and_projection_replay(
     finally:
         await remove_commit_failure(db)
     resumed = await claim(db, datetime.now(UTC) + timedelta(seconds=5))
-    assert await process(db, resumed) == 'COMPLETED'
+    assert await process(db, resumed) == "COMPLETED"
     final = await snapshot(db)
     accepted_once(final, family)
     # The commit happened, but the webhook projection has not been refreshed.
@@ -135,8 +158,7 @@ async def test_cancel_after_real_effects_before_commit(
 @pytest.mark.parametrize("family", ["classification", "name"])
 @pytest.mark.parametrize("mode", ["context_replaced", "ownership_lost"])
 async def test_stale_acquisition_cannot_consume_replacement(
-    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch,
-    family: str, mode: str
+    db: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, family: str, mode: str
 ) -> None:
     configure(monkeypatch)
     await pending_turn(db, family)
@@ -165,7 +187,8 @@ async def test_stale_acquisition_cannot_consume_replacement(
             else:
                 replacement["classification"]["reasoning_code"] = "R6_REPLACEMENT"
                 replacement["classification"]["extracted_entities"] = [
-                    entity("guest_count", 50, quality_status="CORRECTED")]
+                    entity("guest_count", 50, quality_status="CORRECTED")
+                ]
             conversation.pending_confirmation = replacement
         if mode == "ownership_lost":
             new_owner = await claim(db, datetime.now(UTC) + timedelta(seconds=5))
@@ -180,8 +203,13 @@ async def test_stale_acquisition_cannot_consume_replacement(
     assert final["conversation"][0]["pending_confirmation"] == replacement
     if mode == "ownership_lost":
         assert final["inbox_job"] == before["inbox_job"]
-    evidence(request, before=before, final=final, result=result,
-             boundary="Real classification finished; replacement fixture committed before apply")
+    evidence(
+        request,
+        before=before,
+        final=final,
+        result=result,
+        boundary="Real classification finished; replacement fixture committed before apply",
+    )
 
 
 @pytest.mark.parametrize("mode", ["sequential", "concurrent"])

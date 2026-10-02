@@ -46,7 +46,10 @@ class GoogleCalendarAdapter:
         self._credentials: Credentials | None = None
 
     async def list_events(
-        self, start: datetime, end: datetime, calendar_ids: Iterable[str],
+        self,
+        start: datetime,
+        end: datetime,
+        calendar_ids: Iterable[str],
     ) -> list[CalendarEvent]:
         """Read each configured calendar completely; never return partial availability."""
         if start.utcoffset() is None or end.utcoffset() is None or start >= end:
@@ -54,8 +57,10 @@ class GoogleCalendarAdapter:
         events: list[CalendarEvent] = []
         for calendar_id in dict.fromkeys(calendar_ids):
             params = {
-                "timeMin": start.isoformat(), "timeMax": end.isoformat(),
-                "singleEvents": "true", "orderBy": "startTime",
+                "timeMin": start.isoformat(),
+                "timeMax": end.isoformat(),
+                "singleEvents": "true",
+                "orderBy": "startTime",
             }
             seen_tokens: set[str] = set()
             while True:
@@ -67,8 +72,12 @@ class GoogleCalendarAdapter:
                 response = await self._request("GET", str(url), operation="list")
                 try:
                     data = response.json()
-                    if (not isinstance(data, dict) or data.get("error") or data.get("errors")
-                            or not isinstance(data.get("items"), list)):
+                    if (
+                        not isinstance(data, dict)
+                        or data.get("error")
+                        or data.get("errors")
+                        or not isinstance(data.get("items"), list)
+                    ):
                         raise ValueError("Missing calendar event collection")
                     for item in data["items"]:
                         if not isinstance(item, dict):
@@ -101,9 +110,9 @@ class GoogleCalendarAdapter:
         requested_calendar_ids = list(calendar_ids)
         payload = {
             "timeMin": datetime.combine(target_date, time.min, tzinfo=BOGOTA).isoformat(),
-            "timeMax": datetime.combine(target_date, time.max, tzinfo=BOGOTA).replace(
-                microsecond=0
-            ).isoformat(),
+            "timeMax": datetime.combine(target_date, time.max, tzinfo=BOGOTA)
+            .replace(microsecond=0)
+            .isoformat(),
             "timeZone": "America/Bogota",
             "items": [{"id": calendar_id} for calendar_id in requested_calendar_ids],
         }
@@ -246,10 +255,7 @@ class GoogleCalendarAdapter:
         return expiry - datetime.now(UTC) < TOKEN_REFRESH_MARGIN
 
     def _events_url(self) -> str:
-        return (
-            f"{GOOGLE_CALENDAR_API_BASE_URL}/calendars/"
-            f"{quote(self.calendar_id, safe='')}/events"
-        )
+        return f"{GOOGLE_CALENDAR_API_BASE_URL}/calendars/{quote(self.calendar_id, safe='')}/events"
 
     def _event_url(self, event_id: str) -> str:
         return f"{self._events_url()}/{quote(event_id, safe='')}"
@@ -257,6 +263,7 @@ class GoogleCalendarAdapter:
 
 def _listed_event(data: dict[str, Any], calendar_id: str, timezone: str) -> CalendarEvent:
     """Keep all-day exclusivity visible, using the provider calendar's timezone."""
+
     def boundary(key: str) -> datetime:
         value = data[key]
         if not isinstance(value, dict):
@@ -268,13 +275,18 @@ def _listed_event(data: dict[str, Any], calendar_id: str, timezone: str) -> Cale
             if result.utcoffset() is None:
                 result = result.replace(tzinfo=ZoneInfo(value.get("timeZone", timezone)))
             return result
-        return datetime.combine(date.fromisoformat(value["date"]), time.min,
-                                tzinfo=ZoneInfo(timezone))
+        return datetime.combine(
+            date.fromisoformat(value["date"]), time.min, tzinfo=ZoneInfo(timezone)
+        )
 
     event_id = data["id"]
     summary, description = data.get("summary", ""), data.get("description")
-    if (not isinstance(event_id, str) or not event_id or not isinstance(summary, str)
-            or (description is not None and not isinstance(description, str))):
+    if (
+        not isinstance(event_id, str)
+        or not event_id
+        or not isinstance(summary, str)
+        or (description is not None and not isinstance(description, str))
+    ):
         raise ValueError("Invalid calendar event metadata")
     start, end = boundary("start"), boundary("end")
     if end <= start:

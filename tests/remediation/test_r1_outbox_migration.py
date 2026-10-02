@@ -98,8 +98,10 @@ async def test_legacy_rows_upgrade_parity_recovery_and_downgrade(
         await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "20260910_0027")
         commands.append("upgrade 0027 before current consumer; no inferred legacy permission")
         current = await snapshot(db)
-        assert current == {**upgraded, "outbox": [
-            {**row, **NEW_OUTBOX_COLUMNS} for row in upgraded["outbox"]]}
+        assert current == {
+            **upgraded,
+            "outbox": [{**row, **NEW_OUTBOX_COLUMNS} for row in upgraded["outbox"]],
+        }
         await asyncio.to_thread(command.upgrade, Config("alembic.ini"), "head")
         commands.append("upgrade head before the current consumer (booking_draft in 0031)")
         assert await snapshot(db) == current

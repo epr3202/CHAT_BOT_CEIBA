@@ -961,9 +961,7 @@ async def test_tc_cat_018c_unrenderable_template_chain_creates_handoff_and_logs(
             select(Handoff).where(Handoff.conversation_id == conversation_id)
         )
         audit = await session.scalar(
-            select(AuditEvent).where(
-                AuditEvent.action == "CATALOG_HANDOFF_TEMPLATE_UNAVAILABLE"
-            )
+            select(AuditEvent).where(AuditEvent.action == "CATALOG_HANDOFF_TEMPLATE_UNAVAILABLE")
         )
     assert await count_outbox(sessionmaker_fixture) == 0
     assert conversation is not None
@@ -1074,9 +1072,7 @@ async def test_tc_cat_021_admin_catalog_event_types_accept_send_mode_objects(
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["event_types"] == ["WEDDING"]
-    assert payload["event_type_mappings"] == [
-        {"event_type": "WEDDING", "send_mode": "PROACTIVE"}
-    ]
+    assert payload["event_type_mappings"] == [{"event_type": "WEDDING", "send_mode": "PROACTIVE"}]
 
     replace_response = await client_fixture.put(
         f"/admin/catalogs/{payload['catalog_asset_id']}/event-types",
@@ -1132,9 +1128,7 @@ async def test_admin_catalog_event_types_replace_send_mode_keeping_same_event_ty
     async with sessionmaker_fixture() as session:
         mappings = (
             await session.scalars(
-                select(CatalogEventTypeMap).where(
-                    CatalogEventTypeMap.catalog_asset_id == asset_id
-                )
+                select(CatalogEventTypeMap).where(CatalogEventTypeMap.catalog_asset_id == asset_id)
             )
         ).all()
         assert [(row.event_type, row.send_mode) for row in mappings] == [

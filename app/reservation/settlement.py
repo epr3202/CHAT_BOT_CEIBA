@@ -52,13 +52,20 @@ def payment_audit(
     amount_cop: int | None = None,
     review: PaymentEvidenceReview | None = None,
 ) -> None:
-    proposal = {} if review is None else {
-        "review_id": str(review.review_id),
-        "suggested_amount_cop": review.suggested_amount_cop,
-        "amount_differs_from_suggestion": amount_cop != review.suggested_amount_cop,
-    }
-    reason = ("aceptado con propuesta de IA" if review else "aceptado manual") \
-        if evidence.review_status == "ACCEPTED" else (note or "Comprobante rechazado por asesor")
+    proposal = (
+        {}
+        if review is None
+        else {
+            "review_id": str(review.review_id),
+            "suggested_amount_cop": review.suggested_amount_cop,
+            "amount_differs_from_suggestion": amount_cop != review.suggested_amount_cop,
+        }
+    )
+    reason = (
+        ("aceptado con propuesta de IA" if review else "aceptado manual")
+        if evidence.review_status == "ACCEPTED"
+        else (note or "Comprobante rechazado por asesor")
+    )
     if note and evidence.review_status == "ACCEPTED":
         reason = f"{reason}: {note}"[:255]
     session.add(
@@ -119,8 +126,13 @@ async def accept_payment(
     evidence.reviewed_at = datetime.now(UTC)
     evidence.review_note = note
     payment_audit(
-        session, evidence, actor=actor, note=note, request_id=request_id,
-        amount_cop=amount_cop, review=review
+        session,
+        evidence,
+        actor=actor,
+        note=note,
+        request_id=request_id,
+        amount_cop=amount_cop,
+        review=review,
     )
     if reservation is None:
         return SettlementResult("NO_RESERVATION", None, blockers=[])

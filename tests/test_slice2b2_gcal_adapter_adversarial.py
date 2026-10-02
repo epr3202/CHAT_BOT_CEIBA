@@ -199,9 +199,7 @@ async def test_tc_gcal_005b_freebusy_403_mentions_credentials_or_permissions() -
 
 @respx.mock
 async def test_tc_gcal_006_freebusy_timeout_is_unavailable() -> None:
-    route = respx.post(f"{BASE_URL}/freeBusy").mock(
-        side_effect=httpx.TimeoutException("timed out")
-    )
+    route = respx.post(f"{BASE_URL}/freeBusy").mock(side_effect=httpx.TimeoutException("timed out"))
 
     with pytest.raises(CalendarUnavailableError):
         await adapter().get_busy_intervals(date(2026, 8, 18), ["write"])

@@ -17,7 +17,10 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.mark.parametrize("kind", ["TEXT", "DOCUMENT"])
 async def test_previous_automatic_output_does_not_send_after_take(
-    db: Any, api: Any, request: pytest.FixtureRequest, kind: str,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    kind: str,
 ) -> None:
     sender = Sender()
     with respx.mock:
@@ -36,7 +39,9 @@ async def test_previous_automatic_output_does_not_send_after_take(
 
 @pytest.mark.parametrize("kind", ["TEXT", "DOCUMENT"])
 async def test_active_automatic_output_keeps_sending(
-    db: Any, request: pytest.FixtureRequest, kind: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    kind: str,
 ) -> None:
     sender = Sender()
     with respx.mock:
@@ -50,7 +55,9 @@ async def test_active_automatic_output_keeps_sending(
 
 
 async def test_authorized_human_output_keeps_sending(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     from tests.remediation.r8.helpers import seed_case
 
@@ -59,9 +66,11 @@ async def test_authorized_human_output_keeps_sending(
     with respx.mock:
         conversation_id, _ = await seed_case(db, pending=False)
         await take(api, conversation_id)
-        response = await client.post(f"/admin/conversations/{conversation_id}/messages",
-                                     headers=actors["A"]["headers"],
-                                     json={"text": "Respuesta humana sintetica R9"})
+        response = await client.post(
+            f"/admin/conversations/{conversation_id}/messages",
+            headers=actors["A"]["headers"],
+            json={"text": "Respuesta humana sintetica R9"},
+        )
         assert response.status_code == 200, "Real authorized reply precondition"
         before = await snapshot(db)
         assert before["outbox"][0]["payload"]["agent"] is True

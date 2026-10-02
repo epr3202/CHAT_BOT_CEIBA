@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def test_g3_booking_proxy_preserves_routes_queries_auth_and_bodies() -> None:
-    script = r'''
+    script = r"""
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -63,7 +63,7 @@ try {
   await new Promise(resolve => frontend.once("exit", resolve));
   await new Promise(resolve => backend.close(resolve));
 }
-'''
+"""
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script],
         cwd=Path(__file__).resolve().parents[2],

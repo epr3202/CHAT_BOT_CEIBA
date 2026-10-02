@@ -20,8 +20,9 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_g3_c1_attendee_number_is_not_a_visit_time(harness: Harness) -> None:
-    await harness.seed(state="WAITING_FOR_APPOINTMENT_DATE", pending="SELECT_VISIT_DATE",
-                       draft=date_draft())
+    await harness.seed(
+        state="WAITING_FOR_APPOINTMENT_DATE", pending="SELECT_VISIT_DATE", draft=date_draft()
+    )
     await harness.send("quiero visitar el 7 de octubre, somos 10", intent="SCHEDULE_VISIT")
     await harness.assert_completed()
     conversation = await harness.conversation()
@@ -33,8 +34,9 @@ async def test_g3_c1_attendee_number_is_not_a_visit_time(harness: Harness) -> No
 
 
 async def test_g3_c1_bare_hour_still_works_in_time_selection(harness: Harness) -> None:
-    await harness.seed(state="WAITING_FOR_APPOINTMENT_SELECTION", pending="SELECT_VISIT_TIME",
-                       draft=time_draft())
+    await harness.seed(
+        state="WAITING_FOR_APPOINTMENT_SELECTION", pending="SELECT_VISIT_TIME", draft=time_draft()
+    )
     await harness.send("8")
     await harness.assert_completed()
     conversation = await harness.conversation()
@@ -42,12 +44,20 @@ async def test_g3_c1_bare_hour_still_works_in_time_selection(harness: Harness) -
     assert conversation.pending_action == "COLLECT_VISIT_ATTENDEES"
 
 
-@pytest.mark.parametrize("reason", [
-    "para conocer el salón", "sí, es para conocer el salón", "es para conocer el salón",
-])
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "para conocer el salón",
+        "sí, es para conocer el salón",
+        "es para conocer el salón",
+    ],
+)
 async def test_g3_c2_reason_prefix_is_display_only(harness: Harness, reason: str) -> None:
-    await harness.seed(state="WAITING_FOR_APPOINTMENT_SELECTION", pending="COLLECT_VISIT_REASON",
-                       draft=time_draft(visit_time="08:00", attendee_count=3))
+    await harness.seed(
+        state="WAITING_FOR_APPOINTMENT_SELECTION",
+        pending="COLLECT_VISIT_REASON",
+        draft=time_draft(visit_time="08:00", attendee_count=3),
+    )
     with capture_logs() as logs:
         await harness.send(reason)
     await harness.assert_completed()
@@ -55,9 +65,12 @@ async def test_g3_c2_reason_prefix_is_display_only(harness: Harness, reason: str
     body = (await harness.bodies())[-1]
     assert "pensando en tu celebración" in body
     assert "conocer el salón" not in body
-    assert any(log.get("event") == "event_type_presentation_fallback"
-               and log.get("log_level") == "warning"
-               and log.get("discarded_value") == reason for log in logs)
+    assert any(
+        log.get("event") == "event_type_presentation_fallback"
+        and log.get("log_level") == "warning"
+        and log.get("discarded_value") == reason
+        for log in logs
+    )
     await harness.send(CONFIRM, intent="CONFIRM")
     await harness.assert_completed()
     appointment = (await harness.rows(Appointment))[0]
@@ -68,12 +81,19 @@ async def test_g3_c2_reason_prefix_is_display_only(harness: Harness, reason: str
 
 
 @pytest.mark.parametrize("initial_type", [None, "UNKNOWN", "EXACT"])
-@pytest.mark.parametrize("message,raw,candidate", [
-    ("quiero reservar para el sábado", "el sábado", "3 de octubre de 2026"),
-    ("quiero reservar para lunes 7 de octubre", "7 de octubre", "7 de octubre de 2026"),
-])
+@pytest.mark.parametrize(
+    "message,raw,candidate",
+    [
+        ("quiero reservar para el sábado", "el sábado", "3 de octubre de 2026"),
+        ("quiero reservar para lunes 7 de octubre", "7 de octubre", "7 de octubre de 2026"),
+    ],
+)
 async def test_g3_c3_unconfirmed_date_preserves_existing_fields(
-    harness: Harness, initial_type: str | None, message: str, raw: str, candidate: str,
+    harness: Harness,
+    initial_type: str | None,
+    message: str,
+    raw: str,
+    candidate: str,
 ) -> None:
     await harness.seed()
     event = (await harness.rows(Event))[0]
@@ -88,7 +108,9 @@ async def test_g3_c3_unconfirmed_date_preserves_existing_fields(
     await harness.assert_completed()
     stored = (await harness.rows(Event))[0]
     assert (stored.event_date, stored.event_date_type, stored.event_month) == (
-        initial_date, initial_type, initial_month,
+        initial_date,
+        initial_type,
+        initial_month,
     )
     assert stored.event_date_raw == raw
     handoff = (await harness.rows(Handoff))[0]
@@ -101,25 +123,33 @@ async def test_g3_c3_unconfirmed_date_preserves_existing_fields(
     assert (await harness.conversation()).visit_draft is None
 
 
-@pytest.mark.parametrize("message,raw", [
-    ("quiero reservar el 7/10", "7/10"),
-    ("me gustria agendar para el miercoles 7 de octubre", "7 de octubre"),
-])
+@pytest.mark.parametrize(
+    "message,raw",
+    [
+        ("quiero reservar el 7/10", "7/10"),
+        ("me gustria agendar para el miercoles 7 de octubre", "7 de octubre"),
+    ],
+)
 async def test_g3_c3_absolute_date_stores_only_matched_expression(
-    harness: Harness, message: str, raw: str,
+    harness: Harness,
+    message: str,
+    raw: str,
 ) -> None:
     await harness.seed()
     await harness.send(message, intent="SCHEDULE_VISIT")
     await harness.assert_completed()
     event = (await harness.rows(Event))[0]
     assert (event.event_date, event.event_date_type, event.event_date_raw) == (
-        date(2026, 10, 7), "EXACT", raw,
+        date(2026, 10, 7),
+        "EXACT",
+        raw,
     )
     assert "pendiente de confirmación" not in (await harness.rows(Handoff))[0].summary
 
 
 async def test_g3_c4_catalog_label_skips_ai_and_preserves_catalog_caption(
-    harness: Harness, tmp_path: Path,
+    harness: Harness,
+    tmp_path: Path,
 ) -> None:
     asset_id = await seed_catalog(harness.db, tmp_path, event_type="WEDDING")
     await harness.seed(None, pending="COLLECT_CATALOG_EVENT_TYPE")
@@ -132,9 +162,12 @@ async def test_g3_c4_catalog_label_skips_ai_and_preserves_catalog_caption(
     assert len(outboxes) == 1 and outboxes[0].message_kind == "DOCUMENT"
     assert outboxes[0].catalog_asset_id == asset_id
     assert outboxes[0].payload["document"]["caption"] == await render_response(
-        harness.db, "RESP-CATALOG-001", {"event_type": "una boda"},
+        harness.db,
+        "RESP-CATALOG-001",
+        {"event_type": "una boda"},
     )
-    resolved = [row for row in await harness.rows(AuditEvent)
-                if row.action == "CATALOG_EVENT_TYPE_RESOLVED"]
+    resolved = [
+        row for row in await harness.rows(AuditEvent) if row.action == "CATALOG_EVENT_TYPE_RESOLVED"
+    ]
     assert len(resolved) == 1 and resolved[0].new_value["event_type"] == "WEDDING"
     assert resolved[0].new_value["outcome"] == "SENT"

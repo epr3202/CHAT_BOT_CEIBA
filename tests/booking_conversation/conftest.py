@@ -39,15 +39,25 @@ async def harness(  # noqa: F811
         # Active B1b-3 requires an approved informational text before its PDF.
         # Production proposals stay DRAFT; approval here is synthetic test setup.
         for response_code in ("RESP-EVENTS-ROMANTIC-001", "RESP-EVENTS-PROPOSAL-001"):
-            proposal = await session.scalar(select(KnowledgeEntry).where(
-                KnowledgeEntry.code == response_code,
-            ).order_by(KnowledgeEntry.version.desc()).limit(1))
-            session.add(KnowledgeEntry(
-                code=response_code, category=proposal.category,
-                question_summary=proposal.question_summary,
-                answer_template=proposal.answer_template,
-                allowed_variables=proposal.allowed_variables, version=100, status="APPROVED",
-            ))
+            proposal = await session.scalar(
+                select(KnowledgeEntry)
+                .where(
+                    KnowledgeEntry.code == response_code,
+                )
+                .order_by(KnowledgeEntry.version.desc())
+                .limit(1)
+            )
+            session.add(
+                KnowledgeEntry(
+                    code=response_code,
+                    category=proposal.category,
+                    question_summary=proposal.question_summary,
+                    answer_template=proposal.answer_template,
+                    allowed_variables=proposal.allowed_variables,
+                    version=100,
+                    status="APPROVED",
+                )
+            )
         for name, template in TEMPLATES.items():
             session.add(
                 KnowledgeEntry(

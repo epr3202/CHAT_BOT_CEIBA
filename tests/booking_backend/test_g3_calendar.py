@@ -14,18 +14,36 @@ URL = f"{BASE_URL}/calendars/a/events"
 
 @respx.mock
 async def test_g3_all_day_events_and_cancelled_instances() -> None:
-    respx.get(URL).respond(200, json={"timeZone": "America/Bogota", "items": [
-        {"id": "day", "summary": "Exclusividad", "start": {"date": "2030-10-10"},
-         "end": {"date": "2030-10-11"}}, {"id": "deleted", "status": "cancelled"},
-    ]})
+    respx.get(URL).respond(
+        200,
+        json={
+            "timeZone": "America/Bogota",
+            "items": [
+                {
+                    "id": "day",
+                    "summary": "Exclusividad",
+                    "start": {"date": "2030-10-10"},
+                    "end": {"date": "2030-10-11"},
+                },
+                {"id": "deleted", "status": "cancelled"},
+            ],
+        },
+    )
     events = await adapter().list_events(START, START + timedelta(hours=3), ["a"])
     assert len(events) == 1
     assert events[0].start == START.replace(hour=0)
     assert events[0].end == START.replace(hour=0) + timedelta(days=1)
 
 
-@pytest.mark.parametrize("item", [None, {}, {"id": "bad", "start": {"dateTime": 3}},
-                                  {**payload("bad"), "end": {"date": "nonsense"}}])
+@pytest.mark.parametrize(
+    "item",
+    [
+        None,
+        {},
+        {"id": "bad", "start": {"dateTime": 3}},
+        {**payload("bad"), "end": {"date": "nonsense"}},
+    ],
+)
 @respx.mock
 async def test_g3_malformed_events_fail_closed(item: object) -> None:
     respx.get(URL).respond(200, json={"items": [item]})

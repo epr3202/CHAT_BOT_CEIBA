@@ -71,9 +71,7 @@ def test_diff_reports_each_synchronized_field(
     override: dict[str, object],
     expected_field: str,
 ) -> None:
-    assert changed_knowledge_fields(seed_entry(**override), stored_entry()) == (
-        expected_field,
-    )
+    assert changed_knowledge_fields(seed_entry(**override), stored_entry()) == (expected_field,)
 
 
 def test_missing_code_starts_at_version_one() -> None:
@@ -118,11 +116,7 @@ async def test_execute_bumps_and_inactivates_all_previous_renderable_versions(
 
     async with sessionmaker_fixture() as session:
         rows = list(
-            (
-                await session.scalars(
-                    select(KnowledgeEntry).order_by(KnowledgeEntry.version)
-                )
-            ).all()
+            (await session.scalars(select(KnowledgeEntry).order_by(KnowledgeEntry.version))).all()
         )
 
     assert plans[0].new_version == 5

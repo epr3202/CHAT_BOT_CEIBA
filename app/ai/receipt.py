@@ -55,9 +55,7 @@ async def extract_receipt(image_bytes: bytes, mime: str, settings: Settings) -> 
                         {"type": "text", "text": "Extrae los campos visibles del comprobante."},
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{mime};base64,{encoded}"
-                            },
+                            "image_url": {"url": f"data:{mime};base64,{encoded}"},
                         },
                     ],
                 },

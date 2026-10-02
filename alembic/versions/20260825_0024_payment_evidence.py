@@ -53,9 +53,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "download_status IN ("
-            "'PENDING', 'DOWNLOADED', 'FAILED_RETRYABLE', 'FAILED_PERMANENT'"
-            ")",
+            "download_status IN ('PENDING', 'DOWNLOADED', 'FAILED_RETRYABLE', 'FAILED_PERMANENT')",
             name="ck_payment_evidence_download_status",
         ),
         sa.CheckConstraint(

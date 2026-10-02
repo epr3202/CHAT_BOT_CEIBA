@@ -41,8 +41,9 @@ async def pause(db: Any, conversation_id: int, mode: str) -> None:
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         if mode.startswith("waiting"):
             customer = await session.get(Customer, conversation.customer_id)
-            await create_handoff(session, conversation, customer, "CUSTOMER_REQUEST", "NORMAL",
-                                 "r9", get_settings())
+            await create_handoff(
+                session, conversation, customer, "CUSTOMER_REQUEST", "NORMAL", "r9", get_settings()
+            )
             if mode == "waiting_disabled":
                 conversation.bot_enabled = False
         elif mode == "closed":
@@ -58,15 +59,21 @@ async def run_claim(db: Any, item: Any, sender: Any) -> Any:
 
 async def return_case(api: Any, handoff_id: int) -> None:
     client, actors = api
-    response = await client.post(f"/admin/handoffs/{handoff_id}/return",
-                                 headers=actors["A"]["headers"], json={"resolution": "R9 return"})
+    response = await client.post(
+        f"/admin/handoffs/{handoff_id}/return",
+        headers=actors["A"]["headers"],
+        json={"resolution": "R9 return"},
+    )
     assert response.status_code == 200
 
 
 @pytest.mark.parametrize("kind", ["TEXT", "DOCUMENT"])
 @pytest.mark.parametrize("mode", ["waiting", "waiting_disabled", "disabled", "closed"])
 async def test_legitimate_pause_invalidates_period(
-    db: Any, request: pytest.FixtureRequest, kind: str, mode: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    kind: str,
+    mode: str,
 ) -> None:
     conversation_id, _ = await enqueue(db, kind)
     before = await snapshot(db)
@@ -77,8 +84,10 @@ async def test_legitimate_pause_invalidates_period(
         await process_outbox_once(db, sender)
     after = await snapshot(db)
     evidence(request, before=before, paused=paused, after=after, sends=sender.sends)
-    assert paused["conversation"][0]["automation_epoch"] != (
-        before["conversation"][0]["automation_epoch"])
+    assert (
+        paused["conversation"][0]["automation_epoch"]
+        != (before["conversation"][0]["automation_epoch"])
+    )
     assert sender.sends == sender.uploads == []
     assert after["outbox"][0]["status"] == "SUPPRESSED"
     assert after["outbox"][0]["attempts"] == 0
@@ -88,7 +97,10 @@ async def test_legitimate_pause_invalidates_period(
 
 @pytest.mark.parametrize("queued", ["pending", "backoff", "claimed"])
 async def test_unobserved_pause_return_never_revives_old_output(
-    db: Any, api: Any, request: pytest.FixtureRequest, queued: str,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    queued: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.admin import routes
@@ -130,13 +142,18 @@ async def test_unobserved_pause_return_never_revives_old_output(
     assert len(sender.sends) == 1
     assert len({row["created_at"] for row in after["outbox"]}) == 1
     assert after["conversation"][0]["state"] == "BOT_ACTIVE"
-    assert before["conversation"][0]["automation_epoch"] != (
-        after["conversation"][0]["automation_epoch"])
+    assert (
+        before["conversation"][0]["automation_epoch"]
+        != (after["conversation"][0]["automation_epoch"])
+    )
 
 
 @pytest.mark.parametrize("later", ["pause", "return", "new_owner"])
 async def test_human_origin_survives_later_control_changes(
-    db: Any, api: Any, request: pytest.FixtureRequest, later: str,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    later: str,
 ) -> None:
     from tests.remediation.r8.helpers import seed_case
 
@@ -144,9 +161,11 @@ async def test_human_origin_survives_later_control_changes(
     handoff_id = await take(api, conversation_id)
     client, actors = api
     for _ in range(2):
-        response = await client.post(f"/admin/conversations/{conversation_id}/messages",
-                                     headers=actors["A"]["headers"],
-                                     json={"text": "Mismo texto R9"})
+        response = await client.post(
+            f"/admin/conversations/{conversation_id}/messages",
+            headers=actors["A"]["headers"],
+            json={"text": "Mismo texto R9"},
+        )
         assert response.status_code == 200
     if later != "pause":
         await return_case(api, handoff_id)
@@ -163,7 +182,10 @@ async def test_human_origin_survives_later_control_changes(
 
 @pytest.mark.parametrize("later", ["pending", "taken", "returned"])
 async def test_r4_notice_is_authorized_only_for_its_pending_wait(
-    db: Any, api: Any, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
     later: str,
 ) -> None:
     configure(monkeypatch)
@@ -176,8 +198,9 @@ async def test_r4_notice_is_authorized_only_for_its_pending_wait(
     assert waiting["handoff"][0]["status"] == "PENDING"
     if later != "pending":
         client, actors = api
-        response = await client.post(f'/admin/handoffs/{waiting["handoff"][0]["id"]}/take',
-                                     headers=actors["A"]["headers"])
+        response = await client.post(
+            f"/admin/handoffs/{waiting['handoff'][0]['id']}/take", headers=actors["A"]["headers"]
+        )
         assert response.status_code == 200
         if later == "returned":
             await return_case(api, waiting["handoff"][0]["id"])
@@ -192,7 +215,10 @@ async def test_r4_notice_is_authorized_only_for_its_pending_wait(
 
 @pytest.mark.parametrize("agent_mark", [True, "true", "false", 1])
 async def test_payload_cannot_grant_human_origin(
-    db: Any, api: Any, request: pytest.FixtureRequest, agent_mark: Any,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    agent_mark: Any,
 ) -> None:
     conversation_id, outbox_id = await enqueue(db)
     async with db() as session, session.begin():
@@ -206,11 +232,20 @@ async def test_payload_cannot_grant_human_origin(
     assert sender.sends == [] and after["outbox"][0]["status"] == "SUPPRESSED"
 
 
-@pytest.mark.parametrize("tamper", [
-    "unknown_origin", "human_without_proof", "wrong_case", "unrelated_case", "wrong_purpose",
-])
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "unknown_origin",
+        "human_without_proof",
+        "wrong_case",
+        "unrelated_case",
+        "wrong_purpose",
+    ],
+)
 async def test_unproven_context_never_creates_exception(
-    db: Any, request: pytest.FixtureRequest, tamper: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    tamper: str,
 ) -> None:
     conversation_id, outbox_id = await enqueue(db)
     await pause(db, conversation_id, "waiting")
@@ -225,12 +260,24 @@ async def test_unproven_context_never_creates_exception(
         row.delivery_context = {
             "unknown_origin": {"origin": "SYSTEM"},
             "human_without_proof": {"origin": "HUMAN_REPLY", "agent_id": 1},
-            "wrong_case": {"origin": "HANDOFF_NOTICE", "purpose": "TRANSFER",
-                           "epoch": str(conversation.automation_epoch), "case_id": 999999},
-            "unrelated_case": {"origin": "HANDOFF_NOTICE", "purpose": "TRANSFER",
-                               "epoch": str(conversation.automation_epoch), "case_id": case_id},
-            "wrong_purpose": {"origin": "HANDOFF_NOTICE", "purpose": "SYSTEM",
-                              "epoch": str(conversation.automation_epoch), "case_id": case_id},
+            "wrong_case": {
+                "origin": "HANDOFF_NOTICE",
+                "purpose": "TRANSFER",
+                "epoch": str(conversation.automation_epoch),
+                "case_id": 999999,
+            },
+            "unrelated_case": {
+                "origin": "HANDOFF_NOTICE",
+                "purpose": "TRANSFER",
+                "epoch": str(conversation.automation_epoch),
+                "case_id": case_id,
+            },
+            "wrong_purpose": {
+                "origin": "HANDOFF_NOTICE",
+                "purpose": "SYSTEM",
+                "epoch": str(conversation.automation_epoch),
+                "case_id": case_id,
+            },
         }[tamper]
         row.payload = {**row.payload, "agent": True}
     sender = Sender()
@@ -241,7 +288,8 @@ async def test_unproven_context_never_creates_exception(
 
 
 async def test_handoff_response_code_without_producer_case_grants_no_exception(
-    db: Any, request: pytest.FixtureRequest,
+    db: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     from app.channel.models import Message
     from app.orchestrator.service import enqueue_template
@@ -251,8 +299,9 @@ async def test_handoff_response_code_without_producer_case_grants_no_exception(
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         customer = await session.get(Customer, conversation.customer_id)
-        message = await session.scalar(select(Message).where(
-            Message.conversation_id == conversation_id))
+        message = await session.scalar(
+            select(Message).where(Message.conversation_id == conversation_id)
+        )
         await enqueue_template(session, db, conversation, customer, message, "RESP-HANDOFF-001", {})
     sender = Sender()
     await process_outbox_once(db, sender)
@@ -264,7 +313,9 @@ async def test_handoff_response_code_without_producer_case_grants_no_exception(
 
 
 async def test_terminal_suppression_resists_reaper_and_old_callbacks(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     conversation_id, outbox_id = await enqueue(db)
     at = datetime.now(UTC)
@@ -275,10 +326,18 @@ async def test_terminal_suppression_resists_reaper_and_old_callbacks(
     await run_claim(db, item, sender)
     before = await snapshot(db)
     for token in [item.claim_token, uuid4()]:
-        assert await settle_outbox_success(db, outbox_id, "obsolete", "r9.obsolete", at,
-                                           5, 300, claim_token=token) == "DISCARDED"
-        assert await settle_outbox_failure(db, outbox_id, TimeoutError("obsolete"), at,
-                                           5, 300, claim_token=token) == "DISCARDED"
+        assert (
+            await settle_outbox_success(
+                db, outbox_id, "obsolete", "r9.obsolete", at, 5, 300, claim_token=token
+            )
+            == "DISCARDED"
+        )
+        assert (
+            await settle_outbox_failure(
+                db, outbox_id, TimeoutError("obsolete"), at, 5, 300, claim_token=token
+            )
+            == "DISCARDED"
+        )
     assert await recover_stale_sending_outbox(db, at + timedelta(seconds=121), 120, 5, 300) == 0
     assert await claim_due_outbox_batch(db, at + timedelta(seconds=150), 10) == []
     await run_claim(db, item, sender)
@@ -288,7 +347,9 @@ async def test_terminal_suppression_resists_reaper_and_old_callbacks(
 
 
 async def test_claiming_batch_is_not_send_admission(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     first, _ = await enqueue(db)
     await enqueue(db)
@@ -305,7 +366,8 @@ async def test_claiming_batch_is_not_send_admission(
 
 
 async def test_admission_is_persisted_and_cannot_be_reused(
-    db: Any, request: pytest.FixtureRequest,
+    db: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     await enqueue(db)
     item = (await claim_due_outbox_batch(db, datetime.now(UTC), 1))[0]
@@ -321,7 +383,10 @@ async def test_admission_is_persisted_and_cannot_be_reused(
 
 
 async def test_redelivery_does_not_recreate_suppressed_notice(
-    db: Any, api: Any, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     configure(monkeypatch)
     event_id = await prepare(db, external_id="r9.redelivery")
@@ -343,31 +408,59 @@ async def test_redelivery_does_not_recreate_suppressed_notice(
     assert after["inbox_job"][0]["status"] == "COMPLETED"
 
 
-@pytest.mark.parametrize("code", [
-    "RESP-HANDOFF-001", "RESP-CALENDAR-ERROR-001", "RESP-CALENDAR-ERROR-002",
-    "RESP-CALENDAR-ERROR-003", "RESP-CALENDAR-ERROR-004", "RESP-FALLBACK-003",
-    "RESP-VISIT-CONFIRM-006", "RESP-RESCHEDULE-006", "RESP-CANCEL-VISIT-005",
-    "RESP-VISIT-DATA-002", "RESP-RESCHEDULE-002",
-])
+@pytest.mark.parametrize(
+    "code",
+    [
+        "RESP-HANDOFF-001",
+        "RESP-CALENDAR-ERROR-001",
+        "RESP-CALENDAR-ERROR-002",
+        "RESP-CALENDAR-ERROR-003",
+        "RESP-CALENDAR-ERROR-004",
+        "RESP-FALLBACK-003",
+        "RESP-VISIT-CONFIRM-006",
+        "RESP-RESCHEDULE-006",
+        "RESP-CANCEL-VISIT-005",
+        "RESP-VISIT-DATA-002",
+        "RESP-RESCHEDULE-002",
+    ],
+)
 async def test_transfer_producer_is_narrow_for_approved_override_purpose(
-    db: Any, request: pytest.FixtureRequest, code: str,
+    db: Any,
+    request: pytest.FixtureRequest,
+    code: str,
 ) -> None:
     from app.ai.schemas import IntentClassification
     from app.channel.models import Message
     from app.orchestrator.service import OrchestrationInput, create_handoff_and_pause
 
     conversation_id, _ = await enqueue(db)
-    classification = IntentClassification(primary_intent="HUMAN_REQUEST", sub_intent=None,
-        confidence=1, requested_action=None, needs_confirmation=False, needs_human=True,
-        handoff_reason="SYSTEM_ERROR", priority="NORMAL", reasoning_code="R9_SYNTHETIC")
+    classification = IntentClassification(
+        primary_intent="HUMAN_REQUEST",
+        sub_intent=None,
+        confidence=1,
+        requested_action=None,
+        needs_confirmation=False,
+        needs_human=True,
+        handoff_reason="SYSTEM_ERROR",
+        priority="NORMAL",
+        reasoning_code="R9_SYNTHETIC",
+    )
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         customer = await session.get(Customer, conversation.customer_id)
-        message = await session.scalar(select(Message).where(
-            Message.conversation_id == conversation_id))
-        await create_handoff_and_pause(session, get_settings(), db,
+        message = await session.scalar(
+            select(Message).where(Message.conversation_id == conversation_id)
+        )
+        await create_handoff_and_pause(
+            session,
+            get_settings(),
+            db,
             OrchestrationInput(conversation, customer, message, "Solicitud R9"),
-            classification, "SYSTEM_ERROR", "NORMAL", response_code_override=code)
+            classification,
+            "SYSTEM_ERROR",
+            "NORMAL",
+            response_code_override=code,
+        )
     waiting = await snapshot(db)
     assert len(waiting["outbox"]) == 2 and len(waiting["handoff"]) == 1
     sender = Sender()
@@ -376,12 +469,15 @@ async def test_transfer_producer_is_narrow_for_approved_override_purpose(
     is_notice = code not in {"RESP-VISIT-DATA-002", "RESP-RESCHEDULE-002"}
     evidence(request, waiting=waiting, after=after, sends=sender.sends, code=code)
     assert [r["status"] for r in after["outbox"]] == [
-        "SUPPRESSED", "SENT" if is_notice else "SUPPRESSED"]
+        "SUPPRESSED",
+        "SENT" if is_notice else "SUPPRESSED",
+    ]
     assert len(sender.sends) == int(is_notice)
 
 
 async def test_catalog_unavailable_notice_keeps_its_pending_case(
-    db: Any, request: pytest.FixtureRequest,
+    db: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     from app.catalog.service import enqueue_catalog_unavailable_response
     from app.channel.models import Message
@@ -390,10 +486,12 @@ async def test_catalog_unavailable_notice_keeps_its_pending_case(
     async with db() as session, session.begin():
         conversation = await session.get(Conversation, conversation_id, with_for_update=True)
         customer = await session.get(Customer, conversation.customer_id)
-        message = await session.scalar(select(Message).where(
-            Message.conversation_id == conversation_id))
-        await enqueue_catalog_unavailable_response(session, db, conversation, customer, message,
-                                                    "r9", event_type="WEDDING")
+        message = await session.scalar(
+            select(Message).where(Message.conversation_id == conversation_id)
+        )
+        await enqueue_catalog_unavailable_response(
+            session, db, conversation, customer, message, "r9", event_type="WEDDING"
+        )
     before = await snapshot(db)
     assert before["conversation"][0]["bot_enabled"] is False
     sender = Sender()
@@ -405,7 +503,9 @@ async def test_catalog_unavailable_notice_keeps_its_pending_case(
 
 
 async def test_ordinary_output_created_during_wait_cannot_revive_on_return(
-    db: Any, api: Any, request: pytest.FixtureRequest,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     conversation_id, _ = await enqueue(db)
     await pause(db, conversation_id, "waiting")
@@ -420,7 +520,10 @@ async def test_ordinary_output_created_during_wait_cannot_revive_on_return(
     sender = Sender()
     await process_outbox_once(db, sender)
     assert [r["status"] for r in (await snapshot(db))["outbox"]] == [
-        "SUPPRESSED", "SUPPRESSED", "SENT"]
+        "SUPPRESSED",
+        "SUPPRESSED",
+        "SENT",
+    ]
     assert len(sender.sends) == 1
     evidence(request, waiting=waiting, after=await snapshot(db), sends=sender.sends)
 
@@ -428,7 +531,11 @@ async def test_ordinary_output_created_during_wait_cannot_revive_on_return(
 @pytest.mark.parametrize("decision", ["accept", "reject"])
 @pytest.mark.parametrize("approved", [True, False])
 async def test_admin_payment_decision_notification_survives_pause(
-    db: Any, api: Any, request: pytest.FixtureRequest, decision: str, approved: bool,
+    db: Any,
+    api: Any,
+    request: pytest.FixtureRequest,
+    decision: str,
+    approved: bool,
 ) -> None:
     from app.conversation.models import KnowledgeEntry
     from app.payment.models import PaymentEvidence
@@ -438,25 +545,34 @@ async def test_admin_payment_decision_notification_survives_pause(
     before = await snapshot(db)
     async with db() as session, session.begin():
         code = "RESP-PAYMENT-004" if decision == "accept" else "RESP-PAYMENT-005"
-        template = await session.scalar(select(KnowledgeEntry).where(
-            KnowledgeEntry.code == code).order_by(KnowledgeEntry.version.desc()).limit(1))
+        template = await session.scalar(
+            select(KnowledgeEntry)
+            .where(KnowledgeEntry.code == code)
+            .order_by(KnowledgeEntry.version.desc())
+            .limit(1)
+        )
         assert template is not None and template.status == "DRAFT"
         if approved:
             # Approved only in this synthetic fixture, never in product/knowledge sources.
             template.status = "APPROVED"
-        row = PaymentEvidence(conversation_id=conversation_id,
+        row = PaymentEvidence(
+            conversation_id=conversation_id,
             customer_id=before["conversation"][0]["customer_id"],
-            message_id=before["message"][0]["id"], media_id="r9-synthetic-evidence",
-            mime_type="application/pdf", declared_sha256="0" * 64)
+            message_id=before["message"][0]["id"],
+            media_id="r9-synthetic-evidence",
+            mime_type="application/pdf",
+            declared_sha256="0" * 64,
+        )
         session.add(row)
         await session.flush()
         evidence_id = row.id
     client, actors = api
     client._transport.app.state.settings = get_settings()
-    response = await client.post(f"/admin/payment-evidence/{evidence_id}/{decision}",
-                                 headers=actors["ADMIN"]["headers"],
-                                 json={"note": "Revisión R9",
-                                       **({"amount_cop": 100000} if decision == "accept" else {})})
+    response = await client.post(
+        f"/admin/payment-evidence/{evidence_id}/{decision}",
+        headers=actors["ADMIN"]["headers"],
+        json={"note": "Revisión R9", **({"amount_cop": 100000} if decision == "accept" else {})},
+    )
     assert response.status_code == 200
     assert response.json()["customer_notification"] == ("ENQUEUED" if approved else "DEFERRED")
     await return_case(api, handoff_id)
@@ -466,7 +582,8 @@ async def test_admin_payment_decision_notification_survives_pause(
     after = await snapshot(db)
     evidence(request, response=response.json(), after=after, sends=sender.sends)
     assert [r["status"] for r in after["outbox"]] == (
-        ["SUPPRESSED", "SENT"] if approved else ["SUPPRESSED"])
+        ["SUPPRESSED", "SENT"] if approved else ["SUPPRESSED"]
+    )
     assert len(sender.sends) == int(approved)
     if approved:
         assert after["outbox"][1]["delivery_context"]["origin"] == "PAYMENT_REVIEW_RESULT"

@@ -45,7 +45,7 @@ from tests.integration.helpers import (
 
 PHONE = "+573001112233"
 RETRY_TEXT = (
-    'No logré identificar los servicios que te interesan. ¿Me lo confirmas de nuevo? '
+    "No logré identificar los servicios que te interesan. ¿Me lo confirmas de nuevo? "
     'Por ejemplo: "el espacio y la decoración" o "solo el espacio".'
 )
 
@@ -371,16 +371,11 @@ async def test_tc_svc_009_empty_result_retries_once_then_uses_other_or_handoff(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     retry_entry = next(
-        (
-            entry
-            for entry in iter_seed_entries()
-            if entry.code == "RESP-SERVICES-RETRY-001"
-        ),
+        (entry for entry in iter_seed_entries() if entry.code == "RESP-SERVICES-RETRY-001"),
         None,
     )
     assert retry_entry is not None, (
-        "RESP-SERVICES-RETRY-001 debe existir en approved-responses.md "
-        "(entregable G3 commit 1)"
+        "RESP-SERVICES-RETRY-001 debe existir en approved-responses.md (entregable G3 commit 1)"
     )
     assert retry_entry.status == "APPROVED"
     assert retry_entry.answer_template == RETRY_TEXT
@@ -405,9 +400,7 @@ async def test_tc_svc_009_empty_result_retries_once_then_uses_other_or_handoff(
     async with sessionmaker_fixture() as session:
         bodies = [
             row.payload["text"]["body"]
-            for row in (
-                await session.scalars(select(Outbox).order_by(Outbox.id))
-            ).all()
+            for row in (await session.scalars(select(Outbox).order_by(Outbox.id))).all()
         ]
         conversation = await session.scalar(select(Conversation))
     assert conversation is not None
@@ -512,9 +505,4 @@ def test_tc_svc_015_other_has_no_deterministic_alias() -> None:
 
     assert "OTHER" in codes
     assert service_aliases("OTHER") == ()
-    assert all(
-        alias
-        for code in codes
-        if code != "OTHER"
-        for alias in service_aliases(code)
-    )
+    assert all(alias for code in codes if code != "OTHER" for alias in service_aliases(code))

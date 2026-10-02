@@ -22,12 +22,19 @@ from tests.test_fix2a_catalog_capture_adversarial import seed_catalog
 from tests.visit_booking_guard.helpers import Harness
 
 
-@pytest.mark.parametrize("message", [
-    "RITUAL DEL CORAZÓN", "ritual del corazon", "Quiero el Ritual del Corazón",
-    "ritual del corazn", "Quiero Ritual de Corazón para el 7 de octubre a las 7 pm",
-])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "RITUAL DEL CORAZÓN",
+        "ritual del corazon",
+        "Quiero el Ritual del Corazón",
+        "ritual del corazn",
+        "Quiero Ritual de Corazón para el 7 de octubre a las 7 pm",
+    ],
+)
 async def test_b1b3_r1_named_plan_starts_and_selects_without_llm(
-    harness: Harness, message: str,
+    harness: Harness,
+    message: str,
 ) -> None:
     await harness.seed(event_type=None, with_lead=False)
     await harness.send(message)
@@ -43,7 +50,8 @@ async def test_b1b3_r1_named_plan_starts_and_selects_without_llm(
 
 @pytest.mark.parametrize("message", ["quiero visitar Ritual del Corazón", "ritual desconocido"])
 async def test_b1b3_r1_visit_or_unknown_name_does_not_start_booking(
-    harness: Harness, message: str,
+    harness: Harness,
+    message: str,
 ) -> None:
     await harness.seed()
     await harness.send(message)
@@ -61,29 +69,41 @@ async def test_b1b3_r1_inactive_plan_never_selected(harness: Harness) -> None:
     assert harness.classifier_calls
 
 
-@pytest.mark.parametrize("message,matched", [
-    ("¡RITUAL DEL CORAZÓN!", True), ("Quiero: Ritual-del-Corazón.", True),
-    ("ritual del corazn", True), ("ritual de corazon", True),
-    ("1", False), ("ritual", False), ("otro plan", False),
-    ("Quiero visitar Ritual del Corazón", False),
-    ("Ritual del Corazón y Romance entre Copas", False),
-])
+@pytest.mark.parametrize(
+    "message,matched",
+    [
+        ("¡RITUAL DEL CORAZÓN!", True),
+        ("Quiero: Ritual-del-Corazón.", True),
+        ("ritual del corazn", True),
+        ("ritual de corazon", True),
+        ("1", False),
+        ("ritual", False),
+        ("otro plan", False),
+        ("Quiero visitar Ritual del Corazón", False),
+        ("Ritual del Corazón y Romance entre Copas", False),
+    ],
+)
 def test_b1b3_r1_name_match_is_bounded_and_unambiguous(message: str, matched: bool) -> None:
-    plans = [{"plan_id": "a", "name": "Ritual del Corazón"},
-             {"plan_id": "b", "name": "Romance entre Copas"}]
+    plans = [
+        {"plan_id": "a", "name": "Ritual del Corazón"},
+        {"plan_id": "b", "name": "Romance entre Copas"},
+    ]
     assert (match_booking_plan(message, plans) is not None) is matched
     if matched:
         assert match_booking_plan(message, plans)["plan_id"] == "a"
 
 
 def test_b1b3_r1_ambiguous_typo_does_not_choose_either_plan() -> None:
-    plans = [{"plan_id": "a", "name": "Ritual del Corazón"},
-             {"plan_id": "b", "name": "Ritual del CorazoX"}]
+    plans = [
+        {"plan_id": "a", "name": "Ritual del Corazón"},
+        {"plan_id": "b", "name": "Ritual del CorazoX"},
+    ]
     assert match_booking_plan("Ritual del Corazo", plans) is None
 
 
 async def test_b1b3_r1_flag_off_named_plan_keeps_classifier(
-    harness: Harness, monkeypatch: pytest.MonkeyPatch,
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SELF_SERVICE_BOOKING_ENABLED", "false")
     get_settings.cache_clear()
@@ -114,7 +134,10 @@ async def test_b1b3_r1_name_tolerance_also_applies_after_plan_question(harness: 
 
 @pytest.mark.parametrize("enabled", [True, False])
 async def test_b1b3_r2_fixed_price_suppresses_generic_capture_only_when_enabled(
-    harness: Harness, monkeypatch: pytest.MonkeyPatch, tmp_path, enabled: bool,
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    enabled: bool,
 ) -> None:
     monkeypatch.setenv("SELF_SERVICE_BOOKING_ENABLED", str(enabled))
     get_settings.cache_clear()
@@ -135,7 +158,8 @@ async def test_b1b3_r2_fixed_price_suppresses_generic_capture_only_when_enabled(
 
 @pytest.mark.parametrize("pending", sorted(GENERIC_CAPTURE_ACTIONS))
 async def test_b1b3_r2_named_plan_interrupts_stale_generic_capture(
-    harness: Harness, pending: str,
+    harness: Harness,
+    pending: str,
 ) -> None:
     await harness.seed(state="COLLECTING_EVENT_DATA", pending=pending)
     await harness.send("Ritual del Corazón")
@@ -144,7 +168,8 @@ async def test_b1b3_r2_named_plan_interrupts_stale_generic_capture(
 
 
 async def test_b1b3_r2_fixed_price_information_clears_stale_generic_action(
-    harness: Harness, tmp_path,
+    harness: Harness,
+    tmp_path,
 ) -> None:
     await harness.seed(state="COLLECTING_EVENT_DATA", pending="COLLECT_GUEST_COUNT")
     await seed_catalog(harness.db, tmp_path, send_mode="PROACTIVE")
@@ -156,7 +181,8 @@ async def test_b1b3_r2_fixed_price_information_clears_stale_generic_action(
 
 
 async def test_b1b3_r3_fixed_price_text_precedes_pdf_and_concurrent_claims_wait(
-    harness: Harness, tmp_path,
+    harness: Harness,
+    tmp_path,
 ) -> None:
     await harness.seed()
     await seed_catalog(harness.db, tmp_path, send_mode="PROACTIVE")
@@ -193,14 +219,20 @@ async def test_b1b3_r3_retrying_text_blocks_pdf(harness: Harness, tmp_path) -> N
 
 
 async def test_b1b3_r3_unapproved_information_hands_off_without_pdf(
-    harness: Harness, tmp_path,
+    harness: Harness,
+    tmp_path,
 ) -> None:
     await harness.seed()
     await seed_catalog(harness.db, tmp_path, send_mode="PROACTIVE")
     async with harness.db.begin() as session:
-        latest = await session.scalar(select(KnowledgeEntry).where(
-            KnowledgeEntry.code == "RESP-EVENTS-ROMANTIC-001",
-        ).order_by(KnowledgeEntry.version.desc()).limit(1))
+        latest = await session.scalar(
+            select(KnowledgeEntry)
+            .where(
+                KnowledgeEntry.code == "RESP-EVENTS-ROMANTIC-001",
+            )
+            .order_by(KnowledgeEntry.version.desc())
+            .limit(1)
+        )
         latest.status = "DRAFT"
     await send_catalog_information(harness)
     assert (await harness.conversation()).state == "WAITING_FOR_HUMAN"

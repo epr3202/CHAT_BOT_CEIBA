@@ -44,9 +44,17 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
 
 async def seed_plan(**changes: Any) -> Any:
     model = require_symbol("app.plan.models", "Plan")
-    values = dict(code="RITUAL_CORAZON", name="Ritual del Corazón",
-                  event_type="ROMANTIC_DINNER", price_cop=250000, duration_minutes=180,
-                  exclusive=False, weekend_only=False, active=True, sort_order=1)
+    values = dict(
+        code="RITUAL_CORAZON",
+        name="Ritual del Corazón",
+        event_type="ROMANTIC_DINNER",
+        price_cop=250000,
+        duration_minutes=180,
+        exclusive=False,
+        weekend_only=False,
+        active=True,
+        sort_order=1,
+    )
     values.update(changes)
     async with app.state.db_sessionmaker.begin() as session:
         plan = model(**values)
@@ -60,7 +68,8 @@ async def seed_reservation(status: str = "PAYMENT_PENDING", **changes: Any) -> A
     plan = await seed_plan(code=f"TEST_{uuid4().hex}")
     async with app.state.db_sessionmaker.begin() as session:
         customer = Customer(
-            phone_number=f"+573{uuid4().int % 1_000_000_000:09d}", full_name="Cliente B1a",
+            phone_number=f"+573{uuid4().int % 1_000_000_000:09d}",
+            full_name="Cliente B1a",
         )
         session.add(customer)
         await session.flush()
@@ -71,10 +80,19 @@ async def seed_reservation(status: str = "PAYMENT_PENDING", **changes: Any) -> A
         event = Event(lead_id=lead.lead_id, event_type=plan.event_type)
         session.add(event)
         await session.flush()
-        values = dict(lead_id=lead.lead_id, event_id=event.event_id, plan_id=plan.plan_id,
-                      conversation_id=conversation.id, customer_id=customer.id, status=status,
-                      starts_at=START, ends_at=START + timedelta(minutes=180),
-                      price_cop=plan.price_cop, amount_paid_cop=0, calendar_status="NONE")
+        values = dict(
+            lead_id=lead.lead_id,
+            event_id=event.event_id,
+            plan_id=plan.plan_id,
+            conversation_id=conversation.id,
+            customer_id=customer.id,
+            status=status,
+            starts_at=START,
+            ends_at=START + timedelta(minutes=180),
+            price_cop=plan.price_cop,
+            amount_paid_cop=0,
+            calendar_status="NONE",
+        )
         values.update(changes)
         reservation = model(**values)
         session.add(reservation)
@@ -90,15 +108,25 @@ async def seed_evidence(**changes: Any) -> PaymentEvidence:
         conversation = Conversation(customer_id=customer.id, channel="WHATSAPP", state="NEW")
         session.add(conversation)
         await session.flush()
-        message = Message(external_message_id=f"b1a-{uuid4().hex}",
-                          conversation_id=conversation.id, customer_id=customer.id,
-                          channel="WHATSAPP", direction="INBOUND", message_type="image",
-                          content={"caption": "Comprobante"})
+        message = Message(
+            external_message_id=f"b1a-{uuid4().hex}",
+            conversation_id=conversation.id,
+            customer_id=customer.id,
+            channel="WHATSAPP",
+            direction="INBOUND",
+            message_type="image",
+            content={"caption": "Comprobante"},
+        )
         session.add(message)
         await session.flush()
         evidence = PaymentEvidence(
-            conversation_id=conversation.id, customer_id=customer.id, message_id=message.id,
-            media_id="test-b1a", mime_type="image/jpeg", declared_sha256="0" * 64, **changes,
+            conversation_id=conversation.id,
+            customer_id=customer.id,
+            message_id=message.id,
+            media_id="test-b1a",
+            mime_type="image/jpeg",
+            declared_sha256="0" * 64,
+            **changes,
         )
         session.add(evidence)
         await session.flush()
@@ -107,19 +135,27 @@ async def seed_evidence(**changes: Any) -> PaymentEvidence:
 
 async def reservation_audits() -> list[AuditEvent]:
     async with app.state.db_sessionmaker() as session:
-        return list(await session.scalars(select(AuditEvent).where(
-            AuditEvent.action == "RESERVATION_STATUS_CHANGED"
-        )))
+        return list(
+            await session.scalars(
+                select(AuditEvent).where(AuditEvent.action == "RESERVATION_STATUS_CHANGED")
+            )
+        )
 
 
-@pytest.mark.parametrize("method,path,body", [
-    ("PATCH", "/admin/plans/{id}", {"price_cop": 300000}),
-    ("GET", "/admin/reservations", None),
-    ("GET", "/admin/reservations/{id}", None),
-    ("POST", "/admin/reservations/{id}/cancel", {"note": "Cancelación solicitada"}),
-])
+@pytest.mark.parametrize(
+    "method,path,body",
+    [
+        ("PATCH", "/admin/plans/{id}", {"price_cop": 300000}),
+        ("GET", "/admin/reservations", None),
+        ("GET", "/admin/reservations/{id}", None),
+        ("POST", "/admin/reservations/{id}/cancel", {"note": "Cancelación solicitada"}),
+    ],
+)
 async def test_r4_agent_forbidden_on_every_endpoint(
-    client: AsyncClient, method: str, path: str, body: dict[str, Any] | None,
+    client: AsyncClient,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
 ) -> None:
     headers = await login_headers(client, "80000000")
     response = await client.request(method, path.format(id=uuid4()), headers=headers, json=body)
@@ -135,8 +171,15 @@ async def test_r4_admin_can_read_empty_lists(client: AsyncClient, path: str) -> 
 
 async def test_r4_patch_all_allowed_fields_audits_old_new_and_persists(client: AsyncClient) -> None:
     plan = await seed_plan()
-    changes = dict(name="Plan actualizado", price_cop=275000, duration_minutes=210,
-                   exclusive=True, weekend_only=True, active=False, sort_order=9)
+    changes = dict(
+        name="Plan actualizado",
+        price_cop=275000,
+        duration_minutes=210,
+        exclusive=True,
+        weekend_only=True,
+        active=False,
+        sort_order=9,
+    )
     old = {key: getattr(plan, key) for key in changes}
     headers = await login_headers(client, "90000000")
     response = await client.patch(f"/admin/plans/{plan.plan_id}", headers=headers, json=changes)
@@ -158,19 +201,28 @@ async def test_r4_patch_all_allowed_fields_audits_old_new_and_persists(client: A
         assert audit.reason.strip()
 
 
-@pytest.mark.parametrize("body", [
-    {"code": "OTHER_CODE"}, {"event_type": "PROPOSAL"}, {"plan_id": str(uuid4())},
-    {"unknown_field": True}, {"price_cop": 300000, "code": "CANNOT_CHANGE"},
-])
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"code": "OTHER_CODE"},
+        {"event_type": "PROPOSAL"},
+        {"plan_id": str(uuid4())},
+        {"unknown_field": True},
+        {"price_cop": 300000, "code": "CANNOT_CHANGE"},
+    ],
+)
 async def test_r4_patch_rejects_forbidden_fields(client: AsyncClient, body: dict[str, Any]) -> None:
     plan = await seed_plan()
-    response = await client.patch(f"/admin/plans/{plan.plan_id}", json=body,
-                                  headers=await login_headers(client, "90000000"))
+    response = await client.patch(
+        f"/admin/plans/{plan.plan_id}", json=body, headers=await login_headers(client, "90000000")
+    )
     assert response.status_code == 422, response.text
     async with app.state.db_sessionmaker() as session:
         saved = await session.get(type(plan), plan.plan_id)
         assert (saved.code, saved.event_type, saved.price_cop) == (
-            "RITUAL_CORAZON", "ROMANTIC_DINNER", 250000,
+            "RITUAL_CORAZON",
+            "ROMANTIC_DINNER",
+            250000,
         )
         audits = await session.scalars(select(AuditEvent).where(AuditEvent.entity == "plan"))
         assert list(audits) == []
@@ -185,15 +237,23 @@ async def test_r4_plans_have_no_create_or_delete_endpoint(client: AsyncClient) -
 
 @pytest.mark.parametrize("event_type", ["WEDDING", "UNKNOWN"])
 async def test_r2_database_rejects_invalid_plan_type_bypassing_orm(
-    client: AsyncClient, event_type: str,
+    client: AsyncClient,
+    event_type: str,
 ) -> None:
     model = require_symbol("app.plan.models", "Plan")
     async with app.state.db_sessionmaker() as session:
         with pytest.raises(IntegrityError) as failure:
-            await session.execute(insert(model.__table__).values(
-                plan_id=uuid4(), code="INVALID", name="Inválido", event_type=event_type,
-                price_cop=1, duration_minutes=180, sort_order=0,
-            ))
+            await session.execute(
+                insert(model.__table__).values(
+                    plan_id=uuid4(),
+                    code="INVALID",
+                    name="Inválido",
+                    event_type=event_type,
+                    price_cop=1,
+                    duration_minutes=180,
+                    sort_order=0,
+                )
+            )
         assert failure.value.orig.sqlstate == "23514"  # CHECK, not enum/type or NOT NULL
         await session.rollback()
 
@@ -202,10 +262,17 @@ async def test_r2_database_enforces_unique_plan_code(client: AsyncClient) -> Non
     plan = await seed_plan()
     async with app.state.db_sessionmaker() as session:
         with pytest.raises(IntegrityError) as failure:
-            await session.execute(insert(type(plan).__table__).values(
-                plan_id=uuid4(), code=plan.code, name="Duplicado", event_type="PROPOSAL",
-                price_cop=1, duration_minutes=180, sort_order=0,
-            ))
+            await session.execute(
+                insert(type(plan).__table__).values(
+                    plan_id=uuid4(),
+                    code=plan.code,
+                    name="Duplicado",
+                    event_type="PROPOSAL",
+                    price_cop=1,
+                    duration_minutes=180,
+                    sort_order=0,
+                )
+            )
         assert failure.value.orig.sqlstate == "23505"
         await session.rollback()
 
@@ -219,37 +286,65 @@ async def test_r3_seed_eight_plans_and_preserve_admin_price_on_second_run(
     async with app.state.db_sessionmaker() as session:
         plans = list(await session.scalars(select(model)))
     assert len(plans) == 8
-    assert {plan.name: (plan.event_type, plan.price_cop, plan.duration_minutes,
-                        plan.exclusive, plan.weekend_only) for plan in plans} == EXPECTED_PLANS
+    assert {
+        plan.name: (
+            plan.event_type,
+            plan.price_cop,
+            plan.duration_minutes,
+            plan.exclusive,
+            plan.weekend_only,
+        )
+        for plan in plans
+    } == EXPECTED_PLANS
     assert all(plan.active for plan in plans)
     assert len({plan.code for plan in plans}) == 8
     target = next(plan for plan in plans if plan.name == "Ritual del Corazón")
     assert target.code == "RITUAL_CORAZON"
     headers = await login_headers(client, "90000000")
-    patched = await client.patch(f"/admin/plans/{target.plan_id}", headers=headers,
-                                 json={"price_cop": 321000, "active": False})
+    patched = await client.patch(
+        f"/admin/plans/{target.plan_id}",
+        headers=headers,
+        json={"price_cop": 321000, "active": False},
+    )
     assert patched.status_code == 200, patched.text
     async with app.state.db_sessionmaker() as session:
-        before = {plan.code: {c.name: getattr(plan, c.name) for c in model.__table__.columns}
-                  for plan in await session.scalars(select(model))}
+        before = {
+            plan.code: {c.name: getattr(plan, c.name) for c in model.__table__.columns}
+            for plan in await session.scalars(select(model))
+        }
     await load(app.state.db_sessionmaker)
     async with app.state.db_sessionmaker() as session:
-        after = {plan.code: {c.name: getattr(plan, c.name) for c in model.__table__.columns}
-                 for plan in await session.scalars(select(model))}
+        after = {
+            plan.code: {c.name: getattr(plan, c.name) for c in model.__table__.columns}
+            for plan in await session.scalars(select(model))
+        }
     assert after == before, "El segundo seed no debe modificar ni timestamps ni ediciones"
 
 
 async def test_r4_list_filters_status_from_to_and_detail(client: AsyncClient) -> None:
-    rows = [await seed_reservation(status, starts_at=START + timedelta(days=index),
-                                   ends_at=START + timedelta(days=index, hours=3))
-            for index, status in enumerate(STATUSES)]
+    rows = [
+        await seed_reservation(
+            status,
+            starts_at=START + timedelta(days=index),
+            ends_at=START + timedelta(days=index, hours=3),
+        )
+        for index, status in enumerate(STATUSES)
+    ]
     headers = await login_headers(client, "90000000")
-    cases = [({}, rows), ({"status": "RESERVED"}, [rows[2]]),
-             ({"from": (START + timedelta(hours=1)).isoformat()}, rows[1:]),
-             ({"to": (START + timedelta(days=3, hours=1)).isoformat()}, rows[:4]),
-             ({"from": (START + timedelta(hours=1)).isoformat(),
-               "to": (START + timedelta(days=3, hours=1)).isoformat(),
-               "status": "RESERVED"}, [rows[2]])]
+    cases = [
+        ({}, rows),
+        ({"status": "RESERVED"}, [rows[2]]),
+        ({"from": (START + timedelta(hours=1)).isoformat()}, rows[1:]),
+        ({"to": (START + timedelta(days=3, hours=1)).isoformat()}, rows[:4]),
+        (
+            {
+                "from": (START + timedelta(hours=1)).isoformat(),
+                "to": (START + timedelta(days=3, hours=1)).isoformat(),
+                "status": "RESERVED",
+            },
+            [rows[2]],
+        ),
+    ]
     for params, expected in cases:
         response = await client.get("/admin/reservations", headers=headers, params=params)
         assert response.status_code == 200, response.text
@@ -278,8 +373,11 @@ async def test_r4_list_filters_status_from_to_and_detail(client: AsyncClient) ->
 async def test_r4_cancel_respects_matrix_and_audits_once(client: AsyncClient, status: str) -> None:
     row = await seed_reservation(status)
     headers = await login_headers(client, "90000000")
-    response = await client.post(f"/admin/reservations/{row.reservation_id}/cancel",
-                                 headers=headers, json={"note": "Cliente solicita cancelar"})
+    response = await client.post(
+        f"/admin/reservations/{row.reservation_id}/cancel",
+        headers=headers,
+        json={"note": "Cliente solicita cancelar"},
+    )
     allowed = status in {"PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED"}
     assert response.status_code == (200 if allowed else 409), response.text
     audits = await reservation_audits()
@@ -293,8 +391,11 @@ async def test_r4_cancel_respects_matrix_and_audits_once(client: AsyncClient, st
         assert audits[0].new_value["status"] == "CANCELLED"
         assert audits[0].actor == "Admin B1a"
         assert audits[0].reason == "Cliente solicita cancelar"
-        repeated = await client.post(f"/admin/reservations/{row.reservation_id}/cancel",
-                                      headers=headers, json={"note": "Reintento"})
+        repeated = await client.post(
+            f"/admin/reservations/{row.reservation_id}/cancel",
+            headers=headers,
+            json={"note": "Reintento"},
+        )
         assert repeated.status_code == 409
         assert len(await reservation_audits()) == 1
     else:
@@ -304,8 +405,11 @@ async def test_r4_cancel_respects_matrix_and_audits_once(client: AsyncClient, st
 @pytest.mark.parametrize("body", [{}, {"note": ""}, {"note": "  "}])
 async def test_r4_cancel_requires_nonempty_note(client: AsyncClient, body: dict[str, str]) -> None:
     row = await seed_reservation()
-    response = await client.post(f"/admin/reservations/{row.reservation_id}/cancel", json=body,
-                                 headers=await login_headers(client, "90000000"))
+    response = await client.post(
+        f"/admin/reservations/{row.reservation_id}/cancel",
+        json=body,
+        headers=await login_headers(client, "90000000"),
+    )
     assert response.status_code == 422, response.text
     assert await reservation_audits() == []
     async with app.state.db_sessionmaker() as session:

@@ -42,11 +42,7 @@ def changed_knowledge_fields(
         "category",
         "allowed_variables",
     )
-    return tuple(
-        field
-        for field in fields
-        if getattr(seed, field) != getattr(latest, field)
-    )
+    return tuple(field for field in fields if getattr(seed, field) != getattr(latest, field))
 
 
 def next_knowledge_version(existing: Sequence[KnowledgeEntry]) -> int:

@@ -60,7 +60,8 @@ async def enqueue_proactive_catalogs_for_event_type(
     lead_id: UUID,
     event_type: str | None,
     request_id: str | None,
-    *, after_outbox_id: int | None = None,
+    *,
+    after_outbox_id: int | None = None,
 ) -> int:
     if event_type is None:
         return 0
@@ -259,7 +260,8 @@ async def enqueue_catalogs_for_event_type(
     trigger: str,
     modes: tuple[str, ...],
     request_id: str | None,
-    *, after_outbox_id: int | None = None,
+    *,
+    after_outbox_id: int | None = None,
 ) -> int:
     assets = await active_assets_for_event_type(session, event_type, modes=modes)
     if not assets:

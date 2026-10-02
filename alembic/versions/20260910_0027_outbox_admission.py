@@ -20,16 +20,26 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("conversation", sa.Column(
-        "automation_epoch", postgresql.UUID(as_uuid=True), nullable=False,
-        server_default=sa.text("gen_random_uuid()"),
-    ))
+    op.add_column(
+        "conversation",
+        sa.Column(
+            "automation_epoch",
+            postgresql.UUID(as_uuid=True),
+            nullable=False,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+    )
     op.add_column("outbox", sa.Column("delivery_context", postgresql.JSONB(), nullable=True))
     op.add_column("outbox", sa.Column("send_admission", postgresql.JSONB(), nullable=True))
     op.add_column("outbox", sa.Column("delivery_reason", sa.String(128), nullable=True))
-    op.add_column("outbox", sa.Column(
-        "delivery_decided_at", sa.DateTime(timezone=True), nullable=True,
-    ))
+    op.add_column(
+        "outbox",
+        sa.Column(
+            "delivery_decided_at",
+            sa.DateTime(timezone=True),
+            nullable=True,
+        ),
+    )
 
 
 def downgrade() -> None:

@@ -26,14 +26,21 @@ async def test_r3_migrated_schema_round_trip(monkeypatch: pytest.MonkeyPatch) ->
 
     async def schema() -> dict[str, dict[str, Any]]:
         async with engine.connect() as connection:
+
             def snapshot(sync: Any) -> dict[str, dict[str, Any]]:
                 inspector = inspect(sync)
-                return {name: {
-                    "columns": {c["name"]: (str(c["type"]), c["nullable"])
-                                for c in inspector.get_columns(name)},
-                    "foreign_keys": inspector.get_foreign_keys(name),
-                    "indexes": inspector.get_indexes(name),
-                } for name in inspector.get_table_names()}
+                return {
+                    name: {
+                        "columns": {
+                            c["name"]: (str(c["type"]), c["nullable"])
+                            for c in inspector.get_columns(name)
+                        },
+                        "foreign_keys": inspector.get_foreign_keys(name),
+                        "indexes": inspector.get_indexes(name),
+                    }
+                    for name in inspector.get_table_names()
+                }
+
             return await connection.run_sync(snapshot)
 
     try:
@@ -58,22 +65,28 @@ async def test_r3_migrated_schema_round_trip(monkeypatch: pytest.MonkeyPatch) ->
             assert {key: item[1] for key, item in after[name]["columns"].items()} == {
                 column.name: column.nullable for column in table.c
             }
-        assert any(index["column_names"] == ["starts_at", "status"]
-                   for index in after["reservation"]["indexes"])
+        assert any(
+            index["column_names"] == ["starts_at", "status"]
+            for index in after["reservation"]["indexes"]
+        )
         evidence = after["payment_evidence"]
         assert evidence["columns"]["reservation_id"] == ("UUID", True)
-        assert any(fk["constrained_columns"] == ["reservation_id"]
-                   and fk["referred_table"] == "reservation"
-                   and fk["referred_columns"] == ["reservation_id"]
-                   for fk in evidence["foreign_keys"])
+        assert any(
+            fk["constrained_columns"] == ["reservation_id"]
+            and fk["referred_table"] == "reservation"
+            and fk["referred_columns"] == ["reservation_id"]
+            for fk in evidence["foreign_keys"]
+        )
         assert after["reservation"]["columns"]["starts_at"][0] == "TIMESTAMP"
         async with engine.connect() as connection:
-            timestamps = await connection.execute(text(
-                "SELECT column_name, data_type FROM information_schema.columns "
-                "WHERE table_schema='public' AND table_name='reservation' "
-                "AND column_name IN ('starts_at','ends_at','balance_due_at',"
-                "'hold_expires_at','created_at','updated_at')"
-            ))
+            timestamps = await connection.execute(
+                text(
+                    "SELECT column_name, data_type FROM information_schema.columns "
+                    "WHERE table_schema='public' AND table_name='reservation' "
+                    "AND column_name IN ('starts_at','ends_at','balance_due_at',"
+                    "'hold_expires_at','created_at','updated_at')"
+                )
+            )
             rows = list(timestamps)
             assert len(rows) == 6
             assert all(row.data_type == "timestamp with time zone" for row in rows)

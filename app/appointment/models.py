@@ -65,8 +65,7 @@ class Appointment(Base):
             "start_time",
             unique=True,
             postgresql_where=text(
-                "appointment_status IN "
-                "('PENDING_CONFIRMATION', 'CONFIRMED', 'RESCHEDULED')"
+                "appointment_status IN ('PENDING_CONFIRMATION', 'CONFIRMED', 'RESCHEDULED')"
             ),
         ),
     )
@@ -187,9 +186,7 @@ class AppointmentChange(Base):
 
 class Holiday(Base):
     __tablename__ = "holiday"
-    __table_args__ = (
-        CheckConstraint("source IN ('SEEDED', 'MANUAL')", name="ck_holiday_source"),
-    )
+    __table_args__ = (CheckConstraint("source IN ('SEEDED', 'MANUAL')", name="ck_holiday_source"),)
 
     holiday_date: Mapped[date] = mapped_column(Date, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

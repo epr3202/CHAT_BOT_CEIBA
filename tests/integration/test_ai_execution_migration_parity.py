@@ -117,9 +117,7 @@ async def migrated_database_url(monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
             await admin_connection.close()
 
 
-ColumnContract = (
-    tuple[bool, str, int | None] | tuple[bool, bool, str, int | None, bool]
-)
+ColumnContract = tuple[bool, str, int | None] | tuple[bool, bool, str, int | None, bool]
 
 
 def column_contract(column: object) -> ColumnContract:

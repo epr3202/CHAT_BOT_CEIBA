@@ -140,9 +140,7 @@ class InboundWhatsAppMessage(BaseModel):
         elif raw_type in {"interactive", "button"}:
             message["content"] = _selection_content(raw_type, raw_content)
         elif raw_type == "contacts":
-            message["content"] = {
-                "contacts": raw_content if isinstance(raw_content, list) else []
-            }
+            message["content"] = {"contacts": raw_content if isinstance(raw_content, list) else []}
         elif raw_type == "unsupported":
             content = dict(raw_content) if isinstance(raw_content, dict) else {}
             content["raw_type"] = content.get("raw_type") or content.get("type") or raw_type

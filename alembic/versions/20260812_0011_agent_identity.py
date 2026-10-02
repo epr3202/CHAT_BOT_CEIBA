@@ -5,6 +5,7 @@ Revises: 20260810_0010
 Create Date: 2026-08-12 00:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -95,8 +96,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_handoff_assigned_agent_id"), table_name="handoff")
     op.drop_column("handoff", "assigned_agent_id")
     op.execute(
-        "ALTER TABLE conversation DROP CONSTRAINT IF EXISTS "
-        "fk_conversation_assigned_agent_id_agent"
+        "ALTER TABLE conversation DROP CONSTRAINT IF EXISTS fk_conversation_assigned_agent_id_agent"
     )
     op.execute(
         "ALTER TABLE conversation DROP CONSTRAINT IF EXISTS conversation_assigned_agent_id_fkey"

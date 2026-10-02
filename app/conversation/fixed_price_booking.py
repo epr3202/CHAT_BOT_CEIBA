@@ -12,20 +12,51 @@ from app.conversation.catalog_event_type import (
 
 FIXED_PRICE_BOOKING_REASON = "FIXED_PRICE_BOOKING_REQUEST"
 SELF_SERVICE_BOOKING_REASON = "SELF_SERVICE_BOOKING"
-BOOKING_ACTIONS = frozenset({
-    "SELECT_BOOKING_PLAN", "SELECT_BOOKING_DATETIME", "SELECT_BOOKING_TIME", "CONFIRM_BOOKING",
-})
-BOOKING_EXPRESSIONS = frozenset({
-    "agendar", "reservar", "separar", "apartar", "programar", "cuadrar", "quiero la fecha",
-})
+BOOKING_ACTIONS = frozenset(
+    {
+        "SELECT_BOOKING_PLAN",
+        "SELECT_BOOKING_DATETIME",
+        "SELECT_BOOKING_TIME",
+        "CONFIRM_BOOKING",
+    }
+)
+BOOKING_EXPRESSIONS = frozenset(
+    {
+        "agendar",
+        "reservar",
+        "separar",
+        "apartar",
+        "programar",
+        "cuadrar",
+        "quiero la fecha",
+    }
+)
 VISIT_EXPRESSIONS = frozenset({"visita", "visitar", "conocer el lugar", "ir a ver"})
-_PLAN_STOP_WORDS = frozenset({
-    "de", "del", "la", "el", "los", "las", "y", "para", "entre", "un", "una",
-})
-GENERIC_CAPTURE_ACTIONS = frozenset({
-    "COLLECT_EVENT_TYPE", "COLLECT_GUEST_COUNT", "COLLECT_EVENT_DATE",
-    "COLLECT_CUSTOMER_NAME", "COLLECT_BUDGET", "COLLECT_SERVICES",
-})
+_PLAN_STOP_WORDS = frozenset(
+    {
+        "de",
+        "del",
+        "la",
+        "el",
+        "los",
+        "las",
+        "y",
+        "para",
+        "entre",
+        "un",
+        "una",
+    }
+)
+GENERIC_CAPTURE_ACTIONS = frozenset(
+    {
+        "COLLECT_EVENT_TYPE",
+        "COLLECT_GUEST_COUNT",
+        "COLLECT_EVENT_DATE",
+        "COLLECT_CUSTOMER_NAME",
+        "COLLECT_BUDGET",
+        "COLLECT_SERVICES",
+    }
+)
 
 
 def _phrase_pattern(expressions: frozenset[str]) -> re.Pattern[str]:
@@ -37,16 +68,21 @@ _VISIT_PATTERN = _phrase_pattern(VISIT_EXPRESSIONS)
 
 
 def booking_guard_eligible(
-    state: str | None, pending_action: str | None, bot_enabled: bool,
-    *, self_service: bool = False,
+    state: str | None,
+    pending_action: str | None,
+    bot_enabled: bool,
+    *,
+    self_service: bool = False,
 ) -> bool:
-    return (
-        bot_enabled and (
-            pending_action is None and state in {"BOT_ACTIVE", "ANSWERING_INFORMATION"}
-            or self_service and state == "NEW" and pending_action is None
-            or self_service and state == "COLLECTING_EVENT_DATA"
-            and pending_action in GENERIC_CAPTURE_ACTIONS | {None}
-        )
+    return bot_enabled and (
+        pending_action is None
+        and state in {"BOT_ACTIVE", "ANSWERING_INFORMATION"}
+        or self_service
+        and state == "NEW"
+        and pending_action is None
+        or self_service
+        and state == "COLLECTING_EVENT_DATA"
+        and pending_action in GENERIC_CAPTURE_ACTIONS | {None}
     )
 
 
@@ -68,11 +104,13 @@ def _within_edit_distance(left: str, right: str, max_edits: int) -> bool:
     for row, right_character in enumerate(right, start=1):
         current = [row]
         for column, left_character in enumerate(left, start=1):
-            current.append(min(
-                current[-1] + 1,
-                previous[column] + 1,
-                previous[column - 1] + (left_character != right_character),
-            ))
+            current.append(
+                min(
+                    current[-1] + 1,
+                    previous[column] + 1,
+                    previous[column - 1] + (left_character != right_character),
+                )
+            )
         if min(current) > max_edits:
             return False
         previous = current
@@ -93,9 +131,12 @@ def match_booking_plan(message_text: str, plans: list[dict[str, Any]]) -> dict[s
     matches = []
     for plan in plans:
         significant_words = [
-            word for word in re.findall(
-                r"\w+", normalize_catalog_event_type_label(plan["name"]),
-            ) if word not in _PLAN_STOP_WORDS
+            word
+            for word in re.findall(
+                r"\w+",
+                normalize_catalog_event_type_label(plan["name"]),
+            )
+            if word not in _PLAN_STOP_WORDS
         ]
         if not significant_words:
             continue
