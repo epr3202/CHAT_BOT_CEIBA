@@ -14,6 +14,7 @@ from app.conversation.catalog_event_type import (
 )
 from app.conversation.services_catalog import compose_requested_services_summary
 from app.event.models import EVENT_TYPES
+from app.payment.customer_reason import CustomerRejectionReason
 from app.plan.models import Plan
 
 logger = structlog.get_logger(__name__)
@@ -109,6 +110,12 @@ def _present_cop(value: Any) -> str:
     if type(value) is not int or value < 0:
         raise ValueError("Expected a nonnegative integer COP amount")
     return "$" + f"{value:,}".replace(",", ".")
+
+
+def _present_customer_reason(value: Any) -> str:
+    if not isinstance(value, CustomerRejectionReason):
+        raise TypeError("Expected a validated human rejection reason")
+    return value.text
 
 
 def _present_plan_name(value: Any) -> str:
@@ -309,7 +316,7 @@ VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
     "new_visit_time": _present_time,
     "package_name": _normalized_text,
     "pending_topic": lambda value: _present_closed_label(value, _PENDING_TOPIC_LABELS),
-    "rejection_reason_customer_safe": _normalized_text,
+    "rejection_reason_customer_safe": _present_customer_reason,
     "requested_services_summary": _present_requested_services_summary,
     "resolved_date": _present_date,
     "service_name": _normalized_lower_text,
