@@ -65,6 +65,8 @@ class PaymentEvidence(Base):
     download_status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
     download_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prereview_claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    prereview_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING_REVIEW")
     reviewed_by_agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("agent.id"), nullable=True, index=True

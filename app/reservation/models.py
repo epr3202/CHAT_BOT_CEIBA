@@ -55,6 +55,7 @@ class Reservation(Base):
     amount_paid_cop: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     payment_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     balance_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    balance_overdue_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     external_calendar_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     calendar_status: Mapped[str] = mapped_column(String(32), nullable=False, default="NONE")
