@@ -1,5 +1,9 @@
 """Append-only receipt proposals and vision execution telemetry.
 
+The ai_execution task CHECK extension is intentionally irreversible: downgrading
+removes the review schema only, preserving append-only RECEIPT_EXTRACTION rows
+and the expanded CHECK required to keep those historical executions valid.
+
 Revision ID: 20260930_0033
 Revises: 20260930_0032
 """
@@ -73,13 +77,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER payment_review_append_only ON payment_evidence_review")
+    op.drop_index("ix_payment_evidence_review_evidence_id", table_name="payment_evidence_review")
     op.drop_table("payment_evidence_review")
     op.execute("DROP FUNCTION reject_payment_review_mutation()")
-    # Receipt telemetry belongs to this revision; other execution history is preserved.
-    op.execute("DELETE FROM ai_execution WHERE task = 'RECEIPT_EXTRACTION'")
-    op.drop_constraint("ck_ai_execution_task", "ai_execution", type_="check")
-    op.create_check_constraint(
-        "ck_ai_execution_task",
-        "ai_execution",
-        "task IN ('INTENT_CLASSIFICATION', 'SERVICES_CLASSIFICATION', 'EVENT_TYPE_EXTRACTION')",
-    )
