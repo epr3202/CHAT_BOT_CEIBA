@@ -172,3 +172,15 @@ plazo futuro limpia la marca anterior, con valores viejos y nuevos en el audit;
 de lo contrario el panel mostraría saldo vencido antes del nuevo plazo.
 Los tipos de recordatorio conservan UNIQUE(reservation_id, kind): reprogramar
 no crea una segunda entrega del mismo tipo para esa reserva.
+
+## 2026-10-02 — B4: callbacks mixtos y deduplicación sin espera
+
+Un webhook puede actualizar el status de un aviso y continuar con un mensaje
+del cliente en la misma transacción. El status conserva el bloqueo de la fila
+hasta el commit exterior. El programador, que ya tiene Customer, no vuelve a
+insertar un tipo customer_notification ni una fuente BALANCE_OVERDUE existente:
+una lectura MVCC detecta esa existencia sin esperar la fila del callback.
+UNIQUE sigue siendo la defensa final de idempotencia. Se descarta repetir
+INSERT ON CONFLICT sobre la fila existente porque invertiría los bloqueos
+Outbox → Customer del webhook frente a Customer → Outbox del programador.
+Los contratos reproducen ambas colas y verifican que callback y mensaje terminan.

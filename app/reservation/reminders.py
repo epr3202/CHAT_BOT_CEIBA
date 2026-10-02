@@ -120,6 +120,16 @@ async def enqueue_balance_reminders(
             if due_at is None:
                 continue
             confirmed_at = await reserved_at(session, reservation)
+            # Plain MVCC reads do not wait for callbacks that update queue status
+            # before continuing to Customer in a mixed webhook transaction. The
+            # reservation lock serializes enqueue; UNIQUE remains the final guard.
+            existing_kinds = set(
+                await session.scalars(
+                    select(CustomerNotification.kind).where(
+                        CustomerNotification.reservation_id == reservation.reservation_id
+                    )
+                )
+            )
             schedule = (
                 (
                     "BALANCE_REMINDER_EARLY",
@@ -129,6 +139,8 @@ async def enqueue_balance_reminders(
                 ("BALANCE_REMINDER_DUE", due_at.astimezone(BOGOTA).date()),
             )
             for kind, day in schedule:
+                if kind in existing_kinds:
+                    continue
                 scheduled_at = datetime.combine(day, clock, tzinfo=BOGOTA).astimezone(UTC)
                 if now < scheduled_at:
                     continue

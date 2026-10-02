@@ -98,6 +98,20 @@ async def enqueue_for_reservation(
             .order_by(NotificationRecipient.id)
         )
     )
+    if event_kind == "BALANCE_OVERDUE":
+        # A reschedule may mark this reservation overdue again. Avoid re-inserting
+        # its existing sources while a callback holds their status rows and then
+        # proceeds to Customer in the same webhook transaction.
+        notified = set(
+            await session.scalars(
+                select(StaffOutbox.recipient_id).where(
+                    StaffOutbox.event_kind == event_kind,
+                    StaffOutbox.source_entity == source_entity,
+                    StaffOutbox.source_id == source_id,
+                )
+            )
+        )
+        recipients = [recipient_id for recipient_id in recipients if recipient_id not in notified]
     if not recipients:
         return
     customer = await session.get(Customer, reservation.customer_id)
