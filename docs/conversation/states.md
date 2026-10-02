@@ -1935,6 +1935,26 @@ automáticamente. No hay mensajes nuevos ni texto libre al cliente. El bot sigue
 pausado durante el handoff. La lectura no detecta falsificaciones; B2-4 abordará
 conciliación bancaria.
 
+Un comprobante con descarga FAILED_PERMANENT no puede aceptarse: el endpoint
+responde 409 antes de consultar disponibilidad o registrar dinero. En Comprobantes
+y detalle de Reserva, Aceptar queda deshabilitado y la nota de rechazo solicita
+una nueva imagen. El rechazo sigue requiriendo clic humano y conserva los eventos
+PAYMENT_EVIDENCE_REJECTED y PAYMENT_EVIDENCE_REVIEWED con actor, motivo y request_id.
+La cronología del panel muestra en español el motivo persistido de salidas SUPPRESSED.
+
+### B1b-3 — selección por nombre y captura de precio fijo
+
+Con SELF_SERVICE_BOOKING_ENABLED activo, el nombre de un plan activo inicia
+BOOKING y selecciona el plan. El matching determinista tolera tildes, mayúsculas
+y errores leves; un nombre ambiguo o desconocido no selecciona un plan. Las
+solicitudes de visita conservan su flujo. Para eventos de precio fijo se suprime
+la captura genérica de invitados, presupuesto y demás campos de cotización;
+la reserva pide plan y fecha/hora según B1b-2. Con el flag apagado sigue el flujo
+anterior. Cuando se presenta información aprobada y un PDF del plan, el worker
+solo admite el PDF después del envío exitoso del texto previo.
+Si ese texto termina suprimido, fallido o en revisión, el PDF se detiene con
+motivo persistido y no se envía. Texto PENDING o SENDING mantiene el PDF en espera.
+
 ## 27.2 Diseño general para eventos grandes — pendiente de implementación
 
 ### Estados

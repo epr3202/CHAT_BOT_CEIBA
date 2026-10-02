@@ -2590,6 +2590,19 @@ PAYMENT_EVIDENCE_PREREVIEWED, sin PII del remitente. COMPLETED no se repite
 automáticamente; FAILED admite como máximo dos intentos. ADMIN puede iniciar un
 nuevo intento. Descargas FAILED_PERMANENT y formatos no imagen quedan SKIPPED.
 
+Una descarga FAILED_PERMANENT no es un comprobante verificable: aceptar devuelve
+409 y no registra dinero, cambia reservas ni consulta Calendar. El asesor puede
+rechazarlo con una nota solicitando otra imagen; la decisión conserva la auditoría
+de rechazo y revisión. El panel deshabilita Aceptar y muestra el motivo de salidas
+SUPPRESSED. `ai_execution` es append-only: el downgrade 0033 conserva su historia
+y la ampliación del CHECK de tareas, aunque retire la tabla de propuestas.
+
+Con SELF_SERVICE_BOOKING_ENABLED activo, un nombre reconocido de un plan activo
+puede iniciar la selección determinista con tolerancia a escritura. Para precios
+fijos se omite el slot filling de cotización genérica. La presentación aprobada
+precede al PDF del plan; el outbox impide enviar ese PDF antes del texto exitoso.
+Ninguna de estas decisiones confirma pagos o reservas.
+
 AMOUNT compara el monto positivo con el anticipo pendiente de la reserva usando
 el porcentaje y redondeo BOOKING existentes; sin reserva es UNKNOWN; abono parcial
 es WARN y no puede producir ACCEPT. CURRENCY acepta COP o dato ausente. ACCOUNT

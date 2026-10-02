@@ -440,8 +440,12 @@ ADMIN puede reintentar con `POST /admin/payment-evidence/{id}/prereview`.
 | `PAYMENT_REVIEW_CONFIDENCE_MIN` | `0.50` | Confianza media |
 | `PAYMENT_REVIEW_MAX_ATTEMPTS` | `2` | Intentos automáticos por comprobante; máximo 2 |
 
-Se usa `OPENROUTER_TIMEOUT_SECONDS`; cada intento hace una llamada y un parseo
-estricto, sin reintentos internos. Cada reintento humano agrega otra fila.
+Se reutiliza el transporte OpenRouter del clasificador: autenticación, timeout
+`OPENROUTER_TIMEOUT_SECONDS` y hasta `OPENROUTER_MAX_RETRIES + 1` solicitudes HTTP
+por intento. Con los defaults son hasta cuatro solicitudes para las dos filas
+automáticas. Se envía el esquema de `ReceiptExtraction` con `json_schema`,
+`strict=true` y proveedores compatibles; el parseo estricto nunca se reintenta.
+Cada reintento humano agrega otra fila.
 El modelo default acepta imágenes según [OpenRouter](https://openrouter.ai/google/gemini-2.5-flash-lite/)
 y [Google](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite).
 La imagen viaja como `image_url` con data URL base64. No se envían el monto
@@ -484,5 +488,7 @@ modelo a inyección. La precisión real se mide con el set local anterior.
 
 Verificación: `pytest tests/payment_prereview -q`,
 `npm --prefix tests/frontend test -- test_d_payment_prereview.spec.mjs` y
-`make migrate-cycle`. El downgrade 0033 elimina la tabla de propuestas y su
-telemetría RECEIPT_EXTRACTION; conserva pagos, reservas y audits append-only.
+`make migrate-cycle`. El downgrade 0033 elimina únicamente la tabla de propuestas,
+su índice, trigger y función. Conserva toda la telemetría append-only de
+`ai_execution`, incluida RECEIPT_EXTRACTION, y su CHECK ampliado; esa ampliación
+es irreversible para proteger el historial. Conserva pagos, reservas y audits.

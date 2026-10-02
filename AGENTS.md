@@ -28,7 +28,8 @@ Las tareas específicas llegan por prompt; estas reglas aplican SIEMPRE.
 3. **Idempotencia.** `message.external_message_id` tiene constraint UNIQUE. Todo handler
    de webhook debe ser seguro ante reentrega: un webhook duplicado no produce segundo
    mensaje, segunda respuesta, segundo lead ni segunda cita.
-4. **Append-only.** Las tablas `message` y `audit_event` nunca reciben UPDATE ni DELETE.
+4. **Append-only.** Las tablas `message`, `audit_event`, `ai_execution` y
+   `payment_evidence_review` nunca reciben UPDATE ni DELETE.
    Las correcciones se registran como nuevos eventos.
 5. **Tiempo.** Timestamps en UTC en base de datos (`timestamptz`). `America/Bogota`
    solo en presentación y en cálculo de reglas de agenda. Usar `zoneinfo`, nunca

@@ -4343,3 +4343,23 @@ Los casos se ejecutan en tests/payment_settlement/ y tests/booking_conversation/
 El guion de 19:00 usa BOOKING_HOURS_END=23:00 en tests: el plan semilla dura 180
 minutos y la ventana existente valida su final. No implica un cambio de horario
 de producción. Casos complementarios de G3 van en test_g3_*.py.
+
+## Revisión F1–F3 de PR #38 (2026-10-01)
+
+| Caso | Entrada | Resultado obligatorio |
+| --- | --- | --- |
+| F1 | 0033 upgrade → downgrade → upgrade con RECEIPT_EXTRACTION sembrada | Todos los campos de ai_execution conservados; CHECK ampliado conservado |
+| B1b3-R1 | Nombre activo con mayúsculas, sin tildes, embebido o error leve | BOOKING con plan seleccionado, sin decisión LLM; desconocido, inactivo o visita conservan flujo previo |
+| B1b3-R2 | Precio fijo con captura genérica pendiente | Flag activo limpia captura genérica; apagado conserva captura |
+| B1b3-R3 | Información aprobada + PDF, varios claims y reintento de texto | Texto precede PDF; PDF no es elegible hasta texto SENT |
+| B1b3-R4 | Texto previo SUPPRESSED/FAILED/REVIEW o dependencia inválida | PDF se detiene con motivo; sin envío ni espera indefinida |
+| F2-R1 | Accept de FAILED_PERMANENT con/sin reserva | 409 antes de Calendar; sin pago, reserva, outbox ni auditoría de aceptación |
+| F2-R2 | Rechazo humano de descarga fallida | Dos audits REJECTED/REVIEWED con actor, motivo, request_id y resultado de notificación |
+| F2-R3 | Descarga fallida en Comprobantes y detalle | Aceptar deshabilitado; nota de nueva imagen; Rechazar espera clic humano |
+| F2-R4 | Outbox SUPPRESSED en cronología | API entrega delivery_reason; panel muestra motivo en español |
+| D5 | Aceptar propuesta con monto humano distinto | PAYMENT_EVIDENCE_ACCEPTED vincula review_id, monto sugerido y diferencia; manual queda identificado |
+| F3 | Payload de visión y errores de proveedor/JSON | json_schema strict completo, ruta compatible, auth/timeout compartidos; HTTP acotado y un parseo |
+
+Suites: tests/booking_conversation/test_b1b3_contracts.py,
+tests/payment_settlement/test_failed_evidence_annex.py,
+tests/frontend/test_f2_failed_evidence.spec.mjs y tests/payment_prereview/.
