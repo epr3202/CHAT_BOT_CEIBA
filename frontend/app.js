@@ -1510,6 +1510,8 @@ async function loadReservations() {
   const params = new URLSearchParams();
   const status = $("#reservationStatusFilter").value;
   if (status) params.set("status", status);
+  const balanceStatus = $("#reservationBalanceFilter").value;
+  if (balanceStatus) params.set("balance_status", balanceStatus);
   try {
     if ($("#reservationFromFilter").value) params.set("from", bogotaDateTimeToISO($("#reservationFromFilter").value, "00:00"));
     if ($("#reservationToFilter").value) {
@@ -1554,6 +1556,12 @@ function renderReservations() {
       badge.textContent = "Manual";
       row.firstElementChild.append(badge);
     }
+    if (reservation.status === "RESERVED" && reservation.amount_paid_cop < reservation.price_cop) {
+      const badge = document.createElement("span");
+      badge.className = "pill neutral";
+      badge.textContent = reservation.balance_overdue_at ? "Saldo vencido" : "Saldo pendiente";
+      row.children[3].append(badge);
+    }
     const actions = document.createElement("td");
     actions.append(actionButton("Ver detalle", () => openReservationDetail(reservation.reservation_id)));
     row.append(actions);
@@ -1568,6 +1576,7 @@ async function openReservationDetail(id) {
   $("#reservationDetail").hidden = false;
   $("#reservationDetails").replaceChildren();
   $("#reservationEvidences").replaceChildren();
+  $("#reservationCustomerNotifications").replaceChildren();
   $("#reservationScheduleForm").hidden = true;
   $("#retryReservationCalendar").hidden = true;
   $("#reservationCancelForm").hidden = true;
@@ -1595,17 +1604,27 @@ function renderReservationDetail(reservation) {
     ["Estado", label("reservationStatus", reservation.status)], ["Inicio", formatDate(reservation.starts_at)],
     ["Fin", formatDate(reservation.ends_at)], ["Precio", cop.format(reservation.price_cop)],
     ["Pagado", cop.format(reservation.amount_paid_cop)],
+    ["Saldo pendiente", formatCOP(Math.max(0, reservation.price_cop - reservation.amount_paid_cop))],
     ["Anticipo", formatCOP(reservation.deposit_amount_cop)],
     ["Faltante para el anticipo", formatCOP(reservation.missing_cop)],
     ["Calendario", label("calendarStatus", reservation.calendar_status)],
     ["Modalidad de pago", reservation.payment_kind ? label("paymentKind", reservation.payment_kind) : "Sin modalidad"],
     ["Vencimiento del saldo", formatDate(reservation.balance_due_at)],
+    ["Saldo vencido desde", formatDate(reservation.balance_overdue_at)],
   ]) {
     const term = document.createElement("dt");
     term.textContent = title;
     const description = document.createElement("dd");
     description.append(value);
     details.append(term, description);
+  }
+  const reminders = $("#reservationCustomerNotifications");
+  reminders.replaceChildren();
+  if (!reservation.customer_notifications?.length) setEmpty(reminders, "No hay recordatorios registrados.");
+  for (const reminder of reservation.customer_notifications || []) {
+    const item = document.createElement("p");
+    item.textContent = `${label("customerNotificationKind", reminder.kind)} · ${label("staffNotificationStatus", reminder.status)} · ${formatDate(reminder.sent_at || reminder.created_at)}`;
+    reminders.append(item);
   }
   const form = $("#reservationCancelForm");
   form.reset();
@@ -2214,7 +2233,7 @@ function bindUi() {
   $("#verifyManualReservation").addEventListener("click", verifyManualReservation);
   $("#reloadManualPlans").addEventListener("click", loadManualPlans);
   $("#manualReservationForm").addEventListener("input", () => managementFeedback("manualReservationFeedback", ""));
-  $("#reservationStatusFilter").addEventListener("change", () => {
+  for (const selector of ["#reservationStatusFilter", "#reservationBalanceFilter"]) $(selector).addEventListener("change", () => {
     state.reservationDetailRequest += 1;
     $("#reservationDetail").hidden = true;
     loadReservations();

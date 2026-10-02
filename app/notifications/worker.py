@@ -1,16 +1,18 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Protocol
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.channel.worker import backoff_seconds
 from app.config.settings import Settings
 from app.notifications.errors import OutboundSendError
 from app.notifications.models import NotificationRecipient, StaffOutbox
+from app.notifications.queue import claim_batch, maintain_queue, settle_claim
+from app.notifications.queue import fail as fail_notification
+from app.notifications.queue import retire as retire
 from app.notifications.service import staff_audit
 from app.notifications.staff_texts import render_staff_text, template_for, window_until
 
@@ -34,103 +36,49 @@ class StaffClaim:
     last_error_code: int | None
 
 
-def retire(row: StaffOutbox, state: str, now: datetime) -> None:
-    row.status, row.claim_token, row.claimed_at = state, None, None
-    row.updated_at = now
-
-
 def fail(
     session: AsyncSession, row: StaffOutbox, error: Exception, settings: Settings, now: datetime
 ) -> None:
-    old = row.status
-    row.attempts += 1
-    row.last_error = str(error)[:4000]
-    row.last_error_code = getattr(error, "code", None)
-    permanent = isinstance(error, OutboundSendError) and not error.retryable
-    retire(
-        row,
-        "FAILED" if permanent or row.attempts >= settings.staff_outbox_max_attempts else "PENDING",
-        now,
+    fail_notification(
+        session, row, error, settings, now, audit=staff_audit, prefix="STAFF_NOTIFICATION"
     )
-    row.next_attempt_at = now + timedelta(
-        seconds=backoff_seconds(
-            row.attempts,
-            settings.outbox_max_backoff_seconds,
-        )
-    )
-    staff_audit(session, "STAFF_NOTIFICATION_FAILED", row, old_status=old)
 
 
 async def claim_staff_outbox_batch(
     sm: async_sessionmaker[AsyncSession], settings: Settings, now: datetime
 ) -> list[StaffClaim]:
-    async with sm() as session, session.begin():
-        rows = list(
-            (
-                await session.execute(
-                    select(StaffOutbox, NotificationRecipient)
-                    .join(
-                        NotificationRecipient,
-                        NotificationRecipient.id == StaffOutbox.recipient_id,
-                    )
-                    .where(StaffOutbox.status == "PENDING", StaffOutbox.next_attempt_at <= now)
-                    .order_by(StaffOutbox.created_at, StaffOutbox.id)
-                    .limit(settings.outbox_batch_size)
-                    .with_for_update(of=StaffOutbox, skip_locked=True)
-                )
-            ).all()
+    def build(values: tuple[StaffOutbox, NotificationRecipient], token: UUID) -> StaffClaim:
+        row, recipient = values
+        return StaffClaim(
+            row.id,
+            token,
+            recipient.phone_number,
+            recipient.active,
+            recipient.last_inbound_at,
+            row.event_kind,
+            tuple(row.params),
+            row.last_error_code,
         )
-        claims = []
-        for row, recipient in rows:
-            row.status, row.claim_token, row.claimed_at = "SENDING", uuid4(), now
-            claims.append(
-                StaffClaim(
-                    row.id,
-                    row.claim_token,
-                    recipient.phone_number,
-                    recipient.active,
-                    recipient.last_inbound_at,
-                    row.event_kind,
-                    tuple(row.params),
-                    row.last_error_code,
-                )
-            )
-    return claims
+
+    return await claim_batch(
+        sm,
+        select(StaffOutbox, NotificationRecipient)
+        .join(NotificationRecipient, NotificationRecipient.id == StaffOutbox.recipient_id)
+        .where(StaffOutbox.status == "PENDING", StaffOutbox.next_attempt_at <= now)
+        .order_by(StaffOutbox.created_at, StaffOutbox.id)
+        .limit(settings.outbox_batch_size)
+        .with_for_update(of=StaffOutbox, skip_locked=True),
+        now,
+        build,
+    )
 
 
 async def maintain_staff_outbox(
     sm: async_sessionmaker[AsyncSession], settings: Settings, now: datetime
 ) -> None:
-    stale = now - timedelta(seconds=settings.outbox_sending_timeout_seconds)
-    cutoff = now - timedelta(hours=settings.staff_deferred_max_age_hours)
-    async with sm() as session, session.begin():
-        candidates = list(
-            await session.scalars(
-                select(StaffOutbox)
-                .where(
-                    or_(
-                        and_(StaffOutbox.status == "DEFERRED", StaffOutbox.created_at < cutoff),
-                        and_(
-                            StaffOutbox.status == "SENDING",
-                            or_(
-                                StaffOutbox.claimed_at < stale,
-                                and_(
-                                    StaffOutbox.claimed_at.is_(None), StaffOutbox.created_at < stale
-                                ),
-                            ),
-                        ),
-                    )
-                )
-                .order_by(StaffOutbox.id)
-                .with_for_update(skip_locked=True)
-            )
-        )
-        for row in candidates:
-            if row.status == "DEFERRED":
-                retire(row, "EXPIRED", now)
-                staff_audit(session, "STAFF_NOTIFICATION_EXPIRED", row, old_status="DEFERRED")
-            else:
-                fail(session, row, TimeoutError("Envío atascado recuperado"), settings, now)
+    await maintain_queue(
+        sm, StaffOutbox, settings, now, audit=staff_audit, prefix="STAFF_NOTIFICATION"
+    )
 
 
 async def process_staff_outbox_once(
@@ -173,18 +121,32 @@ async def process_staff_outbox_once(
                 )
         except (OutboundSendError, httpx.RequestError) as caught:
             error = caught
-        async with sm() as session, session.begin():
-            row = await session.get(StaffOutbox, claim.id, with_for_update=True)
-            if row is None or row.status != "SENDING" or row.claim_token != claim.token:
-                continue
-            if error is not None:
-                fail(session, row, error, settings, now)
-                continue
-            retire(row, state, now)
-            row.message_kind = kind
-            row.template_name = template if kind == "TEMPLATE" else None
-            if state == "SENT":
-                row.provider_message_id, row.sent_at = provider_id, now
+
+        def update(
+            row: StaffOutbox,
+            *,
+            message_kind: str | None = kind,
+            template_name: str = template,
+            delivery_state: str = state,
+            message_id: str | None = provider_id,
+        ) -> None:
+            row.message_kind = message_kind
+            row.template_name = template_name if message_kind == "TEMPLATE" else None
+            if delivery_state == "SENT":
+                row.provider_message_id, row.sent_at = message_id, now
                 row.last_error, row.last_error_code = None, None
-            staff_audit(session, f"STAFF_NOTIFICATION_{state}", row, old_status="SENDING")
+
+        await settle_claim(
+            sm,
+            StaffOutbox,
+            claim.id,
+            claim.token,
+            settings,
+            now,
+            state=state,
+            error=error,
+            update=update,
+            audit=staff_audit,
+            prefix="STAFF_NOTIFICATION",
+        )
     return len(claims)

@@ -2637,3 +2637,37 @@ La extracción no detecta falsificaciones, no acredita recepción de fondos y no
 sustituye la verificación bancaria humana. Conciliación bancaria: fase B2-4,
 fuera de esta entrega. Los comprobantes y datos bancarios pueden ser manipulados;
 las instrucciones incrustadas son datos, nunca instrucciones del sistema.
+
+## B4 — saldo, recordatorios y vencimiento (Leandro, 2026-10-02)
+
+El saldo total de una reserva debe pagarse a más tardar un día antes del evento:
+`balance_due_at = starts_at - 1 día`. Sin pago completo el evento no se realiza.
+La cancelación sigue siendo humana mediante la operación administrativa existente;
+el programador nunca cancela, libera la franja ni modifica Calendar. La reserva
+continúa RESERVED cuando se marca saldo vencido.
+
+Con BALANCE_REMINDERS_ENABLED activo, cada cinco minutos se evalúan las reservas
+RESERVED futuras con amount_paid_cop < price_cop. Se recuerda en la fecha del
+evento menos BOOKING_REMINDER_DAYS_BEFORE (tres días por defecto) y en la fecha del
+vencimiento, ambas a BOOKING_REMINDER_TIME (10:00 por defecto) en America/Bogota.
+Solo se envía si la hora ya llegó, el plazo de saldo no ha vencido y la reserva
+quedó confirmada antes de esa hora. Se usa el audit de transición a RESERVED;
+históricos nacidos directamente RESERVED sin transición usan created_at.
+Una reserva confirmada tarde omite el recordatorio anterior y registra
+BALANCE_REMINDER_SKIPPED_LATE. La restricción `now < balance_due_at` también puede
+omitir DUE si el plazo ya venció antes de las 10:00 de ese día.
+
+El envío usa exclusivamente la plantilla Meta aprobada recordatorio_saldo_reserva,
+idioma es, con los cinco parámetros y cuerpo literal documentados en
+`docs/product/staff-notifications.md`. No requiere ventana conversacional de 24 h.
+Sin CUSTOMER_TEMPLATE_BALANCE_REMINDER_NAME se omite el encolado y se registra
+BALANCE_REMINDER_NO_TEMPLATE. Cada tipo se deduplica por reserva; las auditorías
+de omisión también se deduplican. Un pago completo previo impide encolar; un pago
+completo posterior al encolado deja el recordatorio EXPIRED al reclamarlo, sin HTTP.
+
+Al vencer el saldo, balance_overdue_at se fija una sola vez al instante UTC del
+procesamiento. Se registra RESERVATION_BALANCE_OVERDUE y se encola BALANCE_OVERDUE
+para destinatarios activos con notify_on_evidence, mediante los canales y ventana
+de B3. Un pago de saldo completo establece payment_kind=FULL y borra ambos campos
+de vencimiento. Los importes los calcula el backend y todos los pagos los confirma
+un humano; la IA no decide el saldo, el envío, el vencimiento ni la cancelación.

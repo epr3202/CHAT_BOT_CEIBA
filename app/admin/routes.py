@@ -68,7 +68,7 @@ from app.customer.models import Customer
 from app.event.models import EVENT_TYPES, Event
 from app.handoff.models import Handoff
 from app.lead.models import Lead
-from app.notifications.models import NotificationRecipient, StaffOutbox
+from app.notifications.models import CustomerNotification, NotificationRecipient, StaffOutbox
 from app.notifications.service import enqueue_staff_notification
 from app.notifications.staff_texts import present_start, sanitize_param, window_until
 from app.orchestrator.service import enqueue_template
@@ -248,6 +248,7 @@ class ReservationPayload(BaseModel):
     amount_paid_cop: int
     payment_kind: Literal["DEPOSIT", "FULL"] | None
     balance_due_at: datetime | None
+    balance_overdue_at: datetime | None = None
     hold_expires_at: datetime | None
     external_calendar_id: str | None
     calendar_status: str
@@ -257,6 +258,7 @@ class ReservationPayload(BaseModel):
     deposit_amount_cop: int | None = None
     missing_cop: int | None = None
     evidences: list[dict] = Field(default_factory=list)
+    customer_notifications: list[dict] = Field(default_factory=list)
     calendar_synced: bool | None = None
     detail: str | None = None
 
@@ -515,6 +517,7 @@ async def list_reservations(
     reservation_status: Annotated[ReservationStatus | None, Query(alias="status")] = None,
     from_at: Annotated[datetime | None, Query(alias="from")] = None,
     to_at: Annotated[datetime | None, Query(alias="to")] = None,
+    balance_status: Annotated[Literal["pending", "overdue"] | None, Query()] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> list[ReservationPayload]:
     await authenticated_admin(session, authorization)
@@ -530,6 +533,12 @@ async def list_reservations(
     )
     if reservation_status is not None:
         query = query.where(Reservation.status == reservation_status)
+    if balance_status is not None:
+        query = query.where(
+            Reservation.status == "RESERVED", Reservation.amount_paid_cop < Reservation.price_cop
+        )
+        if balance_status == "overdue":
+            query = query.where(Reservation.balance_overdue_at.is_not(None))
     if from_at is not None:
         query = query.where(Reservation.starts_at >= from_at)
     if to_at is not None:
@@ -654,6 +663,19 @@ async def get_reservation(
     )
     return payload.model_copy(
         update={
+            "customer_notifications": [
+                {
+                    "kind": notification.kind,
+                    "status": notification.status,
+                    "sent_at": notification.sent_at,
+                    "created_at": notification.created_at,
+                }
+                for notification in await session.scalars(
+                    select(CustomerNotification)
+                    .where(CustomerNotification.reservation_id == reservation_id)
+                    .order_by(CustomerNotification.created_at, CustomerNotification.id)
+                )
+            ],
             "evidences": [
                 {
                     "id": e.id,
@@ -664,7 +686,7 @@ async def get_reservation(
                     "review": review_payload(await latest_review(session, e.id)),
                 }
                 for e in evidences
-            ]
+            ],
         }
     )
 
@@ -845,9 +867,12 @@ async def schedule_reservation(
             raise HTTPException(409, "La reserva está vencida o cancelada.")
         await check_fresh_booking(session, plan, body.starts_at, ends_at, exclude=reservation_id)
         old_start, old_end = row.starts_at, row.ends_at
+        old_due, old_overdue = row.balance_due_at, row.balance_overdue_at
         row.starts_at, row.ends_at = body.starts_at.astimezone(UTC), ends_at.astimezone(UTC)
         if row.payment_kind == "DEPOSIT":
             row.balance_due_at = row.starts_at - timedelta(days=1)
+            if row.balance_due_at > datetime.now(UTC):
+                row.balance_overdue_at = None
         event = await session.get(Event, row.event_id)
         event.event_date = row.starts_at.astimezone(ZoneInfo("America/Bogota")).date()
         event.event_date_type = "EXACT"
@@ -864,12 +889,20 @@ async def schedule_reservation(
                     "reservation_id": str(reservation_id),
                     "starts_at": old_start.isoformat(),
                     "ends_at": old_end.isoformat(),
+                    "balance_due_at": old_due.isoformat() if old_due else None,
+                    "balance_overdue_at": old_overdue.isoformat() if old_overdue else None,
                 },
                 new_value={
                     "reservation_id": str(reservation_id),
                     "starts_at": row.starts_at.isoformat(),
                     "ends_at": row.ends_at.isoformat(),
                     "event_date": event.event_date.isoformat(),
+                    "balance_due_at": (
+                        row.balance_due_at.isoformat() if row.balance_due_at else None
+                    ),
+                    "balance_overdue_at": (
+                        row.balance_overdue_at.isoformat() if row.balance_overdue_at else None
+                    ),
                 },
                 reason="Reprogramación administrativa",
                 request_id=request_id or str(uuid4()),

@@ -132,6 +132,7 @@ puede renderizarse. Una reserva manual sin conversation_id también notifica si 
 evidencia pertenece a una conversación válida del mismo cliente. Se descarta
 conservar DEFERRED por ese NULL porque contradiría las notificaciones exigidas
 para todos los comprobantes vinculados y excluiría los pagos de saldo posteriores.
+
 ## 2026-10-02 — D6: lease mutable y pre-revisión en dos transacciones
 
 TX1 bloquea con FOR UPDATE SKIP LOCKED y registra claim_token/claimed_at en
@@ -147,3 +148,27 @@ Worker y re-revisión administrativa usan el mismo flujo. Un lease vigente devue
 OUTBOX_SENDING_TIMEOUT_SECONDS puede reclamarse. Descarga FAILED_PERMANENT y MIME
 no imagen producen SKIPPED sin proveedor. Se descarta mantener el bloqueo abierto
 durante HTTP porque impedía aceptar comprobantes mientras respondía la IA.
+
+## 2026-10-02 — B4: cola de recordatorios programados y saldo vencido
+
+Se crea customer_notification separada porque el outbox conversacional de
+clientes exige message_id de un mensaje entrante y pasa por admisión de la
+conversación. Un recordatorio programado no tiene mensaje origen y debe salir
+aunque esa conversación esté cerrada. Siempre usa plantilla Meta aprobada,
+idioma es y parámetros saneados, sin ventana de 24 horas ni texto libre.
+Se descarta fabricar un mensaje entrante o una conversación para el recordatorio.
+
+La refactorización mínima extrae claim/recovery/settlement en
+app/notifications/queue.py y la actualización de statuses en un helper compartido.
+Staff mantiene sus APIs y su selección TEXT/TEMPLATE/DEFERRED; sus pruebas
+existentes se ejecutan sin cambios. Solo la consulta, el snapshot y la admisión
+de cada tabla son específicos. Todos los proveedores se llaman tras el commit.
+El programador respeta el orden de bloqueos Customer → Reservation de inbound;
+se descarta bloquear primero reservas porque el FK de la cola produciría el
+orden inverso al recibir otro comprobante del cliente.
+
+El vencimiento marca y avisa sin cancelar. Una reprogramación humana a un nuevo
+plazo futuro limpia la marca anterior, con valores viejos y nuevos en el audit;
+de lo contrario el panel mostraría saldo vencido antes del nuevo plazo.
+Los tipos de recordatorio conservan UNIQUE(reservation_id, kind): reprogramar
+no crea una segunda entrega del mismo tipo para esa reserva.

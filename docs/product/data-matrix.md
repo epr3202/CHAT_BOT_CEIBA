@@ -1926,7 +1926,7 @@ cinco estados D2 de reserva:
 
 | Entidad/campo | Persistencia y permisos |
 | --- | --- |
-| reservation.balance_overdue_at | timestamptz nullable; el programador SYSTEM lo fija una vez al alcanzar balance_due_at con saldo y lo borra la liquidación humana del pago completo. No provoca cancelación automática. ADMIN lo consulta junto con pagado, saldo y vencimiento. |
+| reservation.balance_overdue_at | timestamptz nullable; el programador SYSTEM lo fija una vez al alcanzar balance_due_at con saldo. Se borra al liquidar humanamente el pago completo o al reprogramar a un plazo futuro. No provoca cancelación automática. ADMIN lo consulta junto con pagado, saldo y vencimiento. |
 | payment_evidence.prereview_claim_token / prereview_claimed_at | UUID / timestamptz nullable, lease mutable de pre-revisión. TX1 reclama y confirma antes de leer el archivo o llamar a OpenRouter; TX2 comprueba token y PENDING_REVIEW, inserta review/AI/audit y limpia el lease. El timeout permite recuperación; no se modifica el historial append-only. |
 | customer_notification | ID bigint; FK reservation_id y customer_id; kind CHECK BALANCE_REMINDER_EARLY/BALANCE_REMINDER_DUE; teléfono, cinco params JSONB saneados y template_name; estados e intentos mutables con la misma semántica que staff_outbox; próxima ejecución, claim UUID y timestamptz, ID proveedor, error/código, sent_at y timestamps UTC. UNIQUE(reservation_id, kind); índices para proveedor y pendientes/enviando. ADMIN consulta tipo/estado/fecha en el detalle de reserva. |
 | staff_outbox.event_kind | El CHECK admite también BALANCE_OVERDUE, con cuatro parámetros: identidad, saldo pendiente, plan e inicio. Usa destinatarios activos con notify_on_evidence y la deduplicación B3 existente. |

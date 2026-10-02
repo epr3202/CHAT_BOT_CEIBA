@@ -651,6 +651,8 @@ async def run_worker() -> None:
                 _run_inbox_loop(sessionmaker, settings),
                 _run_payment_evidence_loop(sessionmaker, settings),
                 _run_reservation_expiration_loop(sessionmaker),
+                _run_balance_reminder_loop(sessionmaker, settings),
+                _run_customer_notification_loop(sessionmaker, sender, settings),
             )
         finally:
             await engine.dispose()
@@ -683,6 +685,35 @@ async def _run_reservation_expiration_loop(
         except Exception:
             logger.exception("reservation_expiration_failed")
         await asyncio.sleep(3600)
+
+
+async def _run_balance_reminder_loop(
+    sessionmaker: async_sessionmaker[AsyncSession], settings: Settings
+) -> None:
+    from app.reservation.reminders import enqueue_balance_reminders
+
+    while True:
+        try:
+            count = await enqueue_balance_reminders(sessionmaker, settings, datetime.now(UTC))
+            logger.info("balance_reminders_completed", enqueued=count)
+        except Exception:
+            logger.exception("balance_reminders_failed")
+        await asyncio.sleep(300)
+
+
+async def _run_customer_notification_loop(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    sender: WhatsAppOutboundClient,
+    settings: Settings,
+) -> None:
+    from app.notifications.customer_worker import process_customer_notifications_once
+
+    while True:
+        try:
+            await process_customer_notifications_once(sessionmaker, sender, settings)
+        except Exception:
+            logger.exception("customer_notification_poll_failed")
+        await asyncio.sleep(settings.outbox_poll_interval_seconds)
 
 
 async def _run_inbox_loop(

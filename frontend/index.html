@@ -330,6 +330,8 @@
           <div class="managementForm">
             <label for="reservationStatusFilter">Estado</label>
             <select id="reservationStatusFilter"><option value="">Todos</option></select>
+            <label for="reservationBalanceFilter">Saldo</label>
+            <select id="reservationBalanceFilter"><option value="">Todos</option><option value="pending">Saldo pendiente</option><option value="overdue">Saldo vencido</option></select>
             <label>Desde<input id="reservationFromFilter" type="date" /></label>
             <label>Hasta<input id="reservationToFilter" type="date" /></label>
           </div>
@@ -348,6 +350,8 @@
           </div>
           <p id="reservationDetailFeedback" role="status" aria-live="polite" hidden></p>
           <dl id="reservationDetails" class="resetCounts" aria-live="polite"></dl>
+          <h3>Recordatorios</h3>
+          <div id="reservationCustomerNotifications" class="cardList"></div>
           <div id="reservationCalendarActions" class="actions"><button id="retryReservationCalendar" type="button" hidden>Reintentar calendario</button></div>
           <h3>Comprobantes</h3>
           <div id="reservationEvidences" class="cardList"></div>

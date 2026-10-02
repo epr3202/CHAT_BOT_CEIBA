@@ -33,9 +33,22 @@ PAYMENT_PENDING_CREATED:
 
 > Nueva solicitud de reserva de {1}: {2} el {3}. Queda pendiente del abono de {4}; te avisaremos cuando llegue el comprobante.
 
+BALANCE_OVERDUE, aprobado por Leandro el 2026-10-02:
+
+> Saldo vencido: {1} tiene {2} sin pagar de la reserva de {3} el {4}. Según la política, la reserva no se realiza sin el pago completo. Revísala en el panel.
+
+Este aviso usa identidad, saldo total pendiente, plan e inicio presentado en Bogotá,
+en ese orden. Se dirige a destinatarios activos con `notify_on_evidence`. Usa la
+plantilla Meta `aviso_saldo_vencido`, idioma `es`, configurada mediante
+`STAFF_TEMPLATE_OVERDUE_NAME`. El canal TEXT, el enlace al panel, la ventana,
+DEFERRED y la reapertura siguen las reglas de B3. Se deduplica por destinatario,
+evento y reserva. El aviso informa al asesor; no cancela ni libera la reserva.
+
 Los parámetros se calculan al encolar: nombre y teléfono, o solo teléfono si no
 hay nombre; nombre del plan; inicio presentado en America/Bogota; abono esperado
 pendiente en COP. El teléfono colombiano se presenta como `+57 3xx xxx xxxx`.
+Cuando el comprobante corresponde al saldo de una reserva RESERVED, el parámetro
+4 es el saldo total pendiente, en lugar del anticipo faltante.
 Cada parámetro reemplaza saltos y tabuladores por espacios, colapsa espacios,
 quita espacios exteriores y se recorta a 120 caracteres; vacío se convierte en
 `-`. TEST utiliza `Prueba del panel`, `Plan de prueba`, fecha y hora actual de
@@ -83,6 +96,7 @@ El botón Enviar prueba respeta el flag: apagado devuelve 409 «Avisos desactiva
 | STAFF_NOTIFICATIONS_ENABLED | false | No encola ni envía al estar apagado; administración disponible |
 | STAFF_TEMPLATE_EVIDENCE_NAME | vacío | EVIDENCE_RECEIVED y TEST; usar aviso_comprobante_reserva tras aprobación |
 | STAFF_TEMPLATE_PENDING_NAME | vacío | PAYMENT_PENDING_CREATED; usar aviso_solicitud_reserva tras aprobación |
+| STAFF_TEMPLATE_OVERDUE_NAME | vacío | BALANCE_OVERDUE; usar aviso_saldo_vencido tras aprobación |
 | STAFF_TEMPLATE_LANGUAGE | es | Idioma de las plantillas |
 | STAFF_WINDOW_SAFETY_MINUTES | 30 | Entre 0 y 180 |
 | STAFF_DEFERRED_MAX_AGE_HOURS | 48 | Entero positivo |
@@ -92,6 +106,61 @@ El loop usa claims UUID y FOR UPDATE SKIP LOCKED. Recupera SENDING atascados con
 el mismo umbral del outbox de clientes. El claim se confirma antes de HTTP y su
 liquidación ocurre en otra transacción, condicionada al token. Un error de
 programación al insertar el aviso se propaga: no se oculta con un try/except.
+
+## B4 — recordatorios programados de saldo al cliente
+
+`customer_notification` es una cola separada. Un recordatorio no tiene mensaje
+entrante de origen y debe poder enviarse con la conversación cerrada. No usa la
+admisión del outbox conversacional ni la ventana de 24 horas: siempre sale como
+plantilla Meta aprobada. El claim con SKIP LOCKED, recuperación de leases,
+settlement condicionado al token y backoff se comparten con staff_outbox mediante
+`app/notifications/queue.py`; los status del proveedor comparten el mismo avance
+monotónico y registran `message_provider_status.message_id=NULL`. Los callbacks
+duplicados no repiten cambios ni auditoría. Los errores permanentes y transitorios
+son los mismos de B3; una plantilla inexistente (132001) termina en FAILED.
+
+La plantilla `recordatorio_saldo_reserva`, idioma `es`, fue aprobada por Leandro
+el 2026-10-02 con este cuerpo literal:
+
+> Hola, {{1}}. Te recordamos que tu reserva de {{2}} es el {{3}}. Para realizarla, el saldo de {{4}} debe estar pagado a más tardar el {{5}}. Puedes transferir a Bancolombia, cuenta de ahorros No. 756-748987-62, a nombre de Emerson Pulgarin Restrepo, y enviarnos aquí el comprobante.
+
+Sus cinco parámetros se calculan al encolar y pasan por `sanitize_param`: primer
+nombre de Customer.full_name o `cliente` cuando no existe; nombre del plan;
+`present_start(starts_at)`; saldo total en COP; `present_start(balance_due_at)`.
+El primer nombre y demás variables se insertan una sola vez dentro de la plantilla
+aprobada. El renderer no convierte texto del cliente en una respuesta libre.
+Si cambian los datos bancarios, hay que modificar y volver a aprobar
+`recordatorio_saldo_reserva` antes de usar la nueva versión.
+
+El programador se ejecuta cada cinco minutos con reloj UTC explícito y reglas
+horarias de America/Bogota. Evalúa únicamente reservas RESERVED futuras con saldo.
+EARLY corresponde al día del evento menos tres días; DUE, al día del vencimiento.
+Ambos se programan a las 10:00 Bogotá y exigen que la reserva ya estuviera RESERVED
+antes de esa hora y que aún no haya vencido el saldo. La fecha de confirmación se
+lee de RESERVATION_STATUS_CHANGED; para históricos creados directamente RESERVED
+sin ese evento, se usa created_at. No se usa updated_at como fecha de confirmación.
+Una hora pasada antes de confirmar genera BALANCE_REMINDER_SKIPPED_LATE una sola
+vez por reserva/tipo, sin enviar el recordatorio omitido. Si las 10:00 del día DUE
+ya son posteriores al vencimiento, no se envía: prevalece `now < balance_due_at`.
+
+| Variable | Default | Regla |
+| --- | --- | --- |
+| BALANCE_REMINDERS_ENABLED | false | Desactiva programación y envío al cliente |
+| BOOKING_REMINDER_DAYS_BEFORE | 3 | Entero mayor o igual a uno |
+| BOOKING_REMINDER_TIME | 10:00 | HH:MM válido, hora de Bogotá |
+| CUSTOMER_TEMPLATE_BALANCE_REMINDER_NAME | vacío | Usar recordatorio_saldo_reserva tras aprobación |
+
+Sin nombre de plantilla configurado no se encola y se audita
+BALANCE_REMINDER_NO_TEMPLATE una sola vez por reserva/tipo. UNIQUE(reservation_id,
+kind) impide duplicados. Si el cliente paga todo antes de programar, no se genera
+aviso; si paga cuando ya está encolado, el claim lo deja EXPIRED sin HTTP. También
+vence sin enviar si la reserva fue cancelada o el evento ya pasó. El flag de
+recordatorios no sustituye STAFF_NOTIFICATIONS_ENABLED para avisos internos.
+
+Cuando `now >= balance_due_at`, el sistema marca balance_overdue_at una sola vez,
+audita RESERVATION_BALANCE_OVERDUE y encola BALANCE_OVERDUE. La reserva sigue RESERVED
+y conserva su franja; la decisión de cancelación pertenece al asesor. El pago
+completo borra balance_due_at y balance_overdue_at.
 
 ## Revisión de comprobantes y nombre de reserva
 

@@ -41,7 +41,11 @@ export const labels = {
   staffMessageKind: { TEXT: "Texto", TEMPLATE: "Plantilla" },
   staffEventKind: {
     EVIDENCE_RECEIVED: "Comprobante recibido", PAYMENT_PENDING_CREATED: "Solicitud de reserva",
+    BALANCE_OVERDUE: "Saldo vencido",
     TEST: "Prueba del panel",
+  },
+  customerNotificationKind: {
+    BALANCE_REMINDER_EARLY: "Recordatorio anticipado", BALANCE_REMINDER_DUE: "Recordatorio de vencimiento",
   },
   bookingBlocker: {
     CALENDAR_EXCLUSIVE: "Evento exclusivo en calendario",

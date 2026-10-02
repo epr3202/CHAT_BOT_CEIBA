@@ -14,6 +14,8 @@ STAFF_TEXTS = {
     "PAYMENT_PENDING_CREATED": "Nueva solicitud de reserva de {1}: {2} el {3}. "
     "Queda pendiente del abono de {4}; te avisaremos cuando llegue el "
     "comprobante.",
+    "BALANCE_OVERDUE": "Saldo vencido: {1} tiene {2} sin pagar de la reserva de {3} el {4}. "
+    "Según la política, la reserva no se realiza sin el pago completo. Revísala en el panel.",
 }
 STAFF_TEXTS["TEST"] = STAFF_TEXTS["EVIDENCE_RECEIVED"]
 PANEL_URL = "https://admin.ceibaclubhouse.com"
@@ -57,6 +59,8 @@ def render_staff_text(event_kind: str, params: list[str]) -> str:
 
 
 def template_for(event_kind: str, settings: Settings) -> str:
+    if event_kind == "BALANCE_OVERDUE":
+        return settings.staff_template_overdue_name.strip()
     return (
         settings.staff_template_pending_name
         if event_kind == "PAYMENT_PENDING_CREATED"

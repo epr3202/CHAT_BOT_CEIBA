@@ -69,6 +69,15 @@ class Settings(BaseSettings):
         default=48, alias="STAFF_DEFERRED_MAX_AGE_HOURS", ge=1
     )
     staff_outbox_max_attempts: int = Field(default=5, alias="STAFF_OUTBOX_MAX_ATTEMPTS", ge=1)
+    balance_reminders_enabled: bool = Field(default=False, alias="BALANCE_REMINDERS_ENABLED")
+    booking_reminder_days_before: int = Field(default=3, alias="BOOKING_REMINDER_DAYS_BEFORE", ge=1)
+    booking_reminder_time: str = Field(
+        default="10:00", alias="BOOKING_REMINDER_TIME", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+    )
+    customer_template_balance_reminder_name: str = Field(
+        default="", alias="CUSTOMER_TEMPLATE_BALANCE_REMINDER_NAME"
+    )
+    staff_template_overdue_name: str = Field(default="", alias="STAFF_TEMPLATE_OVERDUE_NAME")
     catalog_storage_dir: str = Field(default="catalogs", alias="CATALOG_STORAGE_DIR")
     catalog_media_ttl_days: int = Field(default=25, alias="CATALOG_MEDIA_TTL_DAYS")
     catalog_max_file_mb: int = Field(default=16, alias="CATALOG_MAX_FILE_MB")

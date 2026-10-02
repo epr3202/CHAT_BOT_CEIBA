@@ -85,7 +85,7 @@ async def enqueue_for_reservation(
 
     toggle = (
         NotificationRecipient.notify_on_evidence
-        if event_kind == "EVIDENCE_RECEIVED"
+        if event_kind in {"EVIDENCE_RECEIVED", "BALANCE_OVERDUE"}
         else NotificationRecipient.notify_on_payment_pending
     )
     recipients = list(
@@ -116,6 +116,8 @@ async def enqueue_for_reservation(
             - reservation.amount_paid_cop,
         ),
     )
+    if event_kind == "BALANCE_OVERDUE":
+        params = [params[0], params[3], params[1], params[2]]
     for recipient_id in recipients:
         await enqueue_staff_notification(
             session,
