@@ -1153,8 +1153,10 @@ async def settle_payment_evidence(
     blockers = []
     if accepting and evidence.reservation_id:
         row = await session.get(Reservation, evidence.reservation_id)
-        if row is not None and row.amount_paid_cop + body.amount_cop >= deposit_amount(
-            row.price_cop
+        if (
+            row is not None
+            and row.status in {"PAYMENT_PENDING", "PAYMENT_REVIEW"}
+            and row.amount_paid_cop + body.amount_cop >= deposit_amount(row.price_cop)
         ):
             plan = await session.get(Plan, row.plan_id)
             start, end = row.starts_at, row.ends_at

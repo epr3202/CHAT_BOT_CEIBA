@@ -77,6 +77,16 @@ def payment_review_context(evidence: PaymentEvidence) -> dict[str, Any]:
     }
 
 
+def payment_evidence_ack_context(evidence: PaymentEvidence, case: Handoff) -> dict[str, Any]:
+    """Receipt authority is separate from transfer notices and human payment decisions."""
+    return {
+        "origin": "PAYMENT_EVIDENCE_ACK",
+        "purpose": "EVIDENCE_RECEIPT",
+        "evidence_id": evidence.id,
+        "handoff_id": case.id,
+    }
+
+
 async def lock_delivery_row(
     session: AsyncSession, outbox_id: int, *, skip: bool = False
 ) -> tuple[Conversation, Outbox] | None:
@@ -156,6 +166,8 @@ async def eligibility(
         if context.get("purpose") != "REPLY" or await human_proof(session, row) is None:
             return "REVIEW", "HUMAN_ORIGIN_UNPROVEN"
         return "ELIGIBLE", "AUTHORIZED_HUMAN_REPLY"
+    if origin == "PAYMENT_EVIDENCE_ACK":
+        return await payment_ack_eligibility(session, conversation, row, context)
     if origin == "PAYMENT_REVIEW_RESULT":
         evidence_id = context.get("evidence_id")
         if type(evidence_id) is not int or context.get("purpose") != "PAYMENT_DECISION":
@@ -204,6 +216,64 @@ async def eligibility(
     ):
         return "SUPPRESSED", "AUTOMATION_PAUSED"
     return "ELIGIBLE", "CURRENT_AUTOMATION_PERIOD"
+
+
+async def payment_ack_eligibility(
+    session: AsyncSession,
+    conversation: Conversation,
+    row: Outbox,
+    context: dict[str, Any],
+) -> tuple[Eligibility, str]:
+    from app.channel.models import Message
+    from app.reservation.models import Reservation
+
+    if context.get("purpose") != "EVIDENCE_RECEIPT":
+        return "SUPPRESSED", "PAYMENT_ACK_INVALID_PURPOSE"
+    evidence_id, case_id = context.get("evidence_id"), context.get("handoff_id")
+    if type(evidence_id) is not int or type(case_id) is not int:
+        return "SUPPRESSED", "PAYMENT_ACK_INVALID_PROOF"
+    if conversation.state == "HUMAN_ACTIVE":
+        return "SUPPRESSED", "PAYMENT_ACK_HUMAN_ACTIVE"
+    if conversation.state == "CLOSED":
+        return "SUPPRESSED", "PAYMENT_ACK_CLOSED"
+    if conversation.state != "WAITING_FOR_HUMAN":
+        return "SUPPRESSED", "PAYMENT_ACK_WAIT_ENDED"
+    if not conversation.bot_enabled:
+        return "SUPPRESSED", "PAYMENT_ACK_BOT_DISABLED"
+    cases = list(
+        await session.scalars(
+            select(Handoff).where(
+                Handoff.conversation_id == conversation.id,
+                Handoff.status.in_(("PENDING", "TAKEN")),
+            )
+        )
+    )
+    if any(case.status == "TAKEN" for case in cases):
+        return "SUPPRESSED", "PAYMENT_ACK_HANDOFF_TAKEN"
+    if len(cases) != 1 or cases[0].reason != "PAYMENT_REVIEW" or cases[0].id != case_id:
+        return "SUPPRESSED", "PAYMENT_ACK_OTHER_HANDOFF"
+    evidence = await session.get(PaymentEvidence, evidence_id)
+    if (
+        evidence is None
+        or evidence.reservation_id is None
+        or evidence.conversation_id != conversation.id
+        or evidence.customer_id != conversation.customer_id
+        or evidence.message_id != row.message_id
+    ):
+        return "SUPPRESSED", "PAYMENT_ACK_EVIDENCE_UNLINKED"
+    reservation = await session.get(Reservation, evidence.reservation_id)
+    message = await session.get(Message, evidence.message_id)
+    if reservation is None or reservation.customer_id != conversation.customer_id:
+        return "SUPPRESSED", "PAYMENT_ACK_RESERVATION_UNRELATED"
+    if (
+        message is None
+        or message.direction != "INBOUND"
+        or message.message_type != "image"
+        or message.customer_id != conversation.customer_id
+        or message.conversation_id != conversation.id
+    ):
+        return "SUPPRESSED", "PAYMENT_ACK_NOT_IMAGE"
+    return "ELIGIBLE", "AUTHORIZED_PAYMENT_EVIDENCE_ACK"
 
 
 def stop_delivery(row: Outbox, result: Eligibility, reason: str, now: datetime) -> None:

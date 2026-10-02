@@ -97,6 +97,41 @@ el patrón probado de claims, stale recovery, backoff y envío posterior al comm
 con idempotencia por destinatario/evento/fuente y fallback de ventana a plantilla.
 La administración queda restringida a ADMIN. No se añade infraestructura externa.
 
+## 2026-10-02 — D5: múltiples comprobantes, saldo y excepción de acuse durante pausa
+
+El incidente de la conversación 196 mostró que un primer abono de $100.000 para
+una reserva de $400.000 dejaba el handoff abierto, una segunda imagen se capturaba
+sin acuse y una tercera podía quedar sin reserva porque la búsqueda solo admitía
+PAYMENT_PENDING de la conversación original. D5 vincula por cliente una reserva
+futura, priorizando PAYMENT_REVIEW, PAYMENT_PENDING y RESERVED con saldo. Las
+asociaciones en PAYMENT_REVIEW y RESERVED no transicionan la reserva; aceptar el
+saldo es decisión humana y conserva la franja y Calendar.
+
+La regla R9 original reservaba HANDOFF_NOTICE al caso recién creado y
+PAYMENT_REVIEW_RESULT a una decisión humana persistida. Se autoriza explícitamente
+una excepción independiente PAYMENT_EVIDENCE_ACK/EVIDENCE_RECEIPT solo para una
+imagen vinculada en la misma transacción bajo el único handoff PAYMENT_REVIEW
+PENDING de la conversación en WAITING_FOR_HUMAN. No admite textos, otros medios,
+otro handoff abierto, TAKEN/HUMAN_ACTIVE, CLOSED ni bot deshabilitado. Cada mensaje
+externo genera como máximo un acuse, cuya admisión revalida asociación y handoff.
+La toma humana posterior suprime el acuse encolado con motivo explícito. Se
+conservan el HANDOFF_NOTICE del primer comprobante y la captura pasiva documental.
+
+Se descarta el silencio hasta la intervención de un asesor porque deja al cliente
+sin confirmación de recepción de sus abonos, como ocurrió en el incidente 196.
+También se descarta reutilizar HANDOFF_NOTICE del caso previo o inventar una
+decisión humana: debilitaría la autoridad R9. La excepción se documenta junto al
+código y no otorga al bot autoridad para aceptar pagos, reservar ni cancelar.
+
+La liquidación del último comprobante pendiente resuelve el handoff de pago y
+devuelve el control a BOT_ACTIVE solo si no hay otros casos abiertos. Un conflicto
+de disponibilidad conserva la pausa mediante RESERVATION_CONFIRMATION. Esta
+resolución ocurre tras el commit de liquidación, en una transacción corta con
+locks Customer → Conversation → Handoff; también ocurre si la notificación no
+puede renderizarse. Una reserva manual sin conversation_id también notifica si la
+evidencia pertenece a una conversación válida del mismo cliente. Se descarta
+conservar DEFERRED por ese NULL porque contradiría las notificaciones exigidas
+para todos los comprobantes vinculados y excluiría los pagos de saldo posteriores.
 ## 2026-10-02 — D6: lease mutable y pre-revisión en dos transacciones
 
 TX1 bloquea con FOR UPDATE SKIP LOCKED y registra claim_token/claimed_at en

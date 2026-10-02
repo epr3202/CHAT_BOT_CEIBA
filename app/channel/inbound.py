@@ -16,6 +16,7 @@ from app.ai.client import OpenRouterIntentClient
 from app.ai.errors import AIErrorReason, AIUnavailable
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.audit.models import AuditEvent
+from app.channel.delivery import payment_ack_eligibility, payment_evidence_ack_context
 from app.channel.models import InboxJob, Message, MessageProviderStatus, Outbox, WebhookEvent
 from app.channel.schemas import InboundWhatsAppMessage
 from app.channel.states import Channel
@@ -38,6 +39,7 @@ from app.orchestrator.service import (
 )
 from app.orchestrator.service import OrchestrationInput as OrchestrationInput
 from app.orchestrator.service import orchestrate_inbound_message as orchestrate_inbound_message
+from app.payment.models import PaymentEvidence
 from app.payment.service import create_payment_evidence_for_open_handoff, payment_media_fields
 
 logger = structlog.get_logger(__name__)
@@ -471,6 +473,17 @@ async def route_non_text_in_session(
                         capture_result = (
                             "EVIDENCE_REGISTERED" if evidence else "NO_OPEN_PAYMENT_CASE"
                         )
+                        if evidence is not None and evidence.reservation_id is not None:
+                            await acknowledge_linked_payment_evidence(
+                                session,
+                                sessionmaker,
+                                conversation,
+                                customer,
+                                message,
+                                evidence,
+                                handoff,
+                                request_id=request_id,
+                            )
         session.add(
             AuditEvent(
                 actor=SYSTEM_ACTOR,
@@ -491,17 +504,28 @@ async def route_non_text_in_session(
     if settings.self_service_booking_enabled and payment_media_fields(message) is not None:
         from app.ai.schemas import IntentClassification
         from app.orchestrator.service import OrchestrationInput, create_handoff_and_pause
-        from app.reservation.models import Reservation
+        from app.payment.service import open_payment_handoff
+        from app.reservation.booking import payment_reservation_candidate
 
-        booking = await session.scalar(
-            select(Reservation.reservation_id)
-            .where(
-                Reservation.conversation_id == conversation.id,
-                Reservation.status == "PAYMENT_PENDING",
-            )
-            .limit(1)
-        )
+        booking = await payment_reservation_candidate(session, customer.id, now=datetime.now(UTC))
         if booking is not None:
+            existing_case = await open_payment_handoff(session, conversation.id)
+            if existing_case is not None:
+                evidence = await create_payment_evidence_for_open_handoff(
+                    session, conversation, customer, message, request_id=request_id
+                )
+                if evidence is not None and evidence.reservation_id is not None:
+                    await acknowledge_linked_payment_evidence(
+                        session,
+                        sessionmaker,
+                        conversation,
+                        customer,
+                        message,
+                        evidence,
+                        existing_case,
+                        request_id=request_id,
+                    )
+                return True
             await create_handoff_and_pause(
                 session,
                 settings,
@@ -578,6 +602,76 @@ async def route_non_text_in_session(
             {},
         )
     return True
+
+
+async def acknowledge_linked_payment_evidence(
+    session: AsyncSession,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    conversation: Conversation,
+    customer: Customer,
+    message: Message,
+    evidence: PaymentEvidence,
+    handoff: Handoff,
+    *,
+    request_id: uuid.UUID | str | None,
+) -> None:
+    """Admit only a linked image receipt under an exclusive pending payment handoff."""
+    context = payment_evidence_ack_context(evidence, handoff)
+    candidate = Outbox(
+        conversation_id=conversation.id,
+        message_id=message.id,
+        channel=Channel.WHATSAPP,
+        recipient_phone_number=customer.phone_number,
+        payload={},
+        delivery_context=context,
+    )
+    permitted, reason = await payment_ack_eligibility(session, conversation, candidate, context)
+    if permitted != "ELIGIBLE":
+        session.add(
+            AuditEvent(
+                actor=SYSTEM_ACTOR,
+                action="PAYMENT_ACK_SKIPPED_" + reason.removeprefix("PAYMENT_ACK_"),
+                entity="payment_evidence",
+                old_value=None,
+                new_value={
+                    "evidence_id": evidence.id,
+                    "message_id": message.id,
+                    "conversation_id": conversation.id,
+                    "handoff_id": handoff.id,
+                },
+                reason=reason,
+                request_id=request_id,
+            )
+        )
+        return
+    if await outbox_exists_for_message(session, message.id):
+        return
+    from app.conversation.knowledge import KnowledgeRenderError
+
+    try:
+        await enqueue_template(
+            session,
+            sessionmaker,
+            conversation,
+            customer,
+            message,
+            "RESP-BOOKING-EVIDENCE-001",
+            {},
+            payment_ack=(evidence, handoff),
+            strict=True,
+        )
+    except KnowledgeRenderError as exc:
+        session.add(
+            AuditEvent(
+                actor=SYSTEM_ACTOR,
+                action="PAYMENT_ACK_SKIPPED_TEMPLATE_UNAVAILABLE",
+                entity="payment_evidence",
+                old_value=None,
+                new_value={"evidence_id": evidence.id, "conversation_id": conversation.id},
+                reason=exc.reason.value,
+                request_id=request_id,
+            )
+        )
 
 
 async def has_open_payment_handoff(session: AsyncSession, conversation_id: int) -> bool:

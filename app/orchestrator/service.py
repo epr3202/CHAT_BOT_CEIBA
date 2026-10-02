@@ -38,6 +38,7 @@ from app.channel.delivery import (
     TRANSFER_RESPONSE_CODES,
     automatic_context,
     handoff_context,
+    payment_evidence_ack_context,
     payment_review_context,
 )
 from app.channel.models import Message, Outbox
@@ -4130,6 +4131,7 @@ async def enqueue_template(
     *,
     notice_case: Handoff | None = None,
     payment_decision: PaymentEvidence | None = None,
+    payment_ack: tuple[PaymentEvidence, Handoff] | None = None,
     strict: bool = False,
 ) -> None:
     rendered_code = response_code
@@ -4144,7 +4146,9 @@ async def enqueue_template(
 
     conversation.last_question_code = response_code
     context = automatic_context(conversation, "TEMPLATE")
-    if notice_case is not None and rendered_code in TRANSFER_RESPONSE_CODES:
+    if payment_ack is not None and rendered_code == "RESP-BOOKING-EVIDENCE-001":
+        context = payment_evidence_ack_context(*payment_ack)
+    elif notice_case is not None and rendered_code in TRANSFER_RESPONSE_CODES:
         context = await handoff_context(session, conversation, notice_case)
     elif payment_decision is not None and rendered_code in {
         "RESP-PAYMENT-004",
@@ -4152,6 +4156,8 @@ async def enqueue_template(
         "RESP-BOOKING-CONFIRMED-001",
         "RESP-BOOKING-PARTIAL-001",
         "RESP-BOOKING-REJECTED-001",
+        "RESP-BOOKING-BALANCE-PAID-001",
+        "RESP-BOOKING-BALANCE-PARTIAL-001",
     }:
         context = payment_review_context(payment_decision)
     session.add(

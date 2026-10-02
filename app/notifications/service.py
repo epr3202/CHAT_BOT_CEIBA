@@ -106,7 +106,15 @@ async def enqueue_for_reservation(
         customer=customer,
         plan=plan,
         starts_at=reservation.starts_at,
-        deposit_cop=max(0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop),
+        deposit_cop=max(
+            0,
+            (
+                reservation.price_cop
+                if reservation.status == "RESERVED"
+                else deposit_amount(reservation.price_cop)
+            )
+            - reservation.amount_paid_cop,
+        ),
     )
     for recipient_id in recipients:
         await enqueue_staff_notification(

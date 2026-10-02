@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
@@ -147,29 +147,36 @@ async def attach_payment_evidence(
     """Link once in the existing payment transaction; preserve human review authority."""
     if evidence.reservation_id is not None:
         return None
-    if evidence.conversation_id is not None:
-        identity = Reservation.conversation_id == evidence.conversation_id
-    elif evidence.lead_id is not None:
-        identity = Reservation.lead_id == evidence.lead_id
-    else:
-        return None
-    reservation = await session.scalar(
-        select(Reservation)
-        .where(identity, Reservation.status == "PAYMENT_PENDING")
-        .order_by(Reservation.created_at.desc(), Reservation.reservation_id.desc())
-        .limit(1)
-        .with_for_update()
+    reservation = await payment_reservation_candidate(
+        session, evidence.customer_id, now=datetime.now(UTC), lock=True
     )
     if reservation is None:
         return None
     evidence.reservation_id = reservation.reservation_id
-    await transition_reservation(
-        session,
-        reservation,
-        "PAYMENT_REVIEW",
-        actor="SYSTEM",
-        reason="Comprobante recibido",
-        request_id=str(request_id) if request_id is not None else None,
+    if reservation.status == "PAYMENT_PENDING":
+        await transition_reservation(
+            session,
+            reservation,
+            "PAYMENT_REVIEW",
+            actor="SYSTEM",
+            reason="Comprobante recibido",
+            request_id=str(request_id) if request_id is not None else None,
+        )
+    session.add(
+        AuditEvent(
+            actor="SYSTEM",
+            action="PAYMENT_EVIDENCE_LINKED",
+            entity="payment_evidence",
+            old_value={"evidence_id": evidence.id, "reservation_id": None},
+            new_value={
+                "evidence_id": evidence.id,
+                "reservation_id": str(reservation.reservation_id),
+                "customer_id": evidence.customer_id,
+                "reservation_status": reservation.status,
+            },
+            reason="Comprobante vinculado a la reserva futura del cliente",
+            request_id=request_id,
+        )
     )
     from app.notifications.service import enqueue_for_reservation
 
@@ -183,3 +190,39 @@ async def attach_payment_evidence(
         request_id=request_id,
     )
     return reservation
+
+
+async def payment_reservation_candidate(
+    session: AsyncSession,
+    customer_id: int,
+    *,
+    now: datetime,
+    lock: bool = False,
+) -> Reservation | None:
+    """Select the newest future customer booking, with review/pending/balance priority."""
+    statement = (
+        select(Reservation)
+        .where(
+            Reservation.customer_id == customer_id,
+            Reservation.starts_at > now,
+            or_(
+                Reservation.status.in_(("PAYMENT_REVIEW", "PAYMENT_PENDING")),
+                and_(
+                    Reservation.status == "RESERVED",
+                    Reservation.amount_paid_cop < Reservation.price_cop,
+                ),
+            ),
+        )
+        .order_by(
+            case(
+                {"PAYMENT_REVIEW": 0, "PAYMENT_PENDING": 1, "RESERVED": 2},
+                value=Reservation.status,
+            ),
+            Reservation.created_at.desc(),
+            Reservation.reservation_id.desc(),
+        )
+        .limit(1)
+    )
+    if lock:
+        statement = statement.with_for_update()
+    return await session.scalar(statement)

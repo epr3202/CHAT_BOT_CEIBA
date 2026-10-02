@@ -30,7 +30,9 @@ SessionMaker = async_sessionmaker[AsyncSession]
 
 @dataclass(frozen=True)
 class SettlementResult:
-    kind: Literal["RESERVED", "PARTIAL", "CONFLICT", "NO_RESERVATION"]
+    kind: Literal[
+        "RESERVED", "PARTIAL", "CONFLICT", "NO_RESERVATION", "BALANCE_PAID", "BALANCE_PARTIAL"
+    ]
     reservation: Reservation | None
     missing_cop: int = 0
     blockers: list[BookingBlocker] | None = None
@@ -119,7 +121,11 @@ async def accept_payment(
             )
             .with_for_update()
         )
-        if reservation is None or reservation.status != "PAYMENT_REVIEW":
+        if reservation is None or reservation.status not in {
+            "PAYMENT_REVIEW",
+            "PAYMENT_PENDING",
+            "RESERVED",
+        }:
             raise ValueError("La reserva no está pendiente de revisión de pago.")
     evidence.review_status = "ACCEPTED"
     evidence.amount_cop = amount_cop
@@ -136,20 +142,58 @@ async def accept_payment(
     )
     if reservation is None:
         return SettlementResult("NO_RESERVATION", None, blockers=[])
-    plan = await session.get(Plan, reservation.plan_id)
     old_paid = reservation.amount_paid_cop
     reservation.amount_paid_cop += amount_cop
-    missing = max(0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop)
-    blockers = []
-    if missing:
+    if reservation.status == "RESERVED":
+        missing = max(0, reservation.price_cop - reservation.amount_paid_cop)
+        if not missing:
+            reservation.payment_kind = "FULL"
+            reservation.balance_due_at = None
+            reservation.balance_overdue_at = None
+        session.add(
+            AuditEvent(
+                actor=actor,
+                action="RESERVATION_BALANCE_PAYMENT",
+                entity="reservation",
+                old_value={
+                    "reservation_id": str(reservation.reservation_id),
+                    "amount_paid_cop": old_paid,
+                },
+                new_value={
+                    "reservation_id": str(reservation.reservation_id),
+                    "amount_paid_cop": reservation.amount_paid_cop,
+                    "missing_cop": missing,
+                    "payment_kind": reservation.payment_kind,
+                },
+                reason=note or "Aceptación humana de pago de saldo",
+                request_id=request_id,
+            )
+        )
+        return SettlementResult(
+            "BALANCE_PARTIAL" if missing else "BALANCE_PAID", reservation, missing, []
+        )
+    plan = await session.get(Plan, reservation.plan_id)
+    if reservation.status == "PAYMENT_PENDING":
         await transition_reservation(
             session,
             reservation,
-            "PAYMENT_PENDING",
+            "PAYMENT_REVIEW",
             actor=actor,
-            reason="Abono parcial registrado",
+            reason="Liquidación humana de comprobante vinculado",
             request_id=request_id,
         )
+    missing = max(0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop)
+    blockers = []
+    if missing:
+        if not await has_pending_payment_evidence(session, reservation.reservation_id):
+            await transition_reservation(
+                session,
+                reservation,
+                "PAYMENT_PENDING",
+                actor=actor,
+                reason="Abono parcial registrado",
+                request_id=request_id,
+            )
         kind = "PARTIAL"
     else:
         fresh = list(
@@ -228,7 +272,11 @@ async def reject_payment(
     reservation = None
     if evidence.reservation_id:
         reservation = await session.get(Reservation, evidence.reservation_id, with_for_update=True)
-        if reservation is not None and reservation.status == "PAYMENT_REVIEW":
+        if (
+            reservation is not None
+            and reservation.status == "PAYMENT_REVIEW"
+            and not await has_pending_payment_evidence(session, reservation.reservation_id)
+        ):
             await transition_reservation(
                 session,
                 reservation,
@@ -238,6 +286,19 @@ async def reject_payment(
                 request_id=request_id,
             )
     return reservation
+
+
+async def has_pending_payment_evidence(session: AsyncSession, reservation_id: UUID) -> bool:
+    return (
+        await session.scalar(
+            select(PaymentEvidence.id)
+            .where(
+                PaymentEvidence.reservation_id == reservation_id,
+                PaymentEvidence.review_status == "PENDING_REVIEW",
+            )
+            .limit(1)
+        )
+    ) is not None
 
 
 async def sync_reservation_calendar(

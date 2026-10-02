@@ -1841,9 +1841,11 @@ la notificación, con result y customer_notification. El rechazo conserva
 SETTLED adicional. `NOTIFICATION_SKIPPED` pertenece a la entidad `conversation`,
 con `conversation_id` y `evidence_id` en el valor nuevo: conserva el diagnóstico
 de notificación sin sumar un tercer audit de `payment_evidence`. Los audits
-históricos permanecen intactos. Un abono inferior al anticipo
-regresa de `PAYMENT_REVIEW` a `PAYMENT_PENDING`; el rechazo hace la misma transición
-sin incrementar el dinero. La evidencia revisada no se puede aceptar de nuevo.
+históricos permanecen intactos. Un abono inferior al anticipo regresa de
+`PAYMENT_REVIEW` a `PAYMENT_PENDING` solo si no quedan otros comprobantes
+`PENDING_REVIEW` vinculados a la reserva. Si quedan, conserva `PAYMENT_REVIEW`.
+El rechazo aplica la misma condición sin incrementar el dinero. La evidencia
+revisada no se puede aceptar de nuevo.
 
 Cuando el acumulado alcanza el 50 %, se adquiere Calendar fuera de la transacción
 y se revalida D3 contra reservas frescas bajo un bloqueo transaccional común.
@@ -1879,13 +1881,25 @@ copia precio y duración del plan activo y compatible con el evento, inicia
 El servicio hace flush, sin commit; el llamador conserva la transacción y la
 idempotencia del mensaje. No consulta disponibilidad por sí mismo.
 
-Al persistir un comprobante, `attach_payment_evidence` busca la solicitud
-`PAYMENT_PENDING` más reciente de la misma conversación (solo si no hay
-conversación, por lead). Vincula `payment_evidence.reservation_id` y pasa a
+Al persistir un comprobante, `attach_payment_evidence` busca reservas del
+`customer_id` de la evidencia con `starts_at > now`, con prioridad
+`PAYMENT_REVIEW`, después `PAYMENT_PENDING`, después `RESERVED` con saldo pendiente.
+Dentro de cada prioridad selecciona la más reciente. Vincula
+`payment_evidence.reservation_id`; únicamente `PAYMENT_PENDING` pasa a
 `PAYMENT_REVIEW` mediante D2, con actor `SYSTEM`, motivo `Comprobante recibido`
-y auditoría. Todo ocurre dentro de la misma transacción del comprobante. Una
-evidencia ya vinculada no repite la transición ni la auditoría. Sin solicitud
-pendiente no modifica reservas. Recibir evidencia no incrementa el importe pagado.
+y auditoría. PAYMENT_REVIEW y RESERVED conservan su estado. Todo ocurre dentro de
+la misma transacción del comprobante. Una evidencia ya vinculada no repite la
+transición ni la auditoría. Sin candidata no modifica reservas. Recibir evidencia
+no incrementa el importe pagado. La conversación puede ser diferente de la que
+registró la reserva: la identidad común obligatoria es el cliente.
+
+En **D5**, un pago de saldo aceptado por un humano incrementa `amount_paid_cop`
+de una reserva RESERVED sin transición y sin consultar ni modificar Calendar.
+Si alcanza `price_cop`, establece FULL y limpia `balance_due_at` y
+`balance_overdue_at`; responde RESP-BOOKING-BALANCE-PAID-001. Si queda saldo,
+responde RESP-BOOKING-BALANCE-PARTIAL-001 con saldo total faltante y vencimiento.
+Cada abono de saldo registra RESERVATION_BALANCE_PAYMENT con montos anterior/nuevo.
+La franja permanece reservada; la matriz D2 no cambia.
 
 **Decisión de producto B1b-1 (2026-09-30): nada se bloquea antes del pago.**
 `PAYMENT_PENDING` y `PAYMENT_REVIEW` son solicitudes, no franjas reservadas.
@@ -2908,12 +2922,41 @@ escala para evitar duplicados, incluso si la solicitud es manual o de otra
 conversación. Se comprueba al inicio y antes de crear la solicitud tras confirmar.
 Desactivar el flag con borrador activo también escala.
 
-La imagen/documento válido de una solicitud pendiente vincula la evidencia, pasa
-a PAYMENT_REVIEW y pausa la conversación; responde EVIDENCE como aviso autorizado
-del handoff. Mientras la conversación sigue pausada, no responde automáticamente
-a mensajes posteriores. Accept/reject puede emitir una notificación específica
-con prueba de la revisión humana del comprobante, incluso durante esa pausa.
-RESERVED → CONFIRMED, PARTIAL → PARTIAL, REJECTED → REJECTED. CONFLICT abre handoff
-con detalle franja ya reservada; requiere reprogramación. Sin conversation_id no
-notifica; plantilla no APPROVED o fallo de render → NOTIFICATION_SKIPPED sin romper
-la aceptación. El flag apagado no envía plantillas BOOKING.
+La imagen/documento válido de una reserva candidata del cliente vincula la
+evidencia. Solo PAYMENT_PENDING pasa a PAYMENT_REVIEW. El primer comprobante crea
+el handoff PAYMENT_REVIEW y pausa la conversación; responde EVIDENCE con el
+HANDOFF_NOTICE actual. Si ya existe un handoff PAYMENT_REVIEW abierto de la
+conversación, se reutiliza.
+
+**Excepción R9 autorizada para D5 (2026-10-02):** durante WAITING_FOR_HUMAN se
+permite únicamente el acuse RESP-BOOKING-EVIDENCE-001 de una imagen de comprobante
+que quedó vinculada a una reserva en la misma transacción, cuando la pausa se debe
+únicamente a un handoff PAYMENT_REVIEW PENDING y no existe ningún otro handoff
+abierto. Solo se encola una respuesta por external_message_id. No se responde
+automáticamente a textos ni otros medios durante esa pausa; los documentos
+conservan la captura pasiva anterior. Con TAKEN/HUMAN_ACTIVE, CLOSED, bot
+deshabilitado o cualquier otro handoff abierto no se envía acuse y se audita
+PAYMENT_ACK_SKIPPED_HUMAN_ACTIVE o PAYMENT_ACK_SKIPPED_<MOTIVO>.
+
+El acuse posterior usa contexto propio `origin=PAYMENT_EVIDENCE_ACK`,
+`purpose=EVIDENCE_RECEIPT`, `evidence_id` y `handoff_id`. Nunca reutiliza
+HANDOFF_NOTICE ni simula una decisión humana PAYMENT_REVIEW_RESULT. La admisión
+revalida la evidencia vinculada y el único handoff PAYMENT_REVIEW PENDING;
+una toma humana entre encolado y envío produce SUPPRESSED con delivery_reason
+explícito, sin llamar a Meta. El renderer utiliza solo KnowledgeEntry APPROVED y
+nunca repite texto libre ni caption del cliente.
+
+Accept/reject puede emitir una notificación específica con prueba de la revisión
+humana del comprobante, incluso durante la pausa. RESERVED → CONFIRMED,
+PARTIAL → PARTIAL, REJECTED → REJECTED; saldo parcial/completo usa las plantillas
+BALANCE-PARTIAL/BALANCE-PAID aprobadas. Después de liquidar el último comprobante
+PENDING_REVIEW de la reserva, se resuelve el handoff PAYMENT_REVIEW con resolved_at
+y auditoría y se devuelve la conversación a BOT_ACTIVE; si existe otro handoff
+abierto, se conserva la pausa. Si quedan evidencias pendientes, conserva el caso.
+La resolución ocurre aunque falte una plantilla aprobada. CONFLICT abre un caso
+RESERVATION_CONFIRMATION por franja ya reservada; requiere reprogramación y no
+reactiva el bot. Toda reserva vinculada, incluso manual con conversation_id NULL,
+notifica en la conversación válida de la evidencia del mismo cliente, aunque sea
+nueva. Plantilla no APPROVED o fallo de
+render → NOTIFICATION_SKIPPED sin romper la aceptación. El flag apagado no envía
+plantillas BOOKING.

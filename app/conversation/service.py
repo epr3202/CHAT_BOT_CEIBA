@@ -149,6 +149,7 @@ async def transition_conversation(
     new_state: ConversationState | str,
     actor: str,
     reason: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     old_state = coerce_conversation_state(conversation.state)
     target_state = coerce_conversation_state(new_state)
@@ -166,6 +167,6 @@ async def transition_conversation(
             old_value={"conversation_id": conversation.id, "state": old_state.value},
             new_value={"conversation_id": conversation.id, "state": target_state.value},
             reason=transition_reason,
-            request_id=None,
+            request_id=request_id,
         )
     )

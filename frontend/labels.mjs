@@ -51,6 +51,7 @@ export const labels = {
     RESERVED: "Reserva confirmada", PARTIAL: "Abono registrado",
     CONFLICT: "Franja ya reservada; reprograma o cancela",
     REJECTED: "Comprobante rechazado", NO_RESERVATION: "Comprobante aceptado",
+    BALANCE_PAID: "Saldo pagado", BALANCE_PARTIAL: "Abono de saldo registrado",
   },
   bookingWindow: {
     TIMEZONE_REQUIRED: "La fecha debe incluir zona horaria.", INVALID_RANGE: "La hora final debe ser posterior al inicio.",
