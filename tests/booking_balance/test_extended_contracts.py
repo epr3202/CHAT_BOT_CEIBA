@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from app.conversation.actions import PENDING_ACTIONS
 from sqlalchemy import inspect, select, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import command
 from app.config.settings import Settings
+from app.conversation.pending_actions import PENDING_ACTIONS
 from app.main import app
 from app.reservation.models import Reservation
 from tests.booking_balance.b4_helpers import DUE_AT, reserved
