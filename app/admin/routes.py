@@ -1319,6 +1319,19 @@ async def notify_payment_after_commit(
                 settings=get_settings(),
                 request_id=request_id,
             )
+        if kind == "REJECTED" and evidence.customer_reason is None:
+            session.add(
+                AuditEvent(
+                    actor="SYSTEM",
+                    action="PAYMENT_NOTIFICATION_SKIPPED",
+                    entity="payment_evidence",
+                    old_value=None,
+                    new_value={"evidence_id": evidence.id, "result": kind},
+                    reason="Rechazo sin motivo visible para el cliente",
+                    request_id=request_id,
+                )
+            )
+            return "DEFERRED"
         code = "RESP-PAYMENT-004" if evidence.review_status == "ACCEPTED" else "RESP-PAYMENT-005"
         latest = await session.scalar(
             select(KnowledgeEntry)
