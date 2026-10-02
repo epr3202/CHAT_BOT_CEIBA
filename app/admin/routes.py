@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import secrets
 from collections.abc import AsyncIterator
 from dataclasses import asdict
@@ -67,7 +68,11 @@ from app.customer.models import Customer
 from app.event.models import EVENT_TYPES, Event
 from app.handoff.models import Handoff
 from app.lead.models import Lead
+from app.notifications.models import NotificationRecipient, StaffOutbox
+from app.notifications.service import enqueue_staff_notification
+from app.notifications.staff_texts import present_start, sanitize_param, window_until
 from app.orchestrator.service import enqueue_template
+from app.payment.customer_reason import CustomerRejectionReason
 from app.payment.models import PaymentEvidence, PaymentEvidenceReview
 from app.payment.review import latest_review, prereview_evidence, review_payload
 from app.plan.models import Plan
@@ -394,6 +399,7 @@ class AppointmentDayPayload(BaseModel):
 class PaymentEvidenceReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     note: str = Field(min_length=1, max_length=255)
+    customer_reason: str | None = None
 
 
 class PaymentEvidenceAcceptRequest(BaseModel):
@@ -1130,6 +1136,14 @@ async def settle_payment_evidence(
         raise HTTPException(404, "El comprobante no existe.")
     if evidence.review_status != "PENDING_REVIEW":
         raise HTTPException(409, "El comprobante ya fue revisado.")
+    customer_reason = None
+    if not accepting and evidence.reservation_id is None:
+        from app.payment.customer_reason import sanitize_customer_reason
+
+        try:
+            customer_reason = sanitize_customer_reason(body.customer_reason)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
     if accepting and evidence.download_status == "FAILED_PERMANENT":
         raise HTTPException(409, "La descarga del comprobante falló. Solicita una nueva imagen.")
     blockers = []
@@ -1193,6 +1207,7 @@ async def settle_payment_evidence(
                     result.blockers,
                 )
             else:
+                evidence.customer_reason = customer_reason
                 row = await reject_payment(
                     session, evidence=evidence, actor=actor, note=body.note, request_id=rid
                 )
@@ -1277,7 +1292,9 @@ async def notify_payment_after_commit(
         customer = await session.get(Customer, evidence.customer_id)
         message = await session.get(Message, evidence.message_id)
         variables = (
-            {"rejection_reason_customer_safe": evidence.review_note} if kind == "REJECTED" else {}
+            {"rejection_reason_customer_safe": CustomerRejectionReason(evidence.customer_reason)}
+            if kind == "REJECTED"
+            else {}
         )
         await enqueue_template(
             session, sm, conversation, customer, message, code, variables, payment_decision=evidence
@@ -3076,3 +3093,198 @@ async def catalog_payload(session: AsyncSession, asset: CatalogAsset) -> Catalog
         created_at=asset.created_at,
         updated_at=asset.updated_at,
     )
+
+
+class NotificationRecipientCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    display_name: str = Field(min_length=1, max_length=120)
+    phone_number: str
+    notify_on_evidence: bool = True
+    notify_on_payment_pending: bool = False
+    active: bool = True
+
+    @model_validator(mode="after")
+    def normalize_phone(self) -> NotificationRecipientCreate:
+        phone = re.sub(r"[\s()-]", "", self.phone_number)
+        phone = "+" + phone.removeprefix("+")
+        if not re.fullmatch(r"\+[1-9][0-9]{7,14}", phone):
+            raise ValueError(
+                "Escribe un teléfono válido en formato E.164, por ejemplo +573000000123"
+            )
+        self.phone_number = phone
+        return self
+
+
+class NotificationRecipientPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    display_name: str | None = Field(None, min_length=1, max_length=120)
+    notify_on_evidence: bool | None = None
+    notify_on_payment_pending: bool | None = None
+    active: bool | None = None
+
+    @model_validator(mode="after")
+    def require_values(self) -> NotificationRecipientPatch:
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Los campos enviados no pueden quedar vacíos")
+        return self
+
+
+def notification_recipient_payload(row: NotificationRecipient) -> dict:
+    return {
+        "id": row.id,
+        "display_name": row.display_name,
+        "phone_number": row.phone_number,
+        "notify_on_evidence": row.notify_on_evidence,
+        "notify_on_payment_pending": row.notify_on_payment_pending,
+        "active": row.active,
+        "last_inbound_at": row.last_inbound_at,
+        "ventana_abierta_hasta": window_until(row.last_inbound_at, get_settings()),
+    }
+
+
+@router.get("/notification-recipients")
+async def list_notification_recipients(
+    session: DbSession, authorization: Annotated[str | None, Header()] = None
+) -> list:
+    await authenticated_admin(session, authorization)
+    recipients = await session.scalars(
+        select(NotificationRecipient).order_by(NotificationRecipient.id)
+    )
+    return [notification_recipient_payload(row) for row in recipients]
+
+
+@router.post("/notification-recipients", status_code=201)
+async def create_notification_recipient(
+    body: NotificationRecipientCreate,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> dict:
+    agent = await authenticated_admin(session, authorization)
+    row = NotificationRecipient(**body.model_dump())
+    try:
+        session.add(row)
+        await session.flush()
+    except IntegrityError as error:
+        await session.rollback()
+        constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
+        if constraint != "notification_recipient_phone_number_key":
+            raise
+        raise HTTPException(409, "Ya existe un destinatario con ese teléfono") from error
+    session.add(
+        AuditEvent(
+            actor=agent.name,
+            action="NOTIFICATION_RECIPIENT_CREATED",
+            entity="notification_recipient",
+            old_value=None,
+            new_value=body.model_dump(),
+            reason="Destinatario creado desde el panel",
+            request_id=request_id or str(uuid4()),
+        )
+    )
+    await session.commit()
+    return notification_recipient_payload(row)
+
+
+@router.patch("/notification-recipients/{recipient_id}")
+async def update_notification_recipient(
+    recipient_id: int,
+    body: NotificationRecipientPatch,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+    request_id: Annotated[str | None, Header(alias="X-Request-ID", max_length=128)] = None,
+) -> dict:
+    agent = await authenticated_admin(session, authorization)
+    row = await session.get(NotificationRecipient, recipient_id, with_for_update=True)
+    if row is None:
+        raise HTTPException(404, "El destinatario no existe")
+    old, new = {}, {}
+    for key, value in body.model_dump(exclude_unset=True).items():
+        if getattr(row, key) != value:
+            old[key], new[key] = getattr(row, key), value
+            setattr(row, key, value)
+    if new:
+        session.add(
+            AuditEvent(
+                actor=agent.name,
+                action="NOTIFICATION_RECIPIENT_UPDATED",
+                entity="notification_recipient",
+                old_value=old,
+                new_value=new,
+                reason=f"Destinatario {recipient_id} actualizado desde el panel",
+                request_id=request_id or str(uuid4()),
+            )
+        )
+    await session.commit()
+    return notification_recipient_payload(row)
+
+
+@router.post("/notification-recipients/{recipient_id}/test", status_code=201)
+async def test_notification_recipient(
+    recipient_id: int, session: DbSession, authorization: Annotated[str | None, Header()] = None
+) -> dict:
+    await authenticated_admin(session, authorization)
+    settings = get_settings()
+    if not settings.staff_notifications_enabled:
+        raise HTTPException(409, "Avisos desactivados")
+    row = await session.get(NotificationRecipient, recipient_id, with_for_update=True)
+    if row is None:
+        raise HTTPException(404, "El destinatario no existe")
+    if not row.active:
+        raise HTTPException(409, "El destinatario está inactivo")
+    notification_id = await enqueue_staff_notification(
+        session,
+        recipient_id=row.id,
+        event_kind="TEST",
+        source_entity="manual_test",
+        source_id=str(uuid4()),
+        params=[
+            sanitize_param(value)
+            for value in (
+                "Prueba del panel",
+                "Plan de prueba",
+                present_start(datetime.now(UTC)),
+                "$0",
+            )
+        ],
+        request_id=str(uuid4()),
+    )
+    await session.commit()
+    return {"id": notification_id, "status": "PENDING"}
+
+
+@router.get("/staff-notifications")
+async def list_staff_notifications(
+    session: DbSession,
+    limit: int = Query(default=50, ge=1, le=200),
+    authorization: Annotated[str | None, Header()] = None,
+) -> list:
+    await authenticated_admin(session, authorization)
+    rows = (
+        await session.execute(
+            select(StaffOutbox, NotificationRecipient)
+            .join(
+                NotificationRecipient,
+                StaffOutbox.recipient_id == NotificationRecipient.id,
+            )
+            .order_by(StaffOutbox.created_at.desc(), StaffOutbox.id.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": row.id,
+            "recipient_id": recipient.id,
+            "display_name": recipient.display_name,
+            "phone_number": "+***" + recipient.phone_number[-4:],
+            "event_kind": row.event_kind,
+            "status": row.status,
+            "message_kind": row.message_kind,
+            "template_name": row.template_name,
+            "attempts": row.attempts,
+            "last_error_code": row.last_error_code,
+            "created_at": row.created_at,
+            "sent_at": row.sent_at,
+        }
+        for row, recipient in rows
+    ]

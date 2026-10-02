@@ -37,6 +37,9 @@
         <button class="navItem" data-view="agents" data-admin-only="true" title="Agentes" hidden>
           <span class="icon">♙</span><span>Agentes</span>
         </button>
+        <button class="navItem" data-view="staffNotifications" data-admin-only="true" title="Avisos a asesores" hidden>
+          <span class="icon" aria-hidden="true">✉</span><span>Avisos a asesores</span>
+        </button>
         <button class="navItem" data-view="plans" data-admin-only="true" title="Planes" hidden>
           <span class="icon" aria-hidden="true">▤</span><span>Planes</span>
         </button>
@@ -197,6 +200,25 @@
             <button type="button" id="cancelAgentCredentials">Cancelar</button>
           </div>
         </form>
+      </section>
+
+      <section class="view" id="staffNotifications" hidden>
+        <section class="panel">
+          <div class="panelHead"><h2>Avisos a asesores</h2><button id="refreshStaffNotifications">Actualizar</button></div>
+          <p>Un número de asesor activo no puede usarse como número de prueba de cliente. Sus mensajes abren la ventana de avisos y el bot no responde.</p>
+          <form id="notificationRecipientForm" class="formGrid">
+            <label>Nombre<input name="display_name" maxlength="120" required /></label>
+            <label>Teléfono<input name="phone_number" type="tel" maxlength="32" placeholder="+573000000123" required /></label>
+            <label><input name="notify_on_evidence" type="checkbox" checked />Comprobantes</label>
+            <label><input name="notify_on_payment_pending" type="checkbox" />Solicitudes</label>
+            <label><input name="active" type="checkbox" checked />Activo</label>
+            <div class="actions"><button type="submit" class="primary">Guardar</button><button type="button" id="cancelRecipientEdit">Cancelar edición</button></div>
+          </form>
+          <p id="staffNotificationFeedback" class="feedback" aria-live="polite"></p>
+          <div id="notificationRecipientList" class="tableWrap"></div>
+          <h3>Últimos avisos</h3>
+          <div id="staffNotificationList" class="tableWrap"></div>
+        </section>
       </section>
 
       <section class="view" id="tools" hidden>

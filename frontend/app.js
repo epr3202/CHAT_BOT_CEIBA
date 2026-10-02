@@ -48,6 +48,7 @@ const state = {
   catalogEditor: null,
   paymentEvidence: [],
   paymentEvidenceRequest: 0,
+  staffNotificationsRequest: 0,
   agents: [],
   plans: [],
   planWrites: new Set(),
@@ -184,6 +185,7 @@ function selectView(view) {
   if (view === "catalogsModule") loadCatalogCategories();
   if (view === "paymentEvidence") loadPaymentEvidence();
   if (view === "agents") loadAgents();
+  if (view === "staffNotifications") loadStaffNotifications();
   if (view === "plans") loadPlans();
   if (view === "reservations") { loadReservations(); loadManualPlans(); }
   if (view === "manualReservations") loadManualPlans();
@@ -282,7 +284,7 @@ function renderPaymentEvidence() {
 
 async function reviewPaymentEvidence(evidenceId, decision, note, amount, button, card) {
   if (state.agent?.role !== "ADMIN") return;
-  const body = evidenceReviewBody(decision, note, amount, "paymentEvidenceFeedback");
+  const body = evidenceReviewBody(decision, note, amount, "paymentEvidenceFeedback", card);
   if (!body) return;
   if (decision === "accept" && card.dataset.reviewId) body.review_id = card.dataset.reviewId;
   await managementAction(button, card, decision === "accept" ? "Aceptando…" : "Rechazando…", "paymentEvidenceFeedback",
@@ -655,6 +657,11 @@ function clearSession() {
   state.adminCases = [];
   state.paymentEvidence = [];
   state.paymentEvidenceRequest += 1;
+  state.staffNotificationsRequest += 1;
+  $("#notificationRecipientList").replaceChildren();
+  $("#staffNotificationList").replaceChildren();
+  resetRecipientForm();
+  managementFeedback("staffNotificationFeedback", "");
   state.catalogCategories = [];
   state.unassignedCatalogs = [];
   state.catalogEditor = null;
@@ -1260,6 +1267,7 @@ async function refreshAll() {
     await Promise.all([loadCatalogCategories(), loadPaymentEvidence()]);
     if (state.currentView === "agents") await loadAgents();
     if (state.currentView === "plans") await loadPlans();
+    if (state.currentView === "staffNotifications") await loadStaffNotifications();
     if (state.currentView === "reservations") await Promise.all([loadReservations(), loadManualPlans()]);
   }
   if (state.currentView === "manualReservations") await loadManualPlans();
@@ -1618,7 +1626,7 @@ function renderReservationDetail(reservation) {
   evidences.replaceChildren();
   if (!reservation.evidences?.length) setEmpty(evidences, "Esta reserva no tiene comprobantes.");
   for (const evidence of reservation.evidences || []) {
-    evidences.append(createEvidenceCard(evidence, "reservationDetailFeedback",
+    evidences.append(createEvidenceCard({ ...evidence, reservation_id: reservation.reservation_id }, "reservationDetailFeedback",
       (decision, note, amount, button, card) => settleReservationEvidence(reservation.reservation_id, evidence.id, decision, note, amount, button, card)));
   }
 }
@@ -1626,6 +1634,7 @@ function renderReservationDetail(reservation) {
 function createEvidenceCard(evidence, feedbackId, review) {
   const card = document.createElement("article");
   card.className = "paymentEvidenceCard";
+  card.dataset.unlinked = String(!evidence.reservation_id);
   const details = document.createElement("div");
   details.className = "paymentEvidenceDetails";
   const title = document.createElement("strong");
@@ -1652,12 +1661,21 @@ function createEvidenceCard(evidence, feedbackId, review) {
     input.type = "number"; input.min = "1"; input.max = "2147483647"; input.step = "1"; input.inputMode = "numeric";
     amountLabel.append(input);
     const noteLabel = document.createElement("label");
-    noteLabel.textContent = "Nota de revisión";
+    noteLabel.textContent = "Nota interna";
     const note = document.createElement("textarea");
     note.maxLength = 255; note.rows = 2;
     note.placeholder = "Opcional al aceptar; obligatoria al rechazar";
     noteLabel.append(note);
     card.append(amountLabel, noteLabel);
+    if (!evidence.reservation_id) {
+      const reasonLabel = document.createElement("label");
+      reasonLabel.textContent = "Motivo visible para el cliente";
+      const reason = document.createElement("textarea");
+      reason.className = "customerReason"; reason.maxLength = 200; reason.rows = 2;
+      reason.placeholder = "Obligatorio al rechazar; sin enlaces";
+      reasonLabel.append(reason);
+      card.append(reasonLabel);
+    }
     if (failedDownload) {
       note.value = "No se pudo descargar el comprobante. Envía una nueva imagen.";
       const notice = document.createElement("p");
@@ -1750,12 +1768,24 @@ async function retryEvidencePrereview(evidence, button, card, feedbackId) {
   }, "No se pudo completar la pre-revisión");
 }
 
-function evidenceReviewBody(decision, note, amount, feedbackId) {
+function evidenceReviewBody(decision, note, amount, feedbackId, card = null) {
   const body = {};
   if (note.trim()) body.note = note.trim();
   if (decision === "reject" && !body.note) {
-    managementFeedback(feedbackId, "Escribe el motivo del rechazo en la nota de revisión.", true);
+    managementFeedback(feedbackId, "Escribe la nota interna del rechazo.", true);
     return null;
+  }
+  if (decision === "reject" && card?.dataset.unlinked === "true") {
+    const reason = $(".customerReason", card).value.trim().replace(/\s+/g, " ");
+    if (!reason) {
+      managementFeedback(feedbackId, "Escribe el motivo que verá el cliente", true);
+      return null;
+    }
+    if (/http|www/i.test(reason)) {
+      managementFeedback(feedbackId, "No incluyas enlaces en el motivo", true);
+      return null;
+    }
+    body.customer_reason = reason.slice(0, 200);
   }
   if (decision === "accept") {
     const value = Number(amount);
@@ -2176,6 +2206,9 @@ function bindUi() {
   });
   $("#refreshAgents").addEventListener("click", loadAgents);
   $("#refreshPlans").addEventListener("click", loadPlans);
+  $("#refreshStaffNotifications").addEventListener("click", loadStaffNotifications);
+  $("#notificationRecipientForm").addEventListener("submit", saveNotificationRecipient);
+  $("#cancelRecipientEdit").addEventListener("click", resetRecipientForm);
   $("#refreshReservations").addEventListener("click", loadReservations);
   $("#manualReservationForm").addEventListener("submit", createManualReservation);
   $("#verifyManualReservation").addEventListener("click", verifyManualReservation);
@@ -2254,3 +2287,121 @@ bindUi();
 applyAuthState();
 refreshAll();
 setInterval(refreshVisibleHandoffMessages, state.chatPollIntervalMs);
+
+function resetRecipientForm() {
+  const form = $("#notificationRecipientForm");
+  form.reset();
+  delete form.dataset.recipientId;
+  form.elements.phone_number.disabled = false;
+}
+
+function editNotificationRecipient(recipient) {
+  const form = $("#notificationRecipientForm");
+  form.dataset.recipientId = recipient.id;
+  form.elements.display_name.value = recipient.display_name;
+  form.elements.phone_number.value = recipient.phone_number;
+  form.elements.phone_number.disabled = true;
+  for (const field of ["notify_on_evidence", "notify_on_payment_pending", "active"]) {
+    form.elements[field].checked = recipient[field];
+  }
+  form.elements.display_name.focus();
+}
+
+function staffTable(headings) {
+  const table = document.createElement("table");
+  const head = document.createElement("thead");
+  const tr = document.createElement("tr");
+  for (const title of headings) {
+    const th = document.createElement("th"); th.textContent = title; tr.append(th);
+  }
+  head.append(tr);
+  const body = document.createElement("tbody");
+  table.append(head, body);
+  return { table, body };
+}
+
+function staffRow(body, values) {
+  const row = document.createElement("tr");
+  for (const value of values) {
+    const cell = document.createElement("td"); cell.textContent = value || "—"; row.append(cell);
+  }
+  body.append(row);
+  return row;
+}
+
+async function loadStaffNotifications() {
+  if (state.agent?.role !== "ADMIN") return;
+  const token = state.sessionToken;
+  const request = ++state.staffNotificationsRequest;
+  setEmpty($("#notificationRecipientList"), "Cargando destinatarios…");
+  setEmpty($("#staffNotificationList"), "Cargando avisos…");
+  try {
+    const [recipients, notifications] = await Promise.all([
+      managementRequest("/api/admin/notification-recipients"),
+      managementRequest("/api/admin/staff-notifications?limit=50"),
+    ]);
+    if (token !== state.sessionToken || request !== state.staffNotificationsRequest || state.agent?.role !== "ADMIN") return;
+    const targets = staffTable(["Nombre", "Teléfono", "Comprobantes", "Solicitudes", "Activo", "Ventana abierta hasta", "Acciones"]);
+    for (const recipient of recipients) {
+      const row = staffRow(targets.body, [recipient.display_name, recipient.phone_number,
+        recipient.notify_on_evidence ? "Sí" : "No", recipient.notify_on_payment_pending ? "Sí" : "No",
+        recipient.active ? "Sí" : "No", recipient.ventana_abierta_hasta ? formatDate(recipient.ventana_abierta_hasta) : "Cerrada"]);
+      const actions = document.createElement("td");
+      actions.append(actionButton("Editar", () => editNotificationRecipient(recipient)),
+        actionButton("Enviar prueba", event => sendStaffTest(recipient.id, event.currentTarget, row)));
+      row.append(actions);
+    }
+    $("#notificationRecipientList").replaceChildren(targets.table);
+    if (!recipients.length) setEmpty($("#notificationRecipientList"), "Aún no hay destinatarios.");
+    const latest = staffTable(["Destinatario", "Teléfono", "Aviso", "Estado", "Canal", "Fecha"]);
+    for (const notification of notifications) {
+      staffRow(latest.body, [notification.display_name, notification.phone_number,
+        labels.staffEventKind[notification.event_kind], labels.staffNotificationStatus[notification.status],
+        labels.staffMessageKind[notification.message_kind] || "Por decidir", formatDate(notification.created_at)]);
+    }
+    $("#staffNotificationList").replaceChildren(latest.table);
+    if (!notifications.length) setEmpty($("#staffNotificationList"), "Aún no hay avisos.");
+  } catch (error) {
+    if (token !== state.sessionToken || request !== state.staffNotificationsRequest) return;
+    managementFeedback("staffNotificationFeedback", `No se pudieron cargar los avisos: ${error.message}`, true);
+    setEmpty($("#notificationRecipientList"), "No se pudieron cargar los destinatarios.");
+    setEmpty($("#staffNotificationList"), "No se pudieron cargar los avisos.");
+  }
+}
+
+async function saveNotificationRecipient(event) {
+  event.preventDefault();
+  if (state.agent?.role !== "ADMIN") return;
+  const form = event.currentTarget;
+  const displayName = form.elements.display_name.value.trim();
+  const phone = form.elements.phone_number.value.trim();
+  if (!displayName || displayName.length > 120 || !/^\+[1-9][0-9]{7,14}$/.test(phone)) {
+    managementFeedback("staffNotificationFeedback", "Escribe un nombre y un teléfono válido en formato E.164, por ejemplo +573000000123.", true);
+    return;
+  }
+  const body = { display_name: displayName };
+  for (const field of ["notify_on_evidence", "notify_on_payment_pending", "active"]) body[field] = form.elements[field].checked;
+  const id = form.dataset.recipientId;
+  if (!id) body.phone_number = phone;
+  await managementAction($("button[type=submit]", form), form, "Guardando…", "staffNotificationFeedback", async current => {
+    await managementRequest(`/api/admin/notification-recipients${id ? `/${id}` : ""}`, {
+      method: id ? "PATCH" : "POST", body: JSON.stringify(body),
+    });
+    if (!current()) return;
+    resetRecipientForm();
+    await loadStaffNotifications();
+    if (current()) managementFeedback("staffNotificationFeedback", "Destinatario guardado.");
+  }, "No se pudo guardar el destinatario");
+}
+
+async function sendStaffTest(id, button, scope) {
+  if (state.agent?.role !== "ADMIN") return;
+  const token = state.sessionToken;
+  await managementAction(button, scope, "Encolando…", "staffNotificationFeedback", async current => {
+    await managementRequest(`/api/admin/notification-recipients/${id}/test`, { method: "POST" });
+    if (!current()) return;
+    await loadStaffNotifications();
+    // The refreshed row replaces scope; session/role still own this acknowledgement.
+    if (token === state.sessionToken && state.agent?.role === "ADMIN") managementFeedback("staffNotificationFeedback", "Prueba encolada.");
+  }, "No se pudo encolar la prueba");
+}

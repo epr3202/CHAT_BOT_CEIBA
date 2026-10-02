@@ -34,6 +34,15 @@ export const labels = {
   },
   paymentKind: { DEPOSIT: "Abono", FULL: "Pago total" },
   calendarStatus: { NONE: "Sin sincronizar", CONFIRMED: "Sincronizado" },
+  staffNotificationStatus: {
+    PENDING: "Pendiente", SENDING: "Enviando", SENT: "Enviado", DELIVERED: "Entregado",
+    READ: "Leído", FAILED: "Fallido", DEFERRED: "En espera", EXPIRED: "Vencido",
+  },
+  staffMessageKind: { TEXT: "Texto", TEMPLATE: "Plantilla" },
+  staffEventKind: {
+    EVIDENCE_RECEIVED: "Comprobante recibido", PAYMENT_PENDING_CREATED: "Solicitud de reserva",
+    TEST: "Prueba del panel",
+  },
   bookingBlocker: {
     CALENDAR_EXCLUSIVE: "Evento exclusivo en calendario",
     RESERVED_EXCLUSIVE: "Reserva exclusiva confirmada", RESERVED_CONFLICT: "Reserva confirmada",
@@ -45,7 +54,7 @@ export const labels = {
   },
   bookingWindow: {
     TIMEZONE_REQUIRED: "La fecha debe incluir zona horaria.", INVALID_RANGE: "La hora final debe ser posterior al inicio.",
-    CROSSES_MIDNIGHT: "La experiencia debe terminar el mismo día.",
+    CROSSES_MIDNIGHT: "La experiencia debe terminar a más tardar a medianoche.",
     OUTSIDE_HOURS: "La experiencia está fuera del horario permitido.",
     MIN_LEAD_DAYS: "La fecha no cumple la anticipación mínima.",
   },
