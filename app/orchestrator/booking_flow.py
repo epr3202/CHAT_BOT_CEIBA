@@ -168,10 +168,13 @@ def resolve_booking_clock(
     message: str, *, only_time_expected: bool, hours_start: str, latest_start: str
 ) -> time | None:
     # Only booking accepts a bare number; visit interpretation stays unchanged.
-    clock = parse_visit_time_text(message, require_explicit=not only_time_expected)
+    # Bare mañana is the next day; only a morning phrase supplies an AM period.
+    morning = re.search(r"\b(?:de|en|por)\s+la\s+ma[ñn]ana\b", message.casefold())
+    time_message = message if morning else re.sub(r"\bma[ñn]ana\b", "", message, flags=re.I)
+    clock = parse_visit_time_text(time_message, require_explicit=not only_time_expected)
     if clock is None:
         return None
-    marker = re.search(r"\b(?:[ap]\.?\s*m\.?|mañana|manana|tarde|noche)\b", message.casefold())
+    marker = re.search(r"\b(?:[ap]\.?\s*m\.?|tarde|noche)\b", time_message.casefold()) or morning
     if marker or not 1 <= clock.hour <= 11:
         return clock
     start, latest = time.fromisoformat(hours_start), time.fromisoformat(latest_start)
@@ -204,7 +207,10 @@ def extract_booking_name(message: str) -> str | None:
 def consume_date_time(
     draft: dict, message: str, today: date, *, settings: Settings, only_time_expected: bool = False
 ) -> bool:
-    decision = resolve_visit_date_text(message, today=today, require_absolute_confirmation=True)
+    date_message = re.sub(r"\b(?:de|en|por)\s+la\s+ma[ñn]ana\b", "", message, flags=re.I)
+    decision = resolve_visit_date_text(
+        date_message, today=today, require_absolute_confirmation=True
+    )
     recognized = decision.resolved_date is not None
     if recognized:
         draft["date"] = decision.resolved_date.isoformat()

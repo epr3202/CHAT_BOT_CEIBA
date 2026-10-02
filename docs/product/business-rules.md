@@ -2586,8 +2586,11 @@ producción; este PR no modifica su entorno. Bot, reserva manual y reprogramaci�
 usan la misma validación y consultan el rango completo hasta el fin del evento.
 
 En SELECT_BOOKING_TIME se acepta un número suelto; SELECT_BOOKING_DATETIME exige
-una expresión explícita de hora para no confundirla con el día. Sin a.m./p.m.,
-mañana, tarde o noche, una hora de 1 a 11 se lleva a la tarde cuando h+12 está
+una expresión explícita de hora para no confundirla con el día. «Mañana» suelto
+significa el día siguiente y se valida con la anticipación mínima existente.
+Solo «de/en/por la mañana», «a.m.» o «am» marcan la mañana como período horario;
+«tarde» y «noche» conservan su significado. Sin marcador de período explícito,
+una hora de 1 a 11 se lleva a la tarde cuando h+12 está
 en la ventana de inicio y h no lo está. «7», «a las 7» y «7:30» se interpretan
 como 19:00, 19:00 y 19:30; «12» es 12:00. Un marcador explícito se respeta.
 Fuera de horario se repite RESP-BOOKING-TIME-001 y se conserva SELECT_BOOKING_TIME;
