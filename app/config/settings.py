@@ -53,6 +53,22 @@ class Settings(BaseSettings):
     outbox_sending_timeout_seconds: int = Field(default=120, alias="OUTBOX_SENDING_TIMEOUT_SECONDS")
     outbox_max_attempts: int = Field(default=5, alias="OUTBOX_MAX_ATTEMPTS")
     outbox_max_backoff_seconds: int = Field(default=300, alias="OUTBOX_MAX_BACKOFF_SECONDS")
+    staff_notifications_enabled: bool = Field(default=False, alias="STAFF_NOTIFICATIONS_ENABLED")
+    staff_template_evidence_name: str = Field(default="", alias="STAFF_TEMPLATE_EVIDENCE_NAME")
+    staff_template_pending_name: str = Field(default="", alias="STAFF_TEMPLATE_PENDING_NAME")
+    staff_template_language: str = Field(
+        default="es", alias="STAFF_TEMPLATE_LANGUAGE", min_length=1
+    )
+    staff_window_safety_minutes: int = Field(
+        default=30,
+        alias="STAFF_WINDOW_SAFETY_MINUTES",
+        ge=0,
+        le=180,
+    )
+    staff_deferred_max_age_hours: int = Field(
+        default=48, alias="STAFF_DEFERRED_MAX_AGE_HOURS", ge=1
+    )
+    staff_outbox_max_attempts: int = Field(default=5, alias="STAFF_OUTBOX_MAX_ATTEMPTS", ge=1)
     catalog_storage_dir: str = Field(default="catalogs", alias="CATALOG_STORAGE_DIR")
     catalog_media_ttl_days: int = Field(default=25, alias="CATALOG_MEDIA_TTL_DAYS")
     catalog_max_file_mb: int = Field(default=16, alias="CATALOG_MAX_FILE_MB")
@@ -94,7 +110,10 @@ class Settings(BaseSettings):
         default="12:00", alias="BOOKING_HOURS_START", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
     )
     booking_hours_end: str = Field(
-        default="21:00", alias="BOOKING_HOURS_END", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+        default="24:00", alias="BOOKING_HOURS_END", pattern=r"^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$"
+    )
+    booking_latest_start: str = Field(
+        default="21:00", alias="BOOKING_LATEST_START", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
     )
     booking_min_lead_days: int = Field(default=1, alias="BOOKING_MIN_LEAD_DAYS", ge=0)
     booking_deposit_percent: int = Field(default=50, alias="BOOKING_DEPOSIT_PERCENT", ge=1, le=100)
@@ -103,8 +122,10 @@ class Settings(BaseSettings):
     def validate_booking_settings(self) -> Settings:
         if self.payment_review_confidence_min > self.payment_review_confidence_ok:
             raise ValueError("PAYMENT_REVIEW_CONFIDENCE_MIN must not exceed CONFIDENCE_OK")
-        if self.booking_hours_start >= self.booking_hours_end:
-            raise ValueError("BOOKING_HOURS_START must precede BOOKING_HOURS_END on the same day")
+        if not self.booking_hours_start < self.booking_latest_start < self.booking_hours_end:
+            raise ValueError(
+                "BOOKING_HOURS_START < BOOKING_LATEST_START < BOOKING_HOURS_END required"
+            )
         if not self.booking_exclusivity_keyword.strip():
             raise ValueError("BOOKING_EXCLUSIVITY_KEYWORD must not be blank")
         return self

@@ -115,6 +115,17 @@ async def create_pending_reservation(
         )
     )
     await session.flush()
+    from app.notifications.service import enqueue_for_reservation
+
+    await enqueue_for_reservation(
+        session,
+        reservation=reservation,
+        event_kind="PAYMENT_PENDING_CREATED",
+        source_entity="reservation",
+        source_id=str(reservation.reservation_id),
+        settings=get_settings(),
+        request_id=request_id,
+    )
     return reservation
 
 
@@ -159,5 +170,16 @@ async def attach_payment_evidence(
         actor="SYSTEM",
         reason="Comprobante recibido",
         request_id=str(request_id) if request_id is not None else None,
+    )
+    from app.notifications.service import enqueue_for_reservation
+
+    await enqueue_for_reservation(
+        session,
+        reservation=reservation,
+        event_kind="EVIDENCE_RECEIVED",
+        source_entity="payment_evidence",
+        source_id=str(evidence.id),
+        settings=get_settings(),
+        request_id=request_id,
     )
     return reservation
