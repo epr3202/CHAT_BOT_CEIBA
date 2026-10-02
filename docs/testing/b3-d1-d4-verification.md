@@ -148,6 +148,25 @@ run todavía en curso. Se descarta relanzarlo como infraestructura, cambiar D3
 para conservar un único campo o publicar sin esa excepción a §9.
 El resultado del segundo run se informa en el PR y el cierre.
 
+### Resultado posterior del primer backend y contrato R9
+
+El primer backend terminó con **2254 verdes y 2 fallos**, ambos en
+tests/remediation/r9/test_r9_contract.py:576,
+test_admin_payment_decision_notification_survives_pause[True-reject] y
+[False-reject]: `E assert 422 == 200`. El request de rechazo sin reserva solo
+incluía note y omitía customer_reason, obligatorio desde D3. Este contrato
+histórico no pertenece a G2. No es un fallo de infraestructura.
+
+Corrección local preparada: añadir customer_reason al request de rechazo;
+conservar aceptación, pausa, auditoría, plantilla APPROVED/DRAFT y entrega.
+Diff del test: 8 líneas añadidas, 1 retirada. Los cuatro casos del contrato R9
+y los seis casos D3 pasan: **10 passed in 70.37s**; Ruff y formato verdes.
+Se descarta eliminar la exigencia de D3 o cambiar la expectativa a 422, lo que
+dejaría de verificar el envío legítimo durante la pausa. Emerson autorizó
+expresamente «Autorizar tercer push y tercer CI ahora» tras revisar el diff y
+esta evidencia. Se publica mientras el segundo backend sigue en curso; los tres
+runs y sus resultados se registran en el PR y en el cierre.
+
 ## Primeras líneas de cada fallo G2
 
 Las entradas siguientes provienen del log definitivo anterior a implementar.

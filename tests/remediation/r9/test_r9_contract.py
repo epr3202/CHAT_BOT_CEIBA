@@ -571,7 +571,14 @@ async def test_admin_payment_decision_notification_survives_pause(
     response = await client.post(
         f"/admin/payment-evidence/{evidence_id}/{decision}",
         headers=actors["ADMIN"]["headers"],
-        json={"note": "Revisión R9", **({"amount_cop": 100000} if decision == "accept" else {})},
+        json={
+            "note": "Revisión R9",
+            **(
+                {"amount_cop": 100000}
+                if decision == "accept"
+                else {"customer_reason": "Comprobante ilegible"}
+            ),
+        },
     )
     assert response.status_code == 200
     assert response.json()["customer_notification"] == ("ENQUEUED" if approved else "DEFERRED")
