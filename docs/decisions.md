@@ -184,3 +184,19 @@ UNIQUE sigue siendo la defensa final de idempotencia. Se descarta repetir
 INSERT ON CONFLICT sobre la fila existente porque invertiría los bloqueos
 Outbox → Customer del webhook frente a Customer → Outbox del programador.
 Los contratos reproducen ambas colas y verifican que callback y mensaje terminan.
+
+## 2026-10-02 — D5: cierre de casos de pago entre conversaciones
+
+El último comprobante revisado finaliza los casos PAYMENT_REVIEW de todas las
+conversaciones del mismo cliente que tienen evidencias de la reserva, conservando
+Customer → Conversation (orden de ID) → Handoff. No se limita el cierre a la
+conversación del último comprobante: eso dejaba pendiente el caso del primer abono
+cuando el cliente enviaba el siguiente desde una conversación nueva.
+
+PaymentEvidence no tiene handoff_id; la asociación probada utiliza sus FKs de
+reserva, cliente y conversación. Se descarta añadir un campo y migración para
+resolver este ciclo. No se cierran otros motivos, clientes o casos que conservan
+algún comprobante PENDING_REVIEW de otra reserva o sin reserva. La conversación
+vuelve al bot solo si estaba pausada y no quedan otros handoffs abiertos; las
+conversaciones CLOSED no se reabren. Cada caso resuelto genera su propio audit
+con la reserva y la decisión humana final.

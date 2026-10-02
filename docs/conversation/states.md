@@ -2950,9 +2950,15 @@ Accept/reject puede emitir una notificación específica con prueba de la revisi
 humana del comprobante, incluso durante la pausa. RESERVED → CONFIRMED,
 PARTIAL → PARTIAL, REJECTED → REJECTED; saldo parcial/completo usa las plantillas
 BALANCE-PARTIAL/BALANCE-PAID aprobadas. Después de liquidar el último comprobante
-PENDING_REVIEW de la reserva, se resuelve el handoff PAYMENT_REVIEW con resolved_at
-y auditoría y se devuelve la conversación a BOT_ACTIVE; si existe otro handoff
-abierto, se conserva la pausa. Si quedan evidencias pendientes, conserva el caso.
+PENDING_REVIEW de la reserva, se resuelven sus handoffs PAYMENT_REVIEW con
+resolved_at y auditoría, incluyendo conversaciones anteriores del mismo cliente
+probadas por evidencias vinculadas a esa reserva. El bloqueo sigue Customer →
+Conversation (IDs ascendentes) → Handoff. Una conversación con un comprobante
+PENDING_REVIEW de otra reserva o sin reserva conserva su caso; los otros motivos
+de handoff y otros clientes no se modifican. Cada conversación pausada vuelve a
+BOT_ACTIVE solo cuando no conserva otros casos abiertos. Una conversación CLOSED
+permanece CLOSED aunque se resuelva su antiguo caso de pago. Si quedan evidencias
+pendientes de la reserva, todos sus casos conservan la pausa.
 La resolución ocurre aunque falte una plantilla aprobada. CONFLICT abre un caso
 RESERVATION_CONFIRMATION por franja ya reservada; requiere reprogramación y no
 reactiva el bot. Toda reserva vinculada, incluso manual con conversation_id NULL,

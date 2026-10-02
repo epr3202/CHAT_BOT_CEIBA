@@ -66,7 +66,25 @@ async def notify_booking_payment(
         )
         return "DEFERRED"
     customer = await session.get(Customer, row.customer_id, with_for_update=True)
-    conversation = await session.get(Conversation, evidence.conversation_id, with_for_update=True)
+    conversations = list(
+        await session.scalars(
+            select(Conversation)
+            .where(
+                Conversation.customer_id == row.customer_id,
+                Conversation.id.in_(
+                    select(PaymentEvidence.conversation_id).where(
+                        PaymentEvidence.reservation_id == row.reservation_id,
+                        PaymentEvidence.customer_id == row.customer_id,
+                    )
+                ),
+            )
+            .order_by(Conversation.id)
+            .with_for_update()
+        )
+    )
+    conversation = next(
+        (item for item in conversations if item.id == evidence.conversation_id), None
+    )
     message = await session.get(Message, evidence.message_id)
     plan = await session.get(Plan, row.plan_id)
     if customer is None or conversation is None or message is None or plan is None:
@@ -87,7 +105,7 @@ async def notify_booking_payment(
             request_id=request_id,
             detail="franja ya reservada; requiere reprogramación",
         )
-        await resolve_payment_handoffs(session, evidence, row, conversation, request_id=request_id)
+        await resolve_payment_handoffs(session, evidence, row, conversations, request_id=request_id)
         if not settings.self_service_booking_enabled:
             skipped(session, evidence, kind, "Reserva sin notificación conversacional", request_id)
             return "DEFERRED"
@@ -107,7 +125,7 @@ async def notify_booking_payment(
             skipped(session, evidence, kind, exc.reason.value, request_id)
             return "DEFERRED"
         return "ENQUEUED"
-    await resolve_payment_handoffs(session, evidence, row, conversation, request_id=request_id)
+    await resolve_payment_handoffs(session, evidence, row, conversations, request_id=request_id)
     if not settings.self_service_booking_enabled:
         skipped(session, evidence, kind, "Reserva autoservicio deshabilitada", request_id)
         return "DEFERRED"
@@ -172,74 +190,89 @@ async def resolve_payment_handoffs(
     session: AsyncSession,
     evidence: PaymentEvidence,
     reservation: Reservation,
-    conversation: Conversation,
+    conversations: list[Conversation],
     *,
     request_id: str,
 ) -> None:
     """End payment review after the last pending evidence without ending another case.
 
-    Caller already owns Customer then Conversation; inbound captures for the same
-    customer cannot race this pending check or the transition back to the bot.
+    Caller owns Customer then the evidence-backed conversations in ID order.
+    Inbound cannot race the pending checks or transitions back to the bot.
     """
     if await has_pending_payment_evidence(session, reservation.reservation_id):
         return
-    cases = list(
-        await session.scalars(
-            select(Handoff)
+    for conversation in conversations:
+        # A conversation can reuse PAYMENT_REVIEW for another reservation or an
+        # unlinked receipt. Finishing this reservation must not finish that work.
+        other_pending = await session.scalar(
+            select(PaymentEvidence.id)
             .where(
-                Handoff.conversation_id == conversation.id,
-                Handoff.status.in_(("PENDING", "TAKEN")),
+                PaymentEvidence.conversation_id == conversation.id,
+                PaymentEvidence.customer_id == reservation.customer_id,
+                PaymentEvidence.review_status == "PENDING_REVIEW",
             )
-            .with_for_update()
+            .limit(1)
         )
-    )
-    payment_cases = [case for case in cases if case.reason == "PAYMENT_REVIEW"]
-    for case in payment_cases:
-        previous = case.status
-        case.status = "RESOLVED"
-        case.resolved_at = datetime.now(UTC)
-        case.assigned_agent_id = None
-        case.assigned_to = None
-        session.add(
-            AuditEvent(
+        if other_pending is not None:
+            continue
+        cases = list(
+            await session.scalars(
+                select(Handoff)
+                .where(
+                    Handoff.conversation_id == conversation.id,
+                    Handoff.status.in_(("PENDING", "TAKEN")),
+                )
+                .order_by(Handoff.id)
+                .with_for_update()
+            )
+        )
+        payment_cases = [case for case in cases if case.reason == "PAYMENT_REVIEW"]
+        for case in payment_cases:
+            previous = case.status
+            case.status = "RESOLVED"
+            case.resolved_at = datetime.now(UTC)
+            case.assigned_agent_id = None
+            case.assigned_to = None
+            session.add(
+                AuditEvent(
+                    actor="SYSTEM",
+                    action="HANDOFF_RESOLVED",
+                    entity="handoff",
+                    old_value={"handoff_id": case.id, "status": previous},
+                    new_value={
+                        "handoff_id": case.id,
+                        "status": "RESOLVED",
+                        "evidence_id": evidence.id,
+                        "reservation_id": str(reservation.reservation_id),
+                        "reviewed_by_agent_id": evidence.reviewed_by_agent_id,
+                    },
+                    reason="Último comprobante pendiente liquidado por un asesor",
+                    request_id=request_id,
+                )
+            )
+        if (
+            not payment_cases
+            or len(cases) != len(payment_cases)
+            or conversation.state not in {"WAITING_FOR_HUMAN", "HUMAN_ACTIVE"}
+        ):
+            continue
+        conversation.bot_enabled = True
+        conversation.pending_action = None
+        conversation.assigned_agent_id = None
+        if conversation.state == "HUMAN_ACTIVE":
+            await transition_conversation(
+                session,
+                conversation,
+                ConversationState.RETURNED_TO_BOT,
                 actor="SYSTEM",
-                action="HANDOFF_RESOLVED",
-                entity="handoff",
-                old_value={"handoff_id": case.id, "status": previous},
-                new_value={
-                    "handoff_id": case.id,
-                    "status": "RESOLVED",
-                    "evidence_id": evidence.id,
-                    "reservation_id": str(reservation.reservation_id),
-                    "reviewed_by_agent_id": evidence.reviewed_by_agent_id,
-                },
-                reason="Último comprobante pendiente liquidado por un asesor",
+                reason="Revisión humana de pagos finalizada",
                 request_id=request_id,
             )
-        )
-    if (
-        not payment_cases
-        or len(cases) != len(payment_cases)
-        or conversation.state not in {"WAITING_FOR_HUMAN", "HUMAN_ACTIVE"}
-    ):
-        return
-    conversation.bot_enabled = True
-    conversation.pending_action = None
-    conversation.assigned_agent_id = None
-    if conversation.state == "HUMAN_ACTIVE":
         await transition_conversation(
             session,
             conversation,
-            ConversationState.RETURNED_TO_BOT,
+            ConversationState.BOT_ACTIVE,
             actor="SYSTEM",
-            reason="Revisión humana de pagos finalizada",
+            reason="Comprobantes revisados; retorno al bot sin otros casos abiertos",
             request_id=request_id,
         )
-    await transition_conversation(
-        session,
-        conversation,
-        ConversationState.BOT_ACTIVE,
-        actor="SYSTEM",
-        reason="Comprobantes revisados; retorno al bot sin otros casos abiertos",
-        request_id=request_id,
-    )
