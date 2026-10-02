@@ -596,8 +596,7 @@ No confirmar espacio sin revisión.
 
 ## RESP-EVENTS-ROMANTIC-001 — Planes románticos de precio fijo
 
-Estado: **DRAFT**. Pendiente de que Emerson confirme la aprobación de Leandro.
-No habilitar como APPROVED ni sincronizar como texto aprobado antes de esa confirmación.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v3.
 
 > Nuestras experiencias románticas para dos: Ritual del Corazón ($250.000), Romance entre Copas ($400.000), Mañanas de Encanto ($450.000, fines de semana), Cinema y Amor ($700.000) y Refugio para Dos ($1.000.000). Te envío el catálogo con el detalle de cada una. Cuéntame cuál te interesa y para qué fecha, y te confirmo disponibilidad.
 
@@ -605,7 +604,7 @@ No habilitar como APPROVED ni sincronizar como texto aprobado antes de esa confi
 
 Información sobre `ROMANTIC_DINNER` con tipo válido proporcionado o corregido por el
 cliente, sin confirmación pendiente. Intentar el catálogo PROACTIVE y responder con
-este texto una vez aprobado, incluso si no hay mapping PROACTIVE. La captura de
+este texto con esta versión aprobada, incluso si no hay mapping PROACTIVE. La captura de
 planes de precio fijo omite la pregunta de presupuesto; conserva los demás campos
 del flujo y no confirma disponibilidad automáticamente.
 
@@ -613,8 +612,9 @@ del flujo y no confirma disponibilidad automáticamente.
 
 ## RESP-EVENTS-PROPOSAL-001 — Pedidas de mano de precio fijo
 
-Estado: **DRAFT**. Pendiente de aprobación de Leandro.
-No habilitar como APPROVED ni sincronizar como texto aprobado antes de esa confirmación.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > Nuestras experiencias para pedir la mano: Entre Pétalos y Estrellas ($450.000), Confesión bajo la Luna ($900.000) y Noche Inolvidable ($2.500.000, con exclusividad de la terraza). Te envío el catálogo con el detalle de cada una. Cuéntame cuál te interesa y para qué fecha, y te confirmo disponibilidad.
 
@@ -626,7 +626,7 @@ de mano y solo se aplica si no hay entidades `event_type` `PROVIDED`/`CORRECTED`
 todas ellas son `ROMANTIC_DINNER` sin confirmación pendiente; en ese caso prevalece
 `PROPOSAL`. Otros tipos proporcionados o corregidos nunca se sustituyen por el texto.
 «Compromiso» aislado y los adjetivos románticos no activan este fallback.
-Intentar el catálogo PROACTIVE y responder con este texto una vez aprobado, incluso
+Intentar el catálogo PROACTIVE y responder con este texto con esta versión aprobada, incluso
 sin asset activo.
 La captura omite el presupuesto y conserva los demás campos del flujo; no confirma
 disponibilidad automáticamente.
@@ -1624,6 +1624,9 @@ El bot no tiene datos oficiales configurados.
 
 ## RESP-PAYMENT-004 — Pago confirmado
 
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v3.
+
+
 ### Condición
 
 Solo después de confirmación humana registrada.
@@ -1633,6 +1636,9 @@ Solo después de confirmación humana registrada.
 ---
 
 ## RESP-PAYMENT-005 — Pago rechazado
+
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v3.
+
 
 ### Variables
 
@@ -2036,11 +2042,10 @@ El sistema deberá:
 
 ## RESP-FILE-002 — Comprobante
 
-Usar:
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
 
-```text
-RESP-PAYMENT-002
-```
+
+> Gracias, ya recibimos la información de tu pago. Nuestro equipo realizará la validación y te dará confirmación en un plazo máximo de un día. La fecha quedará oficialmente separada únicamente cuando la verificación sea aprobada.
 
 ---
 
@@ -2820,12 +2825,15 @@ Su aprobación implica que:
 
 # 62. Reserva autoservicio de precio fijo
 
-PROPUESTA — pendiente de aprobación de Leandro. Todos los códigos siguientes
-se siembran DRAFT y se publican por versión, nunca se aprueban automáticamente.
+Los diez códigos siguientes están aprobados por Leandro el 2026-10-02 y activos
+en producción como v2. El seed APPROVED inicializa bases nuevas; conserva las
+filas y versiones existentes. Las modificaciones futuras requieren aprobación.
 
 ## RESP-BOOKING-PLAN-001 — Plan de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > ¡Perfecto! Estas son nuestras experiencias disponibles:
 > {plan_options}
@@ -2835,7 +2843,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-DATETIME-001 — Datetime de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > ¿Para qué fecha y a qué hora te gustaría vivirla? Por ejemplo: 7 de octubre a las 7 pm.
 
@@ -2843,7 +2853,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-TIME-001 — Time de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > ¿A qué hora te gustaría? Atendemos entre las 12 del día y las 9 de la noche.
 
@@ -2851,7 +2863,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-UNAVAILABLE-001 — Unavailable de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > Esa fecha y hora no están disponibles en nuestra agenda. ¿Quieres proponerme otra?
 
@@ -2859,7 +2873,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-CONFIRM-001 — Confirm de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > Revisemos: {plan_name}, el {booking_date} a las {booking_time}. Valor {total_amount}; para asegurar la fecha se abona el 50 % ({deposit_amount}). ¿Deseas que registre tu reserva?
 
@@ -2867,7 +2883,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-PAYMENT-001 — Payment de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > ¡Listo! Tu fecha está disponible hoy y queda asegurada al recibir el abono de {deposit_amount}. Puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}. Cuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.
 
@@ -2875,7 +2893,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-EVIDENCE-001 — Evidence de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > ¡Gracias! Recibimos tu comprobante. Nuestro equipo lo revisará y te confirmo por aquí en cuanto quede validado.
 
@@ -2883,7 +2903,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-CONFIRMED-001 — Confirmed de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > ¡Tu reserva está confirmada! {plan_name}, el {booking_date} a las {booking_time}. Saldo pendiente: {missing_amount}, a más tardar el {balance_due_date}. ¡Nos vemos en La Ceiba!
 
@@ -2891,7 +2913,9 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-PARTIAL-001 — Partial de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > Registramos tu abono. Para asegurar la fecha faltan {missing_amount}; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.
 
@@ -2899,8 +2923,30 @@ PROPUESTA — pendiente de aprobación de Leandro.
 
 ## RESP-BOOKING-REJECTED-001 — Rejected de reserva
 
-PROPUESTA — pendiente de aprobación de Leandro.
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+
+
 
 > No pudimos validar el comprobante que enviaste. ¿Puedes revisarlo y enviarlo de nuevo? Si tienes dudas, con gusto te comunico con un asesor.
+
+---
+
+# 63. Pago del saldo de reserva
+
+## RESP-BOOKING-BALANCE-PAID-001 — Saldo pagado completo
+
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02.
+Solo después de registrar la aceptación humana del comprobante.
+
+> ¡Recibimos el pago completo de tu reserva! {plan_name}, el {booking_date} a las {booking_time}. ¡Nos vemos en La Ceiba!
+
+---
+
+## RESP-BOOKING-BALANCE-PARTIAL-001 — Abono al saldo
+
+Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02.
+Solo después de registrar la aceptación humana del comprobante.
+
+> Registramos tu pago. El saldo pendiente es {missing_amount} y debe estar pagado a más tardar el {balance_due_date}.
 
 ---
