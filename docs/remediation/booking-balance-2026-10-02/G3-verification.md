@@ -39,8 +39,9 @@ La ejecución conjunta recogió 498 casos y pasó en 1262.31 s. Después se aña
 siete contratos de reprogramación, locks y ciclo de handoff entre conversaciones.
 Tras las correcciones finales, se repitió íntegro booking_balance: **49 passed,
 263.97 s**, incluyendo sus 42 anteriores y los siete nuevos. El total por subset
-se comprobó con colección final: 505 casos. Las otras cinco áreas no cambiaron
-después de su ejecución conjunta verde.
+se comprobó con colección final: 505 casos. Las correcciones finales se cubrieron
+con booking_balance íntegro y con 60 casos frescos de callbacks/B4/staff; no se
+atribuyen a la ejecución conjunta anterior los siete contratos añadidos después.
 
 Además se verificaron 142 contratos afectados: romántico 53; R9 48; W2b 23;
 registry 1; settings 2; knowledge 6; sync de knowledge 9. La primera ejecución
