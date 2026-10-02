@@ -83,25 +83,30 @@ async def test_r5_attach_persisted(client: AsyncClient, case: str) -> None:
     expected = None
     if case != "none":
         first = await seed_reservation(
-            conversation_id=evidence.conversation_id, created_at=START - timedelta(days=2)
+            conversation_id=evidence.conversation_id,
+            customer_id=evidence.customer_id,
+            created_at=START - timedelta(days=2),
         )
         expected = first
         if case == "latest":
             expected = await seed_reservation(
-                conversation_id=evidence.conversation_id, created_at=START - timedelta(days=1)
+                conversation_id=evidence.conversation_id,
+                customer_id=evidence.customer_id,
+                created_at=START - timedelta(days=1),
             )
-        elif case == "other_conversation":
-            expected = None
     async with app.state.db_sessionmaker.begin() as session:
         saved = await session.get(PaymentEvidence, evidence.id)
         if case == "other_conversation":
-            saved.conversation_id = (await seed_reservation()).conversation_id
-            saved.lead_id = first.lead_id
-            # A conversation always wins over a matching lead.
-            other = await session.scalar(
-                select(Reservation).where(Reservation.conversation_id == saved.conversation_id)
+            other = Conversation(
+                customer_id=evidence.customer_id,
+                channel="WHATSAPP",
+                state="BOT_ACTIVE",
             )
-            other.status = "CANCELLED"
+            session.add(other)
+            await session.flush()
+            saved.conversation_id = other.id
+            saved.lead_id = None
+            # D5 links by customer even when the receipt belongs to a new conversation.
         result = await attach(session, saved, request_id="r5-db")
         assert (result.reservation_id if result else None) == (
             expected.reservation_id if expected else None

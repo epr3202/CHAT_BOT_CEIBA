@@ -237,7 +237,7 @@ async def test_b_r8_notifications(harness: Harness, api: AsyncClient, result: st
 
 
 @pytest.mark.parametrize("linked", [True, False])
-async def test_b_r8_draft_or_no_conversation(
+async def test_b_r8_draft_is_skipped_even_for_manual_booking(
     harness: Harness, api: AsyncClient, linked: bool
 ) -> None:
     evidence = await review_fixture(harness, conversation_linked=linked)
@@ -257,7 +257,7 @@ async def test_b_r8_draft_or_no_conversation(
     assert response.status_code == 200 and response.json()["result"] == "RESERVED"
     assert not await harness.bodies()
     skipped = [a for a in await harness.rows(AuditEvent) if a.action == "NOTIFICATION_SKIPPED"]
-    assert bool(skipped) is linked
+    assert len(skipped) == 1
 
 
 def test_b_r9_presenters() -> None:

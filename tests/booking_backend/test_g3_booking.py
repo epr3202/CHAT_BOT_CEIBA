@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.models_registry  # noqa: F401
 from app.calendar.adapter import CalendarUnavailableError, FakeCalendarAdapter
 from app.config.settings import get_settings
 from app.payment.models import PaymentEvidence
@@ -60,18 +61,19 @@ def test_g3_window_naive_and_configured_lead_days() -> None:
     ).ok
 
 
-async def test_g3_evidence_lead_fallback_without_conversation() -> None:
+async def test_g3_evidence_customer_link_without_conversation() -> None:
     session = AsyncMock(spec=AsyncSession)
     session.add = Mock()
     row = Reservation(reservation_id=uuid4(), status="PAYMENT_PENDING")
     session.scalar.return_value = row
-    evidence = PaymentEvidence(lead_id=uuid4(), conversation_id=None)
+    evidence = PaymentEvidence(customer_id=123, lead_id=uuid4(), conversation_id=None)
     result = await attach_payment_evidence(session, evidence, request_id="fallback")
     assert result is row and row.status == "PAYMENT_REVIEW"
     assert evidence.reservation_id == row.reservation_id
     query = session.scalar.call_args.args[0]
-    assert "reservation.lead_id =" in str(query)
-    assert evidence.lead_id in query.compile().params.values()
+    assert "reservation.customer_id =" in str(query)
+    assert evidence.customer_id in query.compile().params.values()
+    assert "reservation.lead_id =" not in str(query)
     session.commit.assert_not_called()
 
 
