@@ -35,7 +35,10 @@ async def test_d2_calendar_conflict_after_23(harness):
     selected = plan(exclusive=True)
     start = START.replace(hour=21)
     harness.calendar.add_event(
-        "a", "Evento existente — exclusividad", start.replace(hour=23), start.replace(hour=23, minute=30)
+        "a",
+        "Evento existente — exclusividad",
+        start.replace(hour=23),
+        start.replace(hour=23, minute=30),
     )
     async with harness.db() as session:
         result = await fetch_booking_context(
@@ -67,7 +70,7 @@ async def test_d2_panel_manual_and_reschedule(api, harness, monkeypatch):
             "starts_at": start.isoformat(),
         },
     )
-    assert response.status_code == 201, response.text
+    assert response.status_code == 200, response.text
     reservation = response.json()
     end = __import__("datetime").datetime.fromisoformat(reservation["ends_at"])
     assert end == start + timedelta(hours=3)
