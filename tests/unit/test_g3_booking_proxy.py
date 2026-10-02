@@ -49,6 +49,14 @@ try {
     ["POST", "/api/admin/payment-evidence/test-evidence/prereview", undefined],
     ["POST", "/api/admin/payment-evidence/test-evidence/accept",
       {amount_cop: 125000, review_id: "44444444-4444-4444-8444-444444444444"}],
+    ["POST", "/api/admin/payment-evidence/test-evidence/reject",
+      {note: "Nota interna", customer_reason: "Imagen borrosa"}],
+    ["GET", "/api/admin/notification-recipients", undefined],
+    ["POST", "/api/admin/notification-recipients",
+      {display_name: "Asesor", phone_number: "+573000000123"}],
+    ["PATCH", "/api/admin/notification-recipients/1", {active: false}],
+    ["POST", "/api/admin/notification-recipients/1/test", undefined],
+    ["GET", "/api/admin/staff-notifications?limit=50", undefined],
   ];
   for (const [method, path, payload] of routes) {
     const body = payload ? JSON.stringify(payload) : undefined;

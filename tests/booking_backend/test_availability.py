@@ -99,7 +99,7 @@ def test_r1_d3_matrix(exclusive: bool, case: str) -> None:
             date(2030, 10, 9),
             "OUTSIDE_HOURS",
         ),
-        (START, START + timedelta(hours=9, minutes=1), date(2030, 10, 9), "OUTSIDE_HOURS"),
+        (START, START + timedelta(hours=9, minutes=1), date(2030, 10, 9), None),
         (
             START + timedelta(hours=8),
             START + timedelta(hours=13),

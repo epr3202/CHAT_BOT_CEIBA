@@ -440,7 +440,14 @@ async def test_r5_existing_review_without_reservation_is_unchanged(
     response = await client.post(
         f"/admin/payment-evidence/{evidence.id}/{action}",
         headers=headers,
-        json={"note": "Revisión manual", **({"amount_cop": 50000} if action == "accept" else {})},
+        json={
+            "note": "Revisión manual",
+            **(
+                {"amount_cop": 50000}
+                if action == "accept"
+                else {"customer_reason": "No es legible"}
+            ),
+        },
     )
     assert response.status_code == 200, response.text
     async with app.state.db_sessionmaker() as session:
@@ -458,7 +465,14 @@ async def test_r5_existing_review_without_reservation_is_unchanged(
     repeated = await client.post(
         f"/admin/payment-evidence/{evidence.id}/{action}",
         headers=headers,
-        json={"note": "Reintento", **({"amount_cop": 50000} if action == "accept" else {})},
+        json={
+            "note": "Reintento",
+            **(
+                {"amount_cop": 50000}
+                if action == "accept"
+                else {"customer_reason": "No es legible"}
+            ),
+        },
     )
     assert repeated.status_code == 409
 

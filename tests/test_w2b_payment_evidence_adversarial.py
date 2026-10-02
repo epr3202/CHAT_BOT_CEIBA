@@ -1073,7 +1073,7 @@ async def test_tc_pay_016_review_transition_is_one_way_and_audited(
     )
     rejection = await client.post(
         f"/admin/payment-evidence/{rejected.id}/reject",
-        json={"note": "Referencia ilegible"},
+        json={"note": "Referencia ilegible", "customer_reason": "Referencia ilegible"},
         headers=headers,
     )
     async with sessionmaker() as session:

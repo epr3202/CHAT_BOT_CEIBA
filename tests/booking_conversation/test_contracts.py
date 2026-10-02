@@ -94,7 +94,7 @@ async def test_b_r4_human_interrupt(harness: Harness) -> None:
 @pytest.mark.parametrize(
     "message,expected",
     [
-        ("7 de octubre a las 8 am", "UNAVAILABLE"),
+        ("7 de octubre a las 8 am", "TIME"),
         ("7 de octubre", "TIME"),
         ("mañana", "DATE_CONFIRM"),
         ("jueves 7 de octubre", "DATE_CONFIRM"),

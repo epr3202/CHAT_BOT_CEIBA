@@ -74,7 +74,7 @@ async def test_failed_permanent_human_rejection_keeps_d5_audits(client: AsyncCli
     response = await client.post(
         f"/admin/payment-evidence/{evidence.id}/reject",
         headers=(await login_headers(client, "90000000")) | {"X-Request-ID": "failed-rejection"},
-        json={"note": note},
+        json={"note": note, "customer_reason": note},
     )
     assert response.status_code == 200, response.text
     async with app.state.db_sessionmaker() as session:
