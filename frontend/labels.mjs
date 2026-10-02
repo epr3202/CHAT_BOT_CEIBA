@@ -77,6 +77,15 @@ export const labels = {
     PENDING: "Pendiente", SENDING: "Enviando", SENT: "Enviado", FAILED: "Fallido",
     SUPPRESSED: "Suprimido", REVIEW: "En revisión", DISCARDED: "Descartado",
   },
+  deliveryReason: {
+    AUTOMATION_PAUSED: "Bot pausado por atención humana",
+    AUTOMATION_PERIOD_REVOKED: "Mensaje de una etapa anterior del bot",
+    HANDOFF_WAIT_ENDED: "La espera del asesor ya terminó",
+    PRECEDING_TEXT_FAILED: "Falló el envío del texto previo",
+    PRECEDING_TEXT_REVIEW: "El texto previo requiere revisión humana",
+    PRECEDING_TEXT_SUPPRESSED: "El texto previo fue suprimido",
+    PRECEDING_TEXT_UNPROVEN: "No se pudo validar el texto previo",
+  },
   // Source: app/channel/models.py, InboxJob.
   inboxStatus: {
     PENDING: "Pendiente", PROCESSING: "Procesando", EXTERNAL: "En proceso externo",

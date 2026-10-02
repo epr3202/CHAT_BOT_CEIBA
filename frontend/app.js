@@ -1224,6 +1224,10 @@ function chatMetaText(message) {
   content.append(label("direction", message.direction), ` · ${formatDate(message.created_at)}`);
   if (message.message_type) content.append(" · ", label("messageType", message.message_type));
   if (message.status) content.append(" · ", label("outboxStatus", message.status));
+  if (message.status === "SUPPRESSED") {
+    content.append(" · Motivo: ", message.delivery_reason
+      ? label("deliveryReason", message.delivery_reason) : "Sin motivo registrado");
+  }
   return content;
 }
 
@@ -1641,6 +1645,7 @@ function createEvidenceCard(evidence, feedbackId, review) {
     actions.append(actionButton("Descargar", event => downloadEvidence(evidence.id, event.currentTarget, card, feedbackId)));
   }
   if ((evidence.status || evidence.review_status) === "PENDING_REVIEW" && state.agent?.role === "ADMIN") {
+    const failedDownload = evidence.download_status === "FAILED_PERMANENT";
     const amountLabel = document.createElement("label");
     amountLabel.textContent = "Monto verificado (COP)";
     const input = document.createElement("input");
@@ -1653,7 +1658,12 @@ function createEvidenceCard(evidence, feedbackId, review) {
     note.placeholder = "Opcional al aceptar; obligatoria al rechazar";
     noteLabel.append(note);
     card.append(amountLabel, noteLabel);
-    if (evidence.review?.status === "COMPLETED") {
+    if (failedDownload) {
+      note.value = "No se pudo descargar el comprobante. Envía una nueva imagen.";
+      const notice = document.createElement("p");
+      notice.textContent = "No se pudo descargar el comprobante. Solicita una nueva imagen antes de aceptar el pago.";
+      card.append(notice);
+    } else if (evidence.review?.status === "COMPLETED") {
       if (evidence.review.suggestion === "REJECT") {
         const failed = evidence.review.checks?.find(check =>
           ["ACCOUNT", "REFERENCE"].includes(check.code) && check.result === "FAIL");
@@ -1671,8 +1681,10 @@ function createEvidenceCard(evidence, feedbackId, review) {
       actions.append(actionButton(evidence.review ? "Reintentar pre-revisión" : "Solicitar pre-revisión",
         event => retryEvidencePrereview(evidence, event.currentTarget, card, feedbackId)));
     }
+    const accept = actionButton("Aceptar", event => review("accept", note.value, input.value, event.currentTarget, card), "primary");
+    accept.disabled = failedDownload;
     actions.append(
-      actionButton("Aceptar", event => review("accept", note.value, input.value, event.currentTarget, card), "primary"),
+      accept,
       actionButton("Rechazar", event => review("reject", note.value, input.value, event.currentTarget, card), "danger"),
     );
   }

@@ -267,6 +267,7 @@ class ConversationMessagePayload(BaseModel):
     body: str
     message_type: str
     status: str | None = None
+    delivery_reason: str | None = None
     created_at: datetime
 
 
@@ -1098,6 +1099,8 @@ async def settle_payment_evidence(
         raise HTTPException(404, "El comprobante no existe.")
     if evidence.review_status != "PENDING_REVIEW":
         raise HTTPException(409, "El comprobante ya fue revisado.")
+    if accepting and evidence.download_status == "FAILED_PERMANENT":
+        raise HTTPException(409, "La descarga del comprobante falló. Solicita una nueva imagen.")
     blockers = []
     if accepting and evidence.reservation_id:
         row = await session.get(Reservation, evidence.reservation_id)
@@ -1128,6 +1131,10 @@ async def settle_payment_evidence(
         evidence = await session.get(PaymentEvidence, evidence_id, with_for_update=True)
         if evidence.review_status != "PENDING_REVIEW":
             raise HTTPException(409, "El comprobante ya fue revisado.")
+        if accepting and evidence.download_status == "FAILED_PERMANENT":
+            raise HTTPException(
+                409, "La descarga del comprobante falló. Solicita una nueva imagen."
+            )
         evidence.reviewed_by_agent_id = agent_id
         proposal = None
         if accepting and body.review_id is not None:
@@ -2582,6 +2589,7 @@ async def list_conversation_messages(
             body=outbox_body(outbox),
             message_type=str(outbox.payload.get("type", "text")),
             status=outbox.status,
+            delivery_reason=outbox.delivery_reason,
             created_at=outbox.created_at,
         )
         for outbox in pending_outbox_rows.all()

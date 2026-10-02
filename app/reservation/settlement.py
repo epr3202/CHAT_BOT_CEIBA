@@ -98,6 +98,8 @@ async def accept_payment(
     # The caller locks evidence too; guard repeated direct service calls.
     if evidence.review_status != "PENDING_REVIEW":
         raise ValueError("El comprobante ya fue revisado.")
+    if evidence.download_status == "FAILED_PERMANENT":
+        raise ValueError("La descarga del comprobante falló. Solicita una nueva imagen.")
     if review is not None and (review.evidence_id != evidence.id or review.status != "COMPLETED"):
         raise ValueError("La propuesta no corresponde a este comprobante.")
     reservation = None
