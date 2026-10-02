@@ -1901,3 +1901,20 @@ Su aprobación implica que:
 * los datos sensibles están identificados;
 * la opción B del MVP puede implementarse;
 * la futura opción A puede añadirse sin reemplazar el modelo central.
+
+## B3 y D3 — ampliación técnica del 2026-10-02
+
+La migración `20261002_0034` añade estas superficies:
+
+| Entidad/campo | Persistencia y permisos |
+| --- | --- |
+| notification_recipient | ID bigint; display_name 120; teléfono E.164 32 único con CHECK; notify_on_evidence true, notify_on_payment_pending false y active true por defecto; última entrada timestamp UTC e ID externo nullable; created_at/updated_at UTC. Solo ADMIN crea o modifica; sin DELETE. |
+| staff_outbox | ID bigint; FK recipient_id; evento, entidad/fuente, cuatro parámetros JSONB saneados; canal/plantilla nullable al encolar; estado mutable; intentos, próxima ejecución, claim UUID/fecha, ID proveedor, error/código, fecha envío y timestamps UTC. UNIQUE recipient/event/entity/source; índice proveedor y parcial para pendientes/enviando. ADMIN consulta sin parámetros completos y con teléfono enmascarado. |
+| payment_evidence.customer_reason | varchar(200) nullable. Obligatorio al rechazar por API un comprobante sin reserva: una línea, sin URLs; distinto de review_note interna. Solo revisión humana; se presenta dentro de KnowledgeEntry aprobada. |
+
+Cada inserción de aviso y transición crítica crea un audit_event SYSTEM; los
+cambios de destinatarios auditan diferencias con actor humano. La cola no está
+sujeta a append-only; audit_event, ai_execution, payment_evidence_review y message
+sí lo están. Los parámetros incluyen PII para envío interno y no se publican en
+la lista administrativa de avisos. Los timestamps persistidos usan timestamptz;
+America/Bogota se aplica únicamente a presentación y reglas de agenda.

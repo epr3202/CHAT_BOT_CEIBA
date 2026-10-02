@@ -83,3 +83,16 @@ y U12c siguen abiertos. Sin migraciones ni activacion.
 Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
 
 R9 candidato implementa procedencia de servidor, período durable y admisión por intento; migración aditiva 20260910_0027. La validación remota y el informe final post-CI siguen separados; sin activación ni cierre de H03/H11 agregados.
+
+## 2026-10-02 — staff_outbox separado del outbox de clientes
+
+Los avisos a asesores tienen su propia cola mutable `staff_outbox` y su historia
+append-only en `audit_event`. La admisión por conversación, el epoch y las pausas
+R9 protegen mensajes destinados al cliente; no aplican a avisos internos que
+deben llegar precisamente cuando una conversación se entrega a un asesor.
+
+Se descarta reutilizar `outbox`: exigir una conversación ficticia de cada asesor
+mezclaría destinatarios, políticas de pausa y permisos. La cola separada conserva
+el patrón probado de claims, stale recovery, backoff y envío posterior al commit,
+con idempotencia por destinatario/evento/fuente y fallback de ventana a plantilla.
+La administración queda restringida a ADMIN. No se añade infraestructura externa.

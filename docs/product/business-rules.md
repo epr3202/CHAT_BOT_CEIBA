@@ -1662,11 +1662,15 @@ La intersección de intervalos usa fin exclusivo: `inicio_a < fin_b` y
 * La consulta es de solo lectura y termina la transacción SQL antes de acceder
   a Calendar. B2 debe revalidar al aceptar el pago; la consulta no retiene cupo.
 
-La ventana exige inicio y fin en el mismo día de `America/Bogota`, intervalo
-positivo y horario completo dentro de `BOOKING_HOURS_START=12:00` y
-`BOOKING_HOURS_END=21:00`, ambos **pendiente confirmación Leandro**. La fecha
+La ventana exige un intervalo positivo y un inicio en `America/Bogota` entre
+`BOOKING_HOURS_START=12:00` y `BOOKING_LATEST_START=21:00`, incluidos los bordes.
+El fin máximo es `BOOKING_HOURS_END=24:00`: medianoche al final del día de inicio,
+que se guarda como 00:00 del día siguiente. Así, 21:00 más 180 minutos es válido.
+Un cierre configurado como 23:59 conserva ese límite y rechaza ese intervalo.
+Debe cumplirse HOURS_START < LATEST_START < HOURS_END. La fecha
 local de inicio debe ser al menos hoy más `BOOKING_MIN_LEAD_DAYS=1`; no son
-24 horas móviles. Se rechazan cruces de medianoche. El backend devuelve un
+24 horas móviles. Se rechaza un fin posterior al límite; un fin exactamente a
+medianoche del día siguiente es válido. El backend devuelve un
 código de motivo y el endpoint marca `available=false` si la ventana no es válida.
 Esta ventana es distinta de la agenda de visitas. `weekend_only` no se evalúa
 en B1b-1; `validate_booking_window` no recibe un plan. Su uso conversacional queda
@@ -2574,9 +2578,20 @@ intervención humana. El rechazo o abono parcial regresa a PAYMENT_PENDING.
 El saldo de planes de precio fijo vence `starts_at − 1 día`, NULL si se pagó todo.
 Calendar se sincroniza tras el commit de negocio, con reintento explícito si falla.
 Los datos bancarios provienen de settings; nunca se envía una plantilla incompleta.
-El horario depende de BOOKING_HOURS_START/END (12:00–21:00 Bogotá por defecto);
-queda pendiente definir si 21:00 es fin o última hora de inicio. Se configura por
-entorno, sin cambiar el motor de ventana.
+Leandro confirmó el 2026-10-02 que 21:00 es la última hora de inicio y el cierre es
+a medianoche. Los defaults son BOOKING_HOURS_START=12:00,
+BOOKING_LATEST_START=21:00 y BOOKING_HOURS_END=24:00. Para el despliegue posterior
+se deben añadir BOOKING_LATEST_START=21:00 y cambiar BOOKING_HOURS_END=24:00 en
+producción; este PR no modifica su entorno. Bot, reserva manual y reprogramación
+usan la misma validación y consultan el rango completo hasta el fin del evento.
+
+En SELECT_BOOKING_TIME se acepta un número suelto; SELECT_BOOKING_DATETIME exige
+una expresión explícita de hora para no confundirla con el día. Sin a.m./p.m.,
+mañana, tarde o noche, una hora de 1 a 11 se lleva a la tarde cuando h+12 está
+en la ventana de inicio y h no lo está. «7», «a las 7» y «7:30» se interpretan
+como 19:00, 19:00 y 19:30; «12» es 12:00. Un marcador explícito se respeta.
+Fuera de horario se repite RESP-BOOKING-TIME-001 y se conserva SELECT_BOOKING_TIME;
+RESP-BOOKING-UNAVAILABLE-001 se usa exclusivamente para conflictos de agenda.
 # B2-3 — Pre-revisión asistida de comprobantes (2026-10-01)
 
 La IA puede extraer y proponer un monto leído del comprobante. Esto no calcula
