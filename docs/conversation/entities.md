@@ -587,22 +587,31 @@ generar una excepción que aborte el turno.
 
 ### Labels canónicos para resolución determinista
 
-Los siguientes labels son la fuente de verdad para resolver una respuesta textual
-cuando está pendiente `COLLECT_CATALOG_EVENT_TYPE`. La resolución exige igualdad
-exacta entre el texto completo normalizado y un label canónico. La normalización
-convierte a minúsculas, elimina acentos, colapsa espacios consecutivos y elimina
-puntuación terminal. Nunca se permite substring ni matching parcial. La entidad
-estructurada `event_type`, cuando es válida, tiene precedencia sobre este match.
+Los siguientes labels son la fuente única de alias para la resolución textual de
+tipo de evento. La normalización usa `casefold`, elimina tildes, reemplaza signos
+de puntuación por espacios y colapsa los espacios. Se reconocen frases con límites
+de palabra; nunca una subcadena dentro de una palabra. La frase más larga gana en
+su posición y descarta las coincidencias contenidas: `boda civil` resuelve a
+`CIVIL_WEDDING` y `propuesta de matrimonio` a `PROPOSAL`, sin sumar `WEDDING`.
 
-Ejemplo normativo: `Propuesta de matrimonio` resuelve a `PROPOSAL` por igualdad
-exacta con ese label. No resuelve a `WEDDING`, aunque el texto contenga la palabra
-`matrimonio`.
+Después de descartar las coincidencias contenidas, solo se resuelve si queda un
+único tipo distinto. `aniversario de noviazgo` contiene `ANNIVERSARY` y `PROPOSAL`
+y queda sin resolver. Cada label completo sigue resolviendo a su propio tipo.
+Durante `COLLECT_CATALOG_EVENT_TYPE` el backend evalúa estas frases antes del LLM.
+Sin captura, una palabra `catalogo` o `catalogos` más un tipo único permite enviar
+el catálogo sin volver a preguntar. Una mención única de `PROPOSAL` también se
+resuelve antes del LLM por la ruta de información general de precio fijo.
+
+La información de precio fijo conserva la prioridad comercial de `PROPOSAL` en
+frases mixtas como `pedida de mano con cena romántica`; comparte esta misma tabla
+y el matcher de frases, sin regex independiente. Esta excepción no elimina la
+ambigüedad en la captura o solicitud determinista de catálogo.
 
 | Valor                 | Labels canónicos mínimos                         |
 | --------------------- | ------------------------------------------------ |
 | `WEDDING`             | boda, matrimonio                                 |
 | `CIVIL_WEDDING`       | boda civil, matrimonio civil, ceremonia civil    |
-| `PROPOSAL`            | propuesta, propuesta de matrimonio, pedida de mano |
+| `PROPOSAL`            | propuesta, propuesta de matrimonio, pedida de mano, pedida de noviazgo, pedidas de noviazgo, pedir noviazgo, pedirle noviazgo, propuesta de noviazgo, noviazgo, pedidas de mano, quieres ser mi, pedirle matrimonio, pedir la mano, pedirle la mano, proponerle matrimonio, anillo de compromiso, fiesta de compromiso, celebracion de compromiso |
 | `BIRTHDAY`            | cumpleaños                                       |
 | `GRADUATION`          | graduación, grado                                |
 | `ANNIVERSARY`         | aniversario                                      |

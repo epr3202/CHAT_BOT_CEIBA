@@ -200,3 +200,32 @@ algún comprobante PENDING_REVIEW de otra reserva o sin reserva. La conversació
 vuelve al bot solo si estaba pausada y no quedan otros handoffs abiertos; las
 conversaciones CLOSED no se reabren. Cada caso resuelto genera su propio audit
 con la reserva y la decisión humana final.
+
+
+## 2026-10-05 — Noviazgo, catálogo determinista y recuperación de preguntas
+
+El incidente de la conversación 203 (main `3e01706`) mostró que «pedidas de
+noviazgo» no resolvía PROPOSAL y un JSON truncado desviaba la pregunta pendiente.
+Emerson decide mapear noviazgo y sus variantes a PROPOSAL. Una sola tabla de alias
+alimenta un matcher de frases con límites de palabra, descarte de coincidencias
+contenidas y ambigüedad entre tipos. Se conserva igualdad completa como caso
+particular y el normalizador de entidades estructuradas sigue exigiendo un valor
+canónico completo.
+
+Durante la captura de catálogo manda la resolución determinista; si falla, el
+extractor de tipo se evalúa tras una clasificación válida y antes del abandono.
+`RESP-CATALOG-002` es una pregunta de tipo de evento. Sin captura, catálogo más un
+tipo único se resuelve antes del LLM. Emerson también autoriza el atajo sin la
+palabra catálogo para una mención única PROPOSAL, por GENERAL_INFORMATION de
+precio fijo, para que T2/T3 del transcript no consuman el JSON truncado.
+
+Emerson aclara que la ruta de precio fijo mantiene prioridad PROPOSAL sobre
+ROMANTIC_DINNER en frases mixtas existentes. Se comparte el matcher y la tabla de
+alias; el resolvedor de catálogo conserva `None` ante varios tipos. Se reutiliza
+`CATALOG_EVENT_TYPE_RESOLVED` con actor SYSTEM, event_type, matched_label y
+`decision_source=DETERMINISTIC`, más una fuente que distingue captura, solicitud
+explícita e información de precio fijo. No se agregan estados ni plantillas.
+
+Ante indisponibilidad IA, fuera de las ramas críticas y ubicación, se repite la
+última pregunta solo si hay pending_action vigente y su última versión está
+APPROVED y tiene allowed_variables vacío. El fallo técnico no agota la captura.
