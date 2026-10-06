@@ -1,0 +1,49 @@
+ app/appointment/service.py                         |  25 ++
+ app/conversation/fixed_price_booking.py            |   9 +-
+ app/orchestrator/service.py                        | 183 +++++++---
+ docs/conversation/entities.md                      |  12 +
+ docs/conversation/flows.md                         |  21 +-
+ docs/conversation/states.md                        |  28 +-
+ docs/decisions.md                                  |  47 +++
+ .../fixed-price-catalog-context-2026-10-06/G1.md   |  70 ++++
+ .../G2-authorized-date-red.out                     |  16 +
+ .../G2-authorized-expectation.diff.gz              | Bin 0 -> 374 bytes
+ .../G2-authorized.sha256                           |   3 +
+ .../G2-green.out                                   |   2 +
+ .../G2-legacy-red.out                              |  43 +++
+ .../G2-legacy-red.out.gz                           | Bin 0 -> 911 bytes
+ .../G2-red.out                                     | 288 ++++++++++++++++
+ .../G2-red.out.gz                                  | Bin 0 -> 3085 bytes
+ .../G2.sha256                                      |   3 +
+ .../M4-attempt-1.err                               |   1 +
+ .../M4-attempt-1.out                               | 295 ++++++++++++++++
+ .../M4-attempt-1.out.gz                            | Bin 0 -> 2800 bytes
+ .../M4-attempt-1.sql                               |  54 +++
+ .../M4-results.out                                 |  34 ++
+ .../M4-results.out.gz                              | Bin 0 -> 1238 bytes
+ .../fixed-price-catalog-context-2026-10-06/M4.out  | 327 ++++++++++++++++++
+ .../M4.out.gz                                      | Bin 0 -> 3644 bytes
+ .../fixed-price-catalog-context-2026-10-06/M4.sql  |  54 +++
+ .../R1-green.out                                   |  10 +
+ .../R2-unit-green.out                              |   2 +
+ .../R2-visits-green.out                            |   2 +
+ .../R3-green.out                                   |   2 +
+ .../README.md                                      | 139 ++++++++
+ .../boundary-green.out                             |   2 +
+ .../commands.txt                                   |   1 +
+ .../diff-stat.out                                  |  49 +++
+ .../final-booking-green.out                        |   4 +
+ .../final-catalog-green.out                        |  25 ++
+ .../final-ruff.out                                 |   1 +
+ .../final-units-green.out                          |   4 +
+ .../final-visits-green.out                         |   4 +
+ .../literal-output-sha256.txt                      |   6 +
+ .../local-test-commands.txt                        |  28 ++
+ .../test_fixed_catalog_context_boundaries.py       | 182 ++++++++++
+ .../test_fixed_catalog_dates_edges.py              | 127 +++++++
+ .../test_fixed_catalog_dates_g2.py                 | 114 +++++++
+ .../test_fixed_price_catalog_context_g2.py         | 376 +++++++++++++++++++++
+ tests/test_fix2a_catalog_capture_adversarial.py    |  67 +++-
+ tests/test_noviazgo_catalog_capture_g2.py          |  32 +-
+ tests/unit/test_fixed_catalog_dates_g2.py          |  65 ++++
+ 48 files changed, 2687 insertions(+), 70 deletions(-)

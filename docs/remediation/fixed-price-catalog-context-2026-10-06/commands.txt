@@ -1,0 +1,1 @@
+ssh -o BatchMode=yes ceiba-staging-deploy 'cd /home/deploy/chat_bot_ceiba && docker compose exec -T -e PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=15000" db sh -c "exec psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -X -v ON_ERROR_STOP=1 -P pager=off"' < /home/emerson/g1-noviazgo-2026-10-05/fixed-price-context/M4.sql

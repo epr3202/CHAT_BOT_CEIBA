@@ -1,0 +1,288 @@
+FF...FFFFFFFFFF...FFFFFFFFFFFF........FFF                                [100%]
+=================================== FAILURES ===================================
+_______________ test_g2_1_proposal_catalog_sets_booking_context ________________
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:169: in test_g2_1_proposal_catalog_sets_booking_context
+    await assert_fixed_price_context(harness, "PROPOSAL", assets["PROPOSAL"])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc340866300>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:25:42 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:25:42 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_______________ test_g2_2_romantic_catalog_sets_booking_context ________________
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:183: in test_g2_2_romantic_catalog_sets_booking_context
+    await assert_fixed_price_context(harness, "ROMANTIC_DINNER", assets["ROMANTIC_DINNER"])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc340793530>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:25:46 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:25:46 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_4_explicit_visit_precedes_fixed_booking[quiero una visita para conocer el lugar el 14 de octubre a las 8 am-PROPOSAL] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:255: in test_g2_4_explicit_visit_precedes_fixed_booking
+    assert len(harness.classifier_calls) == before + 1
+E   assert 1 == (1 + 1)
+E    +  where 1 = len([{'model': 'openai/gpt-4o-mini', 'messages': [{'role': 'system', 'content': 'Eres una capa de interpretación para La C...unt": 0}\n\nMensaje:\nCuéntame sobre esa experiencia'}], 'temperature': 0, 'response_format': {'type': 'json_object'}}])
+E    +    where [{'model': 'openai/gpt-4o-mini', 'messages': [{'role': 'system', 'content': 'Eres una capa de interpretación para La C...unt": 0}\n\nMensaje:\nCuéntame sobre esa experiencia'}], 'temperature': 0, 'response_format': {'type': 'json_object'}}] = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7dc34...ext_reference": {"pending_action": null, "last_question_code": null}, "reasoning_code": "EXPLICIT_GREETING"}'}, turn=2).classifier_calls
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:05 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:05 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:26:05 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-05 22:26:05 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_4_explicit_visit_precedes_fixed_booking[quiero una visita para conocer el lugar el 14 de octubre a las 8 am-ROMANTIC_DINNER] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:255: in test_g2_4_explicit_visit_precedes_fixed_booking
+    assert len(harness.classifier_calls) == before + 1
+E   assert 1 == (1 + 1)
+E    +  where 1 = len([{'model': 'openai/gpt-4o-mini', 'messages': [{'role': 'system', 'content': 'Eres una capa de interpretación para La C...unt": 0}\n\nMensaje:\nCuéntame sobre esa experiencia'}], 'temperature': 0, 'response_format': {'type': 'json_object'}}])
+E    +    where [{'model': 'openai/gpt-4o-mini', 'messages': [{'role': 'system', 'content': 'Eres una capa de interpretación para La C...unt": 0}\n\nMensaje:\nCuéntame sobre esa experiencia'}], 'temperature': 0, 'response_format': {'type': 'json_object'}}] = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7dc33...ext_reference": {"pending_action": null, "last_question_code": null}, "reasoning_code": "EXPLICIT_GREETING"}'}, turn=2).classifier_calls
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:10 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:10 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:26:10 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-05 22:26:10 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_classifier_catalog_entity_sets_fixed_price_context[PROVIDED-PROPOSAL] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:277: in test_g2_classifier_catalog_entity_sets_fixed_price_context
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc34033bbc0>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:14 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:14 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_classifier_catalog_entity_sets_fixed_price_context[PROVIDED-ROMANTIC_DINNER] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:277: in test_g2_classifier_catalog_entity_sets_fixed_price_context
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc34068a060>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:20 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:20 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_classifier_catalog_entity_sets_fixed_price_context[CORRECTED-PROPOSAL] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:277: in test_g2_classifier_catalog_entity_sets_fixed_price_context
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc340864140>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:26 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:26 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_classifier_catalog_entity_sets_fixed_price_context[CORRECTED-ROMANTIC_DINNER] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:277: in test_g2_classifier_catalog_entity_sets_fixed_price_context
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc33ff74530>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:31 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:31 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+____ test_g2_classifier_catalog_uses_existing_fixed_price_context[PROPOSAL] ____
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:292: in test_g2_classifier_catalog_uses_existing_fixed_price_context
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:124: in assert_fixed_price_context
+    assert harness.codes == [expected_code]
+E   AssertionError: assert [] == ['RESP-EVENTS-PROPOSAL-001']
+E
+E     Right contains one more item: 'RESP-EVENTS-PROPOSAL-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:36 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:36 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_classifier_catalog_uses_existing_fixed_price_context[ROMANTIC_DINNER] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:292: in test_g2_classifier_catalog_uses_existing_fixed_price_context
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:124: in assert_fixed_price_context
+    assert harness.codes == [expected_code]
+E   AssertionError: assert [] == ['RESP-EVENTS-ROMANTIC-001']
+E
+E     Right contains one more item: 'RESP-EVENTS-ROMANTIC-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:41 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:41 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_catalog_replay_and_repeat_deduplicate_proactive_pdf[Hola quiero ver el cat\xe1logo de pedidas de mano-PROPOSAL] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:305: in test_g2_catalog_replay_and_repeat_deduplicate_proactive_pdf
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc33fdac350>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:46 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:46 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_catalog_replay_and_repeat_deduplicate_proactive_pdf[quiero ver el cat\xe1logo de planes rom\xe1nticos-ROMANTIC_DINNER] _
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:305: in test_g2_catalog_replay_and_repeat_deduplicate_proactive_pdf
+    await assert_fixed_price_context(harness, event_type, assets[event_type])
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:112: in assert_fixed_price_context
+    assert conversation.active_lead_id is not None
+E   assert None is not None
+E    +  where None = <app.conversation.models.Conversation object at 0x7dc340487530>.active_lead_id
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:26:51 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:26:51 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+__________ test_g2_5_visit_without_fixed_context_confirms_initial_day __________
+tests/booking_conversation/test_fixed_catalog_dates_g2.py:45: in test_g2_5_visit_without_fixed_context_confirms_initial_day
+    assert conversation.pending_action == "CONFIRM_VISIT_DATE"
+E   AssertionError: assert 'SELECT_VISIT_DATE' == 'CONFIRM_VISIT_DATE'
+E
+E     - CONFIRM_VISIT_DATE
+E     + SELECT_VISIT_DATE
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:27:09 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=b3015861-e6d4-44db-9786-3857d421663b state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-05 22:27:09 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=b3015861-e6d4-44db-9786-3857d421663b
+____ test_r3_booking_confirms_day_before_requesting_time[today0-candidate0] ____
+tests/booking_conversation/test_fixed_catalog_dates_g2.py:95: in test_r3_booking_confirms_day_before_requesting_time
+    assert conversation.booking_draft.get("date") == candidate.isoformat()
+E   AssertionError: assert None == '2026-10-14'
+E    +  where None = <built-in method get of dict object at 0x7dc33fee2e80>('date')
+E    +    where <built-in method get of dict object at 0x7dc33fee2e80> = {'plan_id': '241250d7-6063-462f-bddb-95eaccbb19e0'}.get
+E    +      where {'plan_id': '241250d7-6063-462f-bddb-95eaccbb19e0'} = <app.conversation.models.Conversation object at 0x7dc33feade50>.booking_draft
+E    +  and   '2026-10-14' = <built-in method isoformat of datetime.date object at 0x7dc340ae9090>()
+E    +    where <built-in method isoformat of datetime.date object at 0x7dc340ae9090> = datetime.date(2026, 10, 14).isoformat
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:27:14 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-05 22:27:14 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-05 22:27:14 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:27:14 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.2
+2026-10-05 22:27:14 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-05 22:27:14 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:27:14 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.3
+2026-10-05 22:27:14 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-05 22:27:14 [info     ] inbox_completed                conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+____ test_r3_booking_confirms_day_before_requesting_time[today1-candidate1] ____
+tests/booking_conversation/test_fixed_catalog_dates_g2.py:95: in test_r3_booking_confirms_day_before_requesting_time
+    assert conversation.booking_draft.get("date") == candidate.isoformat()
+E   AssertionError: assert None == '2026-11-14'
+E    +  where None = <built-in method get of dict object at 0x7dc34047c680>('date')
+E    +    where <built-in method get of dict object at 0x7dc34047c680> = {'plan_id': 'c549aea3-73f2-41e9-a9ec-658d7df49859'}.get
+E    +      where {'plan_id': 'c549aea3-73f2-41e9-a9ec-658d7df49859'} = <app.conversation.models.Conversation object at 0x7dc340759cd0>.booking_draft
+E    +  and   '2026-11-14' = <built-in method isoformat of datetime.date object at 0x7dc340aea550>()
+E    +    where <built-in method isoformat of datetime.date object at 0x7dc340aea550> = datetime.date(2026, 11, 14).isoformat
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:27:18 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-05 22:27:18 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-05 22:27:18 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:27:18 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.2
+2026-10-05 22:27:18 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-05 22:27:18 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:27:18 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.3
+2026-10-05 22:27:18 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-05 22:27:18 [info     ] inbox_completed                conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+____ test_r3_booking_confirms_day_before_requesting_time[today2-candidate2] ____
+tests/booking_conversation/test_fixed_catalog_dates_g2.py:95: in test_r3_booking_confirms_day_before_requesting_time
+    assert conversation.booking_draft.get("date") == candidate.isoformat()
+E   AssertionError: assert None == '2027-01-14'
+E    +  where None = <built-in method get of dict object at 0x7dc34051df40>('date')
+E    +    where <built-in method get of dict object at 0x7dc34051df40> = {'plan_id': 'c6f854b4-faa4-48ca-be2f-8ddbc78bb206'}.get
+E    +      where {'plan_id': 'c6f854b4-faa4-48ca-be2f-8ddbc78bb206'} = <app.conversation.models.Conversation object at 0x7dc33fd9ff80>.booking_draft
+E    +  and   '2027-01-14' = <built-in method isoformat of datetime.date object at 0x7dc340aebe70>()
+E    +    where <built-in method isoformat of datetime.date object at 0x7dc340aebe70> = datetime.date(2027, 1, 14).isoformat
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:27:23 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-05 22:27:23 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-05 22:27:23 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:27:23 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.2
+2026-10-05 22:27:23 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-05 22:27:23 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:27:23 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.3
+2026-10-05 22:27:23 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-05 22:27:23 [info     ] inbox_completed                conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_r3_day_without_month_requires_absolute_confirmation[el 14-today0-expected0] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2026, 10, 14)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_day_without_month_requires_absolute_confirmation[d\xeda 14-today1-expected1] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2026, 10, 14)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_day_without_month_requires_absolute_confirmation[Me gustar\xeda agendar para el 14-today2-expected2] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2026, 10, 14)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_day_without_month_requires_absolute_confirmation[el 14-today3-expected3] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2026, 10, 14)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_day_without_month_requires_absolute_confirmation[el 14-today4-expected4] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2026, 11, 14)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_day_without_month_requires_absolute_confirmation[el 14-today5-expected5] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2027, 1, 14)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_day_without_month_requires_absolute_confirmation[el 31-today6-expected6] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2026, 3, 31)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_day_without_month_requires_absolute_confirmation[el 29-today7-expected7] _
+tests/unit/test_fixed_catalog_dates_g2.py:27: in test_r3_day_without_month_requires_absolute_confirmation
+    assert result.resolved_date == expected
+E   AssertionError: assert None == datetime.date(2028, 2, 29)
+E    +  where None = VisitDateTextResult(resolved_date=None, needs_confirmation=False, next_state=<ConversationState.WAITING_FOR_APPOINTMENT_DATE: 'WAITING_FOR_APPOINTMENT_DATE'>, interpretation='NO_INTERPRETABLE', matched_text=None).resolved_date
+_ test_r3_booking_consumes_day_without_month_and_keeps_clock[today0-expected0] _
+tests/unit/test_fixed_catalog_dates_g2.py:63: in test_r3_booking_consumes_day_without_month_and_keeps_clock
+    assert draft.get("date") == expected.isoformat()
+E   AssertionError: assert None == '2026-10-14'
+E    +  where None = <built-in method get of dict object at 0x7dc3406a7440>('date')
+E    +    where <built-in method get of dict object at 0x7dc3406a7440> = {'time': '19:00'}.get
+E    +  and   '2026-10-14' = <built-in method isoformat of datetime.date object at 0x7dc340ae9c50>()
+E    +    where <built-in method isoformat of datetime.date object at 0x7dc340ae9c50> = datetime.date(2026, 10, 14).isoformat
+_ test_r3_booking_consumes_day_without_month_and_keeps_clock[today1-expected1] _
+tests/unit/test_fixed_catalog_dates_g2.py:63: in test_r3_booking_consumes_day_without_month_and_keeps_clock
+    assert draft.get("date") == expected.isoformat()
+E   AssertionError: assert None == '2026-11-14'
+E    +  where None = <built-in method get of dict object at 0x7dc33fe93b80>('date')
+E    +    where <built-in method get of dict object at 0x7dc33fe93b80> = {'time': '19:00'}.get
+E    +  and   '2026-11-14' = <built-in method isoformat of datetime.date object at 0x7dc340aea5b0>()
+E    +    where <built-in method isoformat of datetime.date object at 0x7dc340aea5b0> = datetime.date(2026, 11, 14).isoformat
+_ test_r3_booking_consumes_day_without_month_and_keeps_clock[today2-expected2] _
+tests/unit/test_fixed_catalog_dates_g2.py:63: in test_r3_booking_consumes_day_without_month_and_keeps_clock
+    assert draft.get("date") == expected.isoformat()
+E   AssertionError: assert None == '2027-01-14'
+E    +  where None = <built-in method get of dict object at 0x7dc33fd42700>('date')
+E    +    where <built-in method get of dict object at 0x7dc33fd42700> = {'time': '19:00'}.get
+E    +  and   '2027-01-14' = <built-in method isoformat of datetime.date object at 0x7dc340aea1d0>()
+E    +    where <built-in method isoformat of datetime.date object at 0x7dc340aea1d0> = datetime.date(2027, 1, 14).isoformat
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_1_proposal_catalog_sets_booking_context
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_2_romantic_catalog_sets_booking_context
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_4_explicit_visit_precedes_fixed_booking[quiero una visita para conocer el lugar el 14 de octubre a las 8 am-PROPOSAL]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_4_explicit_visit_precedes_fixed_booking[quiero una visita para conocer el lugar el 14 de octubre a las 8 am-ROMANTIC_DINNER]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_classifier_catalog_entity_sets_fixed_price_context[PROVIDED-PROPOSAL]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_classifier_catalog_entity_sets_fixed_price_context[PROVIDED-ROMANTIC_DINNER]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_classifier_catalog_entity_sets_fixed_price_context[CORRECTED-PROPOSAL]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_classifier_catalog_entity_sets_fixed_price_context[CORRECTED-ROMANTIC_DINNER]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_classifier_catalog_uses_existing_fixed_price_context[PROPOSAL]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_classifier_catalog_uses_existing_fixed_price_context[ROMANTIC_DINNER]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_catalog_replay_and_repeat_deduplicate_proactive_pdf[Hola quiero ver el cat\xe1logo de pedidas de mano-PROPOSAL]
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_catalog_replay_and_repeat_deduplicate_proactive_pdf[quiero ver el cat\xe1logo de planes rom\xe1nticos-ROMANTIC_DINNER]
+FAILED tests/booking_conversation/test_fixed_catalog_dates_g2.py::test_g2_5_visit_without_fixed_context_confirms_initial_day
+FAILED tests/booking_conversation/test_fixed_catalog_dates_g2.py::test_r3_booking_confirms_day_before_requesting_time[today0-candidate0]
+FAILED tests/booking_conversation/test_fixed_catalog_dates_g2.py::test_r3_booking_confirms_day_before_requesting_time[today1-candidate1]
+FAILED tests/booking_conversation/test_fixed_catalog_dates_g2.py::test_r3_booking_confirms_day_before_requesting_time[today2-candidate2]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[el 14-today0-expected0]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[d\xeda 14-today1-expected1]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[Me gustar\xeda agendar para el 14-today2-expected2]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[el 14-today3-expected3]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[el 14-today4-expected4]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[el 14-today5-expected5]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[el 31-today6-expected6]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_day_without_month_requires_absolute_confirmation[el 29-today7-expected7]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_booking_consumes_day_without_month_and_keeps_clock[today0-expected0]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_booking_consumes_day_without_month_and_keeps_clock[today1-expected1]
+FAILED tests/unit/test_fixed_catalog_dates_g2.py::test_r3_booking_consumes_day_without_month_and_keeps_clock[today2-expected2]
+27 failed, 14 passed in 105.53s (0:01:45)

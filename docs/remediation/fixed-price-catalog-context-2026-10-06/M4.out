@@ -1,0 +1,327 @@
+BEGIN
+                            Table "public.reservation"
+        Column        |           Type           | Collation | Nullable | Default
+----------------------+--------------------------+-----------+----------+---------
+ reservation_id       | uuid                     |           | not null |
+ lead_id              | uuid                     |           | not null |
+ event_id             | uuid                     |           | not null |
+ plan_id              | uuid                     |           | not null |
+ conversation_id      | integer                  |           |          |
+ customer_id          | integer                  |           | not null |
+ status               | character varying(32)    |           | not null |
+ starts_at            | timestamp with time zone |           | not null |
+ ends_at              | timestamp with time zone |           | not null |
+ price_cop            | integer                  |           | not null |
+ amount_paid_cop      | integer                  |           | not null |
+ payment_kind         | character varying(16)    |           |          |
+ balance_due_at       | timestamp with time zone |           |          |
+ hold_expires_at      | timestamp with time zone |           |          |
+ external_calendar_id | character varying(255)   |           |          |
+ calendar_status      | character varying(32)    |           | not null |
+ created_at           | timestamp with time zone |           | not null | now()
+ updated_at           | timestamp with time zone |           | not null | now()
+ balance_overdue_at   | timestamp with time zone |           |          |
+Indexes:
+    "reservation_pkey" PRIMARY KEY, btree (reservation_id)
+    "ix_reservation_starts_at_status" btree (starts_at, status)
+Check constraints:
+    "ck_reservation_paid_nonnegative" CHECK (amount_paid_cop >= 0)
+    "ck_reservation_payment_kind" CHECK (payment_kind IS NULL OR (payment_kind::text = ANY (ARRAY['DEPOSIT'::character varying, 'FULL'::character varying]::text[])))
+    "ck_reservation_price_positive" CHECK (price_cop > 0)
+    "ck_reservation_status" CHECK (status::text = ANY (ARRAY['PAYMENT_PENDING'::character varying, 'PAYMENT_REVIEW'::character varying, 'RESERVED'::character varying, 'EXPIRED'::character varying, 'CANCELLED'::character varying]::text[]))
+    "ck_reservation_time_range" CHECK (ends_at > starts_at)
+Foreign-key constraints:
+    "reservation_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    "reservation_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    "reservation_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    "reservation_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    "reservation_plan_id_fkey" FOREIGN KEY (plan_id) REFERENCES plan(plan_id)
+Referenced by:
+    TABLE "customer_notification" CONSTRAINT "customer_notification_reservation_id_fkey" FOREIGN KEY (reservation_id) REFERENCES reservation(reservation_id)
+    TABLE "payment_evidence" CONSTRAINT "fk_payment_evidence_reservation" FOREIGN KEY (reservation_id) REFERENCES reservation(reservation_id)
+
+                              Table "public.event"
+       Column       |           Type           | Collation | Nullable | Default
+--------------------+--------------------------+-----------+----------+---------
+ event_id           | uuid                     |           | not null |
+ lead_id            | uuid                     |           | not null |
+ event_type         | character varying(64)    |           |          |
+ event_type_other   | character varying(150)   |           |          |
+ event_date         | date                     |           |          |
+ event_month        | character varying(7)     |           |          |
+ event_date_type    | character varying(32)    |           |          |
+ event_date_raw     | character varying(200)   |           |          |
+ guest_count        | integer                  |           |          |
+ guest_count_min    | integer                  |           |          |
+ guest_count_max    | integer                  |           |          |
+ guest_count_status | character varying(32)    |           |          |
+ special_requests   | text                     |           |          |
+ created_at         | timestamp with time zone |           | not null | now()
+ updated_at         | timestamp with time zone |           | not null | now()
+ plan_id            | uuid                     |           |          |
+Indexes:
+    "event_pkey" PRIMARY KEY, btree (event_id)
+    "ix_event_lead_id" btree (lead_id)
+    "ix_event_plan_id" btree (plan_id)
+Check constraints:
+    "ck_event_date_type" CHECK (event_date_type IS NULL OR (event_date_type::text = ANY (ARRAY['EXACT'::character varying, 'APPROXIMATE'::character varying, 'FLEXIBLE'::character varying, 'UNKNOWN'::character varying]::text[])))
+    "ck_event_guest_count_status" CHECK (guest_count_status IS NULL OR (guest_count_status::text = ANY (ARRAY['PROVIDED'::character varying, 'RANGE'::character varying, 'ESTIMATED'::character varying]::text[])))
+    "ck_event_type" CHECK (event_type IS NULL OR (event_type::text = ANY (ARRAY['WEDDING'::character varying, 'CIVIL_WEDDING'::character varying, 'PROPOSAL'::character varying, 'BIRTHDAY'::character varying, 'GRADUATION'::character varying, 'ANNIVERSARY'::character varying, 'ROMANTIC_DINNER'::character varying, 'CORPORATE_EVENT'::character varying, 'FAMILY_EVENT'::character varying, 'BAPTISM'::character varying, 'FIRST_COMMUNION'::character varying, 'BABY_SHOWER'::character varying, 'WORKSHOP'::character varying, 'POOL_DAY'::character varying, 'PRIVATE_DINNER'::character varying, 'GENDER_REVEAL'::character varying, 'OTHER'::character varying]::text[])))
+Foreign-key constraints:
+    "event_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    "fk_event_plan" FOREIGN KEY (plan_id) REFERENCES plan(plan_id)
+Referenced by:
+    TABLE "event_service_request" CONSTRAINT "event_service_request_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    TABLE "quote_request" CONSTRAINT "quote_request_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    TABLE "reservation" CONSTRAINT "reservation_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+
+                                                   Table "public.conversation"
+               Column                |           Type           | Collation | Nullable |                 Default
+-------------------------------------+--------------------------+-----------+----------+------------------------------------------
+ id                                  | integer                  |           | not null | nextval('conversation_id_seq'::regclass)
+ customer_id                         | integer                  |           | not null |
+ channel                             | character varying(32)    |           | not null |
+ state                               | character varying(64)    |           | not null |
+ created_at                          | timestamp with time zone |           | not null | now()
+ last_message_at                     | timestamp with time zone |           |          |
+ last_intent                         | character varying(64)    |           |          |
+ pending_action                      | character varying(128)   |           |          |
+ last_question_code                  | character varying(128)   |           |          |
+ failed_understanding_count          | integer                  |           | not null |
+ bot_enabled                         | boolean                  |           | not null |
+ pending_confirmation                | jsonb                    |           |          |
+ assigned_agent_id                   | integer                  |           |          |
+ pending_fields                      | jsonb                    |           | not null |
+ active_lead_id                      | uuid                     |           |          |
+ visit_draft                         | jsonb                    |           |          |
+ services_failed_understanding_count | integer                  |           |          |
+ automation_epoch                    | uuid                     |           | not null | gen_random_uuid()
+ booking_draft                       | jsonb                    |           |          |
+Indexes:
+    "conversation_pkey" PRIMARY KEY, btree (id)
+    "ix_conversation_active_lead_id" btree (active_lead_id)
+    "ix_conversation_assigned_agent_id" btree (assigned_agent_id)
+    "ix_conversation_customer_id" btree (customer_id)
+Check constraints:
+    "ck_conversation_channel" CHECK (channel::text = 'WHATSAPP'::text)
+    "ck_conversation_pending_action" CHECK (pending_action IS NULL OR (pending_action::text = ANY (ARRAY['NONE'::character varying, 'CLASSIFY_MESSAGE'::character varying, 'ANSWER_INFORMATION'::character varying, 'SEND_CATALOG'::character varying, 'COLLECT_CATALOG_EVENT_TYPE'::character varying, 'COLLECT_EVENT_TYPE'::character varying, 'COLLECT_GUEST_COUNT'::character varying, 'COLLECT_EVENT_DATE'::character varying, 'COLLECT_CUSTOMER_NAME'::character varying, 'COLLECT_BUDGET'::character varying, 'COLLECT_SERVICES'::character varying, 'CONFIRM_QUOTE_REQUEST'::character varying, 'SELECT_VISIT_DATE'::character varying, 'CONFIRM_VISIT_DATE'::character varying, 'SELECT_VISIT_TIME'::character varying, 'COLLECT_VISIT_ATTENDEES'::character varying, 'COLLECT_VISIT_REASON'::character varying, 'CONFIRM_APPOINTMENT'::character varying, 'CONFIRM_RESCHEDULE'::character varying, 'CONFIRM_VISIT_CANCELLATION'::character varying, 'CONFIRM_EVENT_CANCELLATION'::character varying, 'WAIT_FOR_HUMAN'::character varying, 'WAIT_FOR_PAYMENT_REVIEW'::character varying, 'WAIT_FOR_RESERVATION_CONFIRMATION'::character varying, 'SELECT_BOOKING_PLAN'::character varying, 'SELECT_BOOKING_DATETIME'::character varying, 'SELECT_BOOKING_TIME'::character varying, 'CONFIRM_BOOKING'::character varying, 'COLLECT_BOOKING_NAME'::character varying]::text[])))
+    "ck_conversation_state" CHECK (state::text = ANY (ARRAY['NEW'::character varying, 'BOT_ACTIVE'::character varying, 'ANSWERING_INFORMATION'::character varying, 'COLLECTING_EVENT_DATA'::character varying, 'QUOTE_REQUEST_READY'::character varying, 'WAITING_FOR_APPOINTMENT_DATE'::character varying, 'WAITING_FOR_APPOINTMENT_SELECTION'::character varying, 'APPOINTMENT_PENDING_CONFIRMATION'::character varying, 'APPOINTMENT_CONFIRMED'::character varying, 'WAITING_FOR_HUMAN'::character varying, 'HUMAN_ACTIVE'::character varying, 'RETURNED_TO_BOT'::character varying, 'RESOLVED'::character varying, 'CLOSED'::character varying]::text[]))
+Foreign-key constraints:
+    "conversation_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    "fk_conversation_active_lead_id_lead" FOREIGN KEY (active_lead_id) REFERENCES lead(lead_id)
+    "fk_conversation_assigned_agent_id_agent" FOREIGN KEY (assigned_agent_id) REFERENCES agent(id)
+Referenced by:
+    TABLE "ai_execution" CONSTRAINT "ai_execution_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "handoff" CONSTRAINT "handoff_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "inbox_job" CONSTRAINT "inbox_job_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "message" CONSTRAINT "message_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "outbox" CONSTRAINT "outbox_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "payment_evidence" CONSTRAINT "payment_evidence_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "reservation" CONSTRAINT "reservation_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+
+                                        Table "public.customer"
+    Column    |           Type           | Collation | Nullable |               Default
+--------------+--------------------------+-----------+----------+--------------------------------------
+ id           | integer                  |           | not null | nextval('customer_id_seq'::regclass)
+ phone_number | character varying(32)    |           | not null |
+ created_at   | timestamp with time zone |           | not null | now()
+ full_name    | character varying(255)   |           |          |
+Indexes:
+    "customer_pkey" PRIMARY KEY, btree (id)
+    "customer_phone_number_key" UNIQUE CONSTRAINT, btree (phone_number)
+    "ix_customer_phone_number" btree (phone_number)
+Referenced by:
+    TABLE "appointment" CONSTRAINT "appointment_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    TABLE "conversation" CONSTRAINT "conversation_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    TABLE "customer_notification" CONSTRAINT "customer_notification_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    TABLE "lead" CONSTRAINT "lead_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    TABLE "message" CONSTRAINT "message_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    TABLE "payment_evidence" CONSTRAINT "payment_evidence_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    TABLE "reservation" CONSTRAINT "reservation_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+
+                                       Table "public.audit_event"
+   Column   |           Type           | Collation | Nullable |                 Default
+------------+--------------------------+-----------+----------+-----------------------------------------
+ id         | integer                  |           | not null | nextval('audit_event_id_seq'::regclass)
+ actor      | character varying(64)    |           | not null |
+ action     | character varying(128)   |           | not null |
+ entity     | character varying(128)   |           | not null |
+ old_value  | json                     |           |          |
+ new_value  | json                     |           |          |
+ reason     | character varying(255)   |           | not null |
+ request_id | character varying(128)   |           |          |
+ created_at | timestamp with time zone |           | not null | now()
+Indexes:
+    "audit_event_pkey" PRIMARY KEY, btree (id)
+
+ conversation_id | phone_masked | state  | pending_action | last_question_code | active_lead_id |   event_type    | event_date |            reservation_id            | reservation_status |    starts_at_utc    | reservation_created_at_utc | reservation_updated_at_utc
+-----------------+--------------+--------+----------------+--------------------+----------------+-----------------+------------+--------------------------------------+--------------------+---------------------+----------------------------+----------------------------
+             196 | ***6242      | CLOSED |                |                    |                | ROMANTIC_DINNER | 2026-10-15 | de2cbd2a-2586-4925-9d4f-fa67b2aff0b2 | RESERVED           | 2026-10-16 00:00:00 | 2026-10-02 19:50:55.826304 | 2026-10-02 20:02:41.08512
+(1 row)
+
+                            Table "public.reservation"
+        Column        |           Type           | Collation | Nullable | Default
+----------------------+--------------------------+-----------+----------+---------
+ reservation_id       | uuid                     |           | not null |
+ lead_id              | uuid                     |           | not null |
+ event_id             | uuid                     |           | not null |
+ plan_id              | uuid                     |           | not null |
+ conversation_id      | integer                  |           |          |
+ customer_id          | integer                  |           | not null |
+ status               | character varying(32)    |           | not null |
+ starts_at            | timestamp with time zone |           | not null |
+ ends_at              | timestamp with time zone |           | not null |
+ price_cop            | integer                  |           | not null |
+ amount_paid_cop      | integer                  |           | not null |
+ payment_kind         | character varying(16)    |           |          |
+ balance_due_at       | timestamp with time zone |           |          |
+ hold_expires_at      | timestamp with time zone |           |          |
+ external_calendar_id | character varying(255)   |           |          |
+ calendar_status      | character varying(32)    |           | not null |
+ created_at           | timestamp with time zone |           | not null | now()
+ updated_at           | timestamp with time zone |           | not null | now()
+ balance_overdue_at   | timestamp with time zone |           |          |
+Indexes:
+    "reservation_pkey" PRIMARY KEY, btree (reservation_id)
+    "ix_reservation_starts_at_status" btree (starts_at, status)
+Check constraints:
+    "ck_reservation_paid_nonnegative" CHECK (amount_paid_cop >= 0)
+    "ck_reservation_payment_kind" CHECK (payment_kind IS NULL OR (payment_kind::text = ANY (ARRAY['DEPOSIT'::character varying, 'FULL'::character varying]::text[])))
+    "ck_reservation_price_positive" CHECK (price_cop > 0)
+    "ck_reservation_status" CHECK (status::text = ANY (ARRAY['PAYMENT_PENDING'::character varying, 'PAYMENT_REVIEW'::character varying, 'RESERVED'::character varying, 'EXPIRED'::character varying, 'CANCELLED'::character varying]::text[]))
+    "ck_reservation_time_range" CHECK (ends_at > starts_at)
+Foreign-key constraints:
+    "reservation_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    "reservation_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    "reservation_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    "reservation_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    "reservation_plan_id_fkey" FOREIGN KEY (plan_id) REFERENCES plan(plan_id)
+Referenced by:
+    TABLE "customer_notification" CONSTRAINT "customer_notification_reservation_id_fkey" FOREIGN KEY (reservation_id) REFERENCES reservation(reservation_id)
+    TABLE "payment_evidence" CONSTRAINT "fk_payment_evidence_reservation" FOREIGN KEY (reservation_id) REFERENCES reservation(reservation_id)
+
+                              Table "public.event"
+       Column       |           Type           | Collation | Nullable | Default
+--------------------+--------------------------+-----------+----------+---------
+ event_id           | uuid                     |           | not null |
+ lead_id            | uuid                     |           | not null |
+ event_type         | character varying(64)    |           |          |
+ event_type_other   | character varying(150)   |           |          |
+ event_date         | date                     |           |          |
+ event_month        | character varying(7)     |           |          |
+ event_date_type    | character varying(32)    |           |          |
+ event_date_raw     | character varying(200)   |           |          |
+ guest_count        | integer                  |           |          |
+ guest_count_min    | integer                  |           |          |
+ guest_count_max    | integer                  |           |          |
+ guest_count_status | character varying(32)    |           |          |
+ special_requests   | text                     |           |          |
+ created_at         | timestamp with time zone |           | not null | now()
+ updated_at         | timestamp with time zone |           | not null | now()
+ plan_id            | uuid                     |           |          |
+Indexes:
+    "event_pkey" PRIMARY KEY, btree (event_id)
+    "ix_event_lead_id" btree (lead_id)
+    "ix_event_plan_id" btree (plan_id)
+Check constraints:
+    "ck_event_date_type" CHECK (event_date_type IS NULL OR (event_date_type::text = ANY (ARRAY['EXACT'::character varying, 'APPROXIMATE'::character varying, 'FLEXIBLE'::character varying, 'UNKNOWN'::character varying]::text[])))
+    "ck_event_guest_count_status" CHECK (guest_count_status IS NULL OR (guest_count_status::text = ANY (ARRAY['PROVIDED'::character varying, 'RANGE'::character varying, 'ESTIMATED'::character varying]::text[])))
+    "ck_event_type" CHECK (event_type IS NULL OR (event_type::text = ANY (ARRAY['WEDDING'::character varying, 'CIVIL_WEDDING'::character varying, 'PROPOSAL'::character varying, 'BIRTHDAY'::character varying, 'GRADUATION'::character varying, 'ANNIVERSARY'::character varying, 'ROMANTIC_DINNER'::character varying, 'CORPORATE_EVENT'::character varying, 'FAMILY_EVENT'::character varying, 'BAPTISM'::character varying, 'FIRST_COMMUNION'::character varying, 'BABY_SHOWER'::character varying, 'WORKSHOP'::character varying, 'POOL_DAY'::character varying, 'PRIVATE_DINNER'::character varying, 'GENDER_REVEAL'::character varying, 'OTHER'::character varying]::text[])))
+Foreign-key constraints:
+    "event_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    "fk_event_plan" FOREIGN KEY (plan_id) REFERENCES plan(plan_id)
+Referenced by:
+    TABLE "event_service_request" CONSTRAINT "event_service_request_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    TABLE "quote_request" CONSTRAINT "quote_request_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    TABLE "reservation" CONSTRAINT "reservation_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+
+                                                   Table "public.conversation"
+               Column                |           Type           | Collation | Nullable |                 Default
+-------------------------------------+--------------------------+-----------+----------+------------------------------------------
+ id                                  | integer                  |           | not null | nextval('conversation_id_seq'::regclass)
+ customer_id                         | integer                  |           | not null |
+ channel                             | character varying(32)    |           | not null |
+ state                               | character varying(64)    |           | not null |
+ created_at                          | timestamp with time zone |           | not null | now()
+ last_message_at                     | timestamp with time zone |           |          |
+ last_intent                         | character varying(64)    |           |          |
+ pending_action                      | character varying(128)   |           |          |
+ last_question_code                  | character varying(128)   |           |          |
+ failed_understanding_count          | integer                  |           | not null |
+ bot_enabled                         | boolean                  |           | not null |
+ pending_confirmation                | jsonb                    |           |          |
+ assigned_agent_id                   | integer                  |           |          |
+ pending_fields                      | jsonb                    |           | not null |
+ active_lead_id                      | uuid                     |           |          |
+ visit_draft                         | jsonb                    |           |          |
+ services_failed_understanding_count | integer                  |           |          |
+ automation_epoch                    | uuid                     |           | not null | gen_random_uuid()
+ booking_draft                       | jsonb                    |           |          |
+Indexes:
+    "conversation_pkey" PRIMARY KEY, btree (id)
+    "ix_conversation_active_lead_id" btree (active_lead_id)
+    "ix_conversation_assigned_agent_id" btree (assigned_agent_id)
+    "ix_conversation_customer_id" btree (customer_id)
+Check constraints:
+    "ck_conversation_channel" CHECK (channel::text = 'WHATSAPP'::text)
+    "ck_conversation_pending_action" CHECK (pending_action IS NULL OR (pending_action::text = ANY (ARRAY['NONE'::character varying, 'CLASSIFY_MESSAGE'::character varying, 'ANSWER_INFORMATION'::character varying, 'SEND_CATALOG'::character varying, 'COLLECT_CATALOG_EVENT_TYPE'::character varying, 'COLLECT_EVENT_TYPE'::character varying, 'COLLECT_GUEST_COUNT'::character varying, 'COLLECT_EVENT_DATE'::character varying, 'COLLECT_CUSTOMER_NAME'::character varying, 'COLLECT_BUDGET'::character varying, 'COLLECT_SERVICES'::character varying, 'CONFIRM_QUOTE_REQUEST'::character varying, 'SELECT_VISIT_DATE'::character varying, 'CONFIRM_VISIT_DATE'::character varying, 'SELECT_VISIT_TIME'::character varying, 'COLLECT_VISIT_ATTENDEES'::character varying, 'COLLECT_VISIT_REASON'::character varying, 'CONFIRM_APPOINTMENT'::character varying, 'CONFIRM_RESCHEDULE'::character varying, 'CONFIRM_VISIT_CANCELLATION'::character varying, 'CONFIRM_EVENT_CANCELLATION'::character varying, 'WAIT_FOR_HUMAN'::character varying, 'WAIT_FOR_PAYMENT_REVIEW'::character varying, 'WAIT_FOR_RESERVATION_CONFIRMATION'::character varying, 'SELECT_BOOKING_PLAN'::character varying, 'SELECT_BOOKING_DATETIME'::character varying, 'SELECT_BOOKING_TIME'::character varying, 'CONFIRM_BOOKING'::character varying, 'COLLECT_BOOKING_NAME'::character varying]::text[])))
+    "ck_conversation_state" CHECK (state::text = ANY (ARRAY['NEW'::character varying, 'BOT_ACTIVE'::character varying, 'ANSWERING_INFORMATION'::character varying, 'COLLECTING_EVENT_DATA'::character varying, 'QUOTE_REQUEST_READY'::character varying, 'WAITING_FOR_APPOINTMENT_DATE'::character varying, 'WAITING_FOR_APPOINTMENT_SELECTION'::character varying, 'APPOINTMENT_PENDING_CONFIRMATION'::character varying, 'APPOINTMENT_CONFIRMED'::character varying, 'WAITING_FOR_HUMAN'::character varying, 'HUMAN_ACTIVE'::character varying, 'RETURNED_TO_BOT'::character varying, 'RESOLVED'::character varying, 'CLOSED'::character varying]::text[]))
+Foreign-key constraints:
+    "conversation_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    "fk_conversation_active_lead_id_lead" FOREIGN KEY (active_lead_id) REFERENCES lead(lead_id)
+    "fk_conversation_assigned_agent_id_agent" FOREIGN KEY (assigned_agent_id) REFERENCES agent(id)
+Referenced by:
+    TABLE "ai_execution" CONSTRAINT "ai_execution_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "handoff" CONSTRAINT "handoff_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "inbox_job" CONSTRAINT "inbox_job_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "message" CONSTRAINT "message_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "outbox" CONSTRAINT "outbox_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "payment_evidence" CONSTRAINT "payment_evidence_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "reservation" CONSTRAINT "reservation_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+
+                                       Table "public.audit_event"
+   Column   |           Type           | Collation | Nullable |                 Default
+------------+--------------------------+-----------+----------+-----------------------------------------
+ id         | integer                  |           | not null | nextval('audit_event_id_seq'::regclass)
+ actor      | character varying(64)    |           | not null |
+ action     | character varying(128)   |           | not null |
+ entity     | character varying(128)   |           | not null |
+ old_value  | json                     |           |          |
+ new_value  | json                     |           |          |
+ reason     | character varying(255)   |           | not null |
+ request_id | character varying(128)   |           |          |
+ created_at | timestamp with time zone |           | not null | now()
+Indexes:
+    "audit_event_pkey" PRIMARY KEY, btree (id)
+
+  id  |  actor  |                   action                   |      entity      |       created_at_utc       |                                        old_value                                        |                                                                        new_value
+------+---------+--------------------------------------------+------------------+----------------------------+-----------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ 6794 | SYSTEM  | CONVERSATION_STATE_TRANSITION              | conversation     | 2026-10-02 19:47:54.021026 | {"state": "NEW", "conversation_id": 196}                                                | {"state": "BOT_ACTIVE", "conversation_id": 196}
+ 6795 | SYSTEM  | CONVERSATION_STATE_TRANSITION              | conversation     | 2026-10-02 19:48:15.894851 | {"state": "BOT_ACTIVE", "conversation_id": 196}                                         | {"state": "ANSWERING_INFORMATION", "conversation_id": 196}
+ 6796 | SYSTEM  | LEAD_CREATED                               | lead             | 2026-10-02 19:48:15.894851 |                                                                                         | {"lead_id": "1634ebc2-8871-4130-a151-7c2505cd0808", "conversation_id": 196}
+ 6797 | SYSTEM  | EVENT_CREATED                              | event            | 2026-10-02 19:48:15.894851 |                                                                                         | {"lead_id": "1634ebc2-8871-4130-a151-7c2505cd0808", "event_id": "8686bbfc-4b5d-4c5b-a9b3-ac29ae1deb34"}
+ 6798 | SYSTEM  | EVENT_TYPE_CAPTURED                        | event            | 2026-10-02 19:48:15.894851 | {"event_type": null}                                                                    | {"event_id": "8686bbfc-4b5d-4c5b-a9b3-ac29ae1deb34", "event_type": "ROMANTIC_DINNER"}
+ 6800 | SYSTEM  | FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO | conversation     | 2026-10-02 19:48:15.894851 |                                                                                         | {"lead_id": "1634ebc2-8871-4130-a151-7c2505cd0808", "event_type": "ROMANTIC_DINNER", "conversation_id": 196}
+ 6801 | SYSTEM  | ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO    | conversation     | 2026-10-02 19:48:15.894851 |                                                                                         | {"lead_id": "1634ebc2-8871-4130-a151-7c2505cd0808", "event_type": "ROMANTIC_DINNER", "conversation_id": 196}
+ 6802 | SYSTEM  | CONVERSATION_STATE_TRANSITION              | conversation     | 2026-10-02 19:48:15.894851 | {"state": "ANSWERING_INFORMATION", "conversation_id": 196}                              | {"state": "BOT_ACTIVE", "conversation_id": 196}
+ 6803 | SYSTEM  | CONVERSATION_STATE_TRANSITION              | conversation     | 2026-10-02 19:48:39.663052 | {"state": "BOT_ACTIVE", "conversation_id": 196}                                         | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 196}
+ 6806 | SYSTEM  | EVENT_DATE_CAPTURED                        | event            | 2026-10-02 19:50:55.826304 | {"event_id": "8686bbfc-4b5d-4c5b-a9b3-ac29ae1deb34", "event_date": null}                | {"event_id": "8686bbfc-4b5d-4c5b-a9b3-ac29ae1deb34", "event_date": "2026-10-15"}
+ 6807 | SYSTEM  | RESERVATION_CREATED                        | reservation      | 2026-10-02 19:50:55.826304 |                                                                                         | {"plan_code": "ROMANCE_COPAS", "price_cop": 400000, "starts_at": "2026-10-16T00:00:00+00:00", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+ 6808 | SYSTEM  | CONVERSATION_STATE_TRANSITION              | conversation     | 2026-10-02 19:50:55.826304 | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 196}                              | {"state": "BOT_ACTIVE", "conversation_id": 196}
+ 6810 | SYSTEM  | HANDOFF_CREATED                            | handoff          | 2026-10-02 19:51:18.072358 |                                                                                         | {"conversation_id": 196}
+ 6811 | SYSTEM  | CONVERSATION_STATE_TRANSITION              | conversation     | 2026-10-02 19:51:18.072358 | {"state": "BOT_ACTIVE", "conversation_id": 196}                                         | {"state": "WAITING_FOR_HUMAN", "conversation_id": 196}
+ 6812 | SYSTEM  | RESERVATION_STATUS_CHANGED                 | reservation      | 2026-10-02 19:51:18.072358 | {"status": "PAYMENT_PENDING", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"} | {"status": "PAYMENT_REVIEW", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+ 6814 | SYSTEM  | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | 2026-10-02 19:51:18.072358 |                                                                                         | {"conversation_id": 196}
+ 6819 | Leandro | RESERVATION_STATUS_CHANGED                 | reservation      | 2026-10-02 19:52:36.00431  | {"status": "PAYMENT_REVIEW", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}  | {"status": "PAYMENT_PENDING", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+ 6820 | Leandro | RESERVATION_PAYMENT_PARTIAL                | reservation      | 2026-10-02 19:52:36.00431  | {"reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}                              | {"reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+ 6823 | SYSTEM  | RESERVATION_STATUS_CHANGED                 | reservation      | 2026-10-02 19:52:52.08228  | {"status": "PAYMENT_PENDING", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"} | {"status": "PAYMENT_REVIEW", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+ 6825 | SYSTEM  | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | 2026-10-02 19:52:52.08228  |                                                                                         | {"conversation_id": 196}
+ 6826 | SYSTEM  | NON_TEXT_MESSAGE_PAUSED                    | message          | 2026-10-02 19:52:52.08228  |                                                                                         | {"conversation_id": 196}
+ 6831 | SYSTEM  | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | 2026-10-02 19:53:37.459874 |                                                                                         | {"conversation_id": 196}
+ 6832 | SYSTEM  | NON_TEXT_MESSAGE_PAUSED                    | message          | 2026-10-02 19:53:37.459874 |                                                                                         | {"conversation_id": 196}
+ 6835 | Leandro | RESERVATION_STATUS_CHANGED                 | reservation      | 2026-10-02 20:02:40.230657 | {"status": "PAYMENT_REVIEW", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}  | {"status": "RESERVED", "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+ 6836 | Leandro | RESERVATION_PAYMENT_RESERVED               | reservation      | 2026-10-02 20:02:40.230657 | {"reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}                              | {"reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+ 6837 | SYSTEM  | CALENDAR_EVENT_CREATED                     | reservation      | 2026-10-02 20:02:41.08512  | {"reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}                              | {"reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2"}
+(26 rows)
+
+ROLLBACK

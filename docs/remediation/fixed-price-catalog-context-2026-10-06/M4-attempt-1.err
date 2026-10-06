@@ -1,0 +1,1 @@
+ERROR:  cannot call jsonb_each on a non-object

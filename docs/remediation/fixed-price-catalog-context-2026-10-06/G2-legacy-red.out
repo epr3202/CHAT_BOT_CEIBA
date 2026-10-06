@@ -1,0 +1,43 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_____________________ test_g2_1_full_production_transcript _____________________
+tests/test_noviazgo_catalog_capture_g2.py:219: in test_g2_1_full_production_transcript
+    assert [row.message_kind for row in first["outbox"]] == ["TEXT", "DOCUMENT"]
+E   AssertionError: assert ['DOCUMENT'] == ['TEXT', 'DOCUMENT']
+E
+E     At index 0 diff: 'DOCUMENT' != 'TEXT'
+E     Right contains one more item: 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:25:07 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=750a7672-3bab-4182-80b2-250fb1a1fff2 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:25:07 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=750a7672-3bab-4182-80b2-250fb1a1fff2
+2026-10-05 22:25:08 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ROUTED_NON_TEXT request_id=80ece31b-f40e-4b73-b93d-7e6e63912862
+2026-10-05 22:25:08 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=8173d927-26a0-4ee3-8540-b19c1f6e6147 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:25:08 [info     ] inbox_completed                conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=8173d927-26a0-4ee3-8540-b19c1f6e6147
+2026-10-05 22:25:08 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=5d42be69-ac08-4e2e-8940-0993c22dd388 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:25:08 [info     ] inbox_completed                conversation_id=1 job_id=4 outcome=COMPLETED reason=ORCHESTRATED request_id=5d42be69-ac08-4e2e-8940-0993c22dd388
+__________ test_tc_catcap_001_same_message_entity_sends_without_lead ___________
+tests/test_fix2a_catalog_capture_adversarial.py:289: in test_tc_catcap_001_same_message_entity_sends_without_lead
+    assert [row.message_kind for row in rows] == ["TEXT", "DOCUMENT"]
+E   AssertionError: assert ['DOCUMENT'] == ['TEXT', 'DOCUMENT']
+E
+E     At index 0 diff: 'DOCUMENT' != 'TEXT'
+E     Right contains one more item: 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:25:15 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=CONFIRM_QUOTE_REQUEST request_id=req-catcap-001 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+____________ test_tc_catcap_009_message_entity_precedes_lead_event _____________
+tests/test_fix2a_catalog_capture_adversarial.py:538: in test_tc_catcap_009_message_entity_precedes_lead_event
+    assert [row.message_kind for row in rows] == ["TEXT", "DOCUMENT"]
+E   AssertionError: assert ['DOCUMENT'] == ['TEXT', 'DOCUMENT']
+E
+E     At index 0 diff: 'DOCUMENT' != 'TEXT'
+E     Right contains one more item: 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:25:23 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=req-catcap-009 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+=========================== short test summary info ============================
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_1_full_production_transcript
+FAILED tests/test_fix2a_catalog_capture_adversarial.py::test_tc_catcap_001_same_message_entity_sends_without_lead
+FAILED tests/test_fix2a_catalog_capture_adversarial.py::test_tc_catcap_009_message_entity_precedes_lead_event
+3 failed, 34 deselected in 21.27s
