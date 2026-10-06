@@ -1433,8 +1433,62 @@ async def handle_waiting_for_appointment_date(
         today=current_bogota_datetime().date(),
         require_absolute_confirmation=True,
     )
+    resolved_date = decision.resolved_date
+    date_to_confirm = resolved_date if decision.inferred_month else None
+    if conversation.pending_action == "CONFIRM_VISIT_DATE":
+        draft = require_visit_draft(conversation)
+        try:
+            candidate = date.fromisoformat(draft.get("candidate_visit_date", ""))
+        except (TypeError, ValueError):
+            candidate = None
+        confirmation = resolve_contextual_confirmation(
+            orchestration_input.message_text,
+            conversation.pending_action,
+            conversation.last_question_code,
+        )
+        if confirmation == "DENY":
+            draft.pop("candidate_visit_date", None)
+            conversation.visit_draft = draft
+            set_pending_action(conversation, "SELECT_VISIT_DATE")
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                "RESP-VISIT-003",
+                {},
+            )
+            return
+        if confirmation == "CONFIRM" and candidate is not None:
+            resolved_date = candidate
+            date_to_confirm = None
+        elif resolved_date is None and candidate is not None:
+            date_to_confirm = candidate
+        if date_to_confirm is None:
+            draft.pop("candidate_visit_date", None)
+            conversation.visit_draft = draft
+            set_pending_action(conversation, "SELECT_VISIT_DATE")
+
+    if date_to_confirm is not None:
+        draft = require_visit_draft(conversation)
+        draft["candidate_visit_date"] = date_to_confirm.isoformat()
+        conversation.visit_draft = draft
+        set_pending_action(conversation, "CONFIRM_VISIT_DATE")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-EVENT-DATA-003",
+            {"resolved_date": date_to_confirm},
+        )
+        return
+
     if decision.needs_confirmation or decision.interpretation == "RELATIVA":
-        # INTERIM(states.md): pending approved absolute-date confirmation copy.
+        # Other relative expressions and conflicting weekdays keep their
+        # existing request for a new date; only inferred months use confirmation.
         await enqueue_template(
             session,
             knowledge_sessionmaker,
@@ -1445,7 +1499,7 @@ async def handle_waiting_for_appointment_date(
             {},
         )
         return
-    if decision.resolved_date is None:
+    if resolved_date is None:
         await enqueue_template(
             session,
             knowledge_sessionmaker,
@@ -1458,7 +1512,7 @@ async def handle_waiting_for_appointment_date(
         return
 
     availability = await availability_service(settings, knowledge_sessionmaker).available_slots(
-        decision.resolved_date,
+        resolved_date,
         today=current_bogota_datetime().date(),
         request_id=orchestration_input.request_id,
     )
@@ -1488,7 +1542,7 @@ async def handle_waiting_for_appointment_date(
         return
 
     draft = require_visit_draft(conversation)
-    draft["visit_date"] = decision.resolved_date.isoformat()
+    draft["visit_date"] = resolved_date.isoformat()
     draft["offered_slots"] = [slot.start_time.strftime("%H:%M") for slot in availability.slots]
     conversation.visit_draft = draft
     await transition_conversation(
@@ -1521,7 +1575,7 @@ async def handle_waiting_for_appointment_date(
         orchestration_input.inbound_message,
         availability.response_code,
         {
-            "visit_date": format_date_natural(decision.resolved_date),
+            "visit_date": format_date_natural(resolved_date),
             "appointment_options": format_appointment_options(
                 [slot.start_time for slot in availability.slots]
             ),

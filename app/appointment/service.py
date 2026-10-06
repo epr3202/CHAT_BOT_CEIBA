@@ -32,6 +32,7 @@ from app.conversation.presentation import (
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.event.models import Event
+from app.event.validation import parse_customer_date_expression
 from app.scheduling.availability import AvailabilityService, slot_datetime
 
 BOGOTA = ZoneInfo("America/Bogota")
@@ -66,6 +67,7 @@ _NUMERIC_VISIT_DATE = re.compile(
 _TEXTUAL_VISIT_DATE = re.compile(
     rf"\b(\d{{1,2}})\s+(?:de\s+)?({'|'.join(SPANISH_MONTHS)})(?:\s+de\s+(\d{{4}}))?\b",
 )
+_DAY_ONLY_VISIT_DATE = re.compile(r"\b(?:el|dia)\s+(\d{1,2})\b")
 SPANISH_WEEKDAYS = {
     "lunes": 0,
     "martes": 1,
@@ -91,6 +93,7 @@ class VisitDateTextResult:
     next_state: ConversationState
     interpretation: VisitDateInterpretation = "NO_INTERPRETABLE"
     matched_text: str | None = None
+    inferred_month: bool = False
 
 
 @dataclass(frozen=True)
@@ -230,6 +233,28 @@ def resolve_visit_date_text(
             None,
             needs_confirmation=False,
             next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+        )
+    day_only = _DAY_ONLY_VISIT_DATE.search(normalized)
+    if day_only is not None:
+        day_value = int(day_only.group(1))
+        # The shared month resolver requires a possible day and a future month
+        # within datetime.date's range; otherwise its search could never finish.
+        if not 1 <= day_value <= 31 or (
+            today.year == date.max.year and today.month == 12 and day_value < today.day
+        ):
+            return VisitDateTextResult(
+                None,
+                needs_confirmation=False,
+                next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+            )
+        candidate = parse_customer_date_expression(day_only.group(0), today)
+        return VisitDateTextResult(
+            candidate.event_date,
+            needs_confirmation=require_absolute_confirmation,
+            next_state=ConversationState.WAITING_FOR_APPOINTMENT_DATE,
+            interpretation="RELATIVA",
+            matched_text=_date_match_text(message_text, day_only),
+            inferred_month=True,
         )
     relative = _resolve_relative_visit_date(normalized, today)
     if relative is not None:

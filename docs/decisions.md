@@ -276,3 +276,19 @@ conservan prioridad en los turnos elegibles. Su predicado compartido excluye tan
 el atajo de reserva con fecha/hora como el atajo de mención de catálogo; pasan al
 clasificador para atender la visita. Los pendientes y estados pausados mantienen
 su precedencia; las solicitudes activas mantienen sus bloqueos existentes.
+
+## 2026-10-06 — Confirmar fecha con día y mes inferido
+
+La conversación 205 aportó «el 14» como event_date pendiente de confirmación.
+El backend resuelve el día del mes actual si no pasó, o su siguiente ocurrencia
+válida, reutilizando parse_customer_date_expression con un span el/día N acotado.
+Valida día 1–31 y el rango del calendario antes de inferir el mes.
+
+En visita se conserva la candidata en visit_draft y se pregunta con la existente
+RESP-EVENT-DATA-003 y CONFIRM_VISIT_DATE; solo después de sí se valida agenda y
+se ofrecen horarios. No descarta la candidata ante una respuesta desconocida;
+no la convierte en visita confirmada. En precio fijo, el mismo parser alimenta
+la confirmación ya existente del borrador de reserva antes de pedir la hora.
+Las fechas completas inválidas, números aislados y cantidades no se reinterpretan
+como día sin mes. Los contratos anteriores de relativas y fechas completas se
+conservan; esta regla no crea plantillas, estados, pending_action ni migraciones.

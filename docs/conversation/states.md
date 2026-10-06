@@ -701,6 +701,22 @@ El estado se mantiene y el bot solicita otra fecha.
 
 El estado se mantiene hasta que el cliente confirme la fecha absoluta.
 
+## 10.8 Día sin mes
+
+Una expresión «el N» o «día N» conserva la fecha candidata inferida en
+`visit_draft.candidate_visit_date`, permanece en `WAITING_FOR_APPOINTMENT_DATE`,
+y fija `pending_action = CONFIRM_VISIT_DATE`. Usa RESP-EVENT-DATA-003 con la fecha
+absoluta antes de consultar disponibilidad.
+
+La afirmación consume la candidata y valida las reglas y la disponibilidad de
+visitas antes de ofrecer horarios. La negación descarta la candidata, vuelve a
+`SELECT_VISIT_DATE` y solicita otra fecha con RESP-VISIT-003. Una respuesta que
+no confirme ni aporte otra fecha repite la pregunta de confirmación y conserva
+la candidata. Otra expresión «el N» o «día N» reemplaza la candidata y requiere
+confirmación de nuevo. Una fecha absoluta aceptada reemplaza la candidata y se
+valida. Otras fechas relativas y los días de semana contradictorios conservan
+el comportamiento previo de solicitar otra fecha.
+
 ---
 
 # 11. WAITING_FOR_APPOINTMENT_SELECTION
