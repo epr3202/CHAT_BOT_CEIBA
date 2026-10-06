@@ -2889,11 +2889,18 @@ Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2
 
 ## RESP-BOOKING-PAYMENT-001 — Payment de reserva
 
-Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+Estado del seed para revisión: **APPROVED**, versión v3. La versión productiva
+v2 fue aprobada por Leandro el 2026-10-02; la línea Bre-B de v3 queda pendiente
+de su aprobación antes de publicar. Claude coordina la publicación y
+`BANK_BREB_KEY` de producción con Emerson. Seed/sync inactivan las versiones
+anteriores al publicar v3, sin modificar su texto histórico.
 
+allowed_variables: `account_holder`, `account_number`, `account_type`,
+`bank_name`, `breb_key`, `deposit_amount`.
 
-
-> ¡Listo! Tu fecha está disponible hoy y queda asegurada al recibir el abono de {deposit_amount}. Puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}. Cuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.
+> ¡Listo! Tu fecha está disponible hoy y queda asegurada al recibir el abono de {deposit_amount}. Puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}.
+> Llave Bre-B: {breb_key}
+> Cuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.
 
 ---
 

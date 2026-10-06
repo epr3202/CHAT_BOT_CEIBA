@@ -31,6 +31,9 @@ CONDITIONAL_DRAFT_CODES = {
     "RESP-RESERVATION-006",
 }
 
+# Explicit publication versions leave unrelated response histories unchanged.
+KNOWLEDGE_SEED_VERSIONS = {"RESP-BOOKING-PAYMENT-001": 3}
+
 
 @dataclass(frozen=True)
 class KnowledgeSeedEntry:
@@ -72,6 +75,7 @@ def extract_seed_entries(content: str) -> list[KnowledgeSeedEntry]:
                 question_summary=summary,
                 answer_template=template,
                 allowed_variables=sorted(set(re.findall(r"{([a-zA-Z_][a-zA-Z0-9_]*)}", template))),
+                version=KNOWLEDGE_SEED_VERSIONS.get(code, 1),
                 status=status,
             )
         )
