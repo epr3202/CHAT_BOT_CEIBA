@@ -25,7 +25,7 @@ TEMPLATES = {
     "TIME": "¿A qué hora te gustaría? Atendemos entre las 12 del día y las 9 de la noche.",
     "UNAVAILABLE": "Esa fecha y hora no están disponibles en nuestra agenda. ¿Quieres proponerme otra?",
     "CONFIRM": "Revisemos: {plan_name}, el {booking_date} a las {booking_time}. Valor {total_amount}; para asegurar la fecha se abona el 50 % ({deposit_amount}). ¿Deseas que registre tu reserva?",
-    "PAYMENT": "¡Listo! Tu fecha está disponible hoy y queda asegurada al recibir el abono de {deposit_amount}. Puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}. Cuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.",
+    "PAYMENT": "¡Listo! Tu fecha está disponible hoy y queda asegurada al recibir el abono de {deposit_amount}. Puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}.\nLlave Bre-B: {breb_key}\nCuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.",
     "EVIDENCE": "¡Gracias! Recibimos tu comprobante. Nuestro equipo lo revisará y te confirmo por aquí en cuanto quede validado.",
     "CONFIRMED": "¡Tu reserva está confirmada! {plan_name}, el {booking_date} a las {booking_time}. Saldo pendiente: {missing_amount}, a más tardar el {balance_due_date}. ¡Nos vemos en La Ceiba!",
     "PARTIAL": "Registramos tu abono. Para asegurar la fecha faltan {missing_amount}; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.",
