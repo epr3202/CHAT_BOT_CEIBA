@@ -49,7 +49,6 @@ from app.conversation.catalog_event_type import (
     FIXED_PRICE_EVENT_TYPES,
     normalize_catalog_event_type_label,
     resolve_catalog_event_type_match,
-    resolve_catalog_event_type_mention,
     resolve_fixed_price_information_match,
     resolve_fixed_price_information_type,
 )
@@ -627,10 +626,11 @@ def deterministic_booking_or_catalog_classification(
                 SELF_SERVICE_BOOKING_REASON if self_service else FIXED_PRICE_BOOKING_REASON
             ),
         )
-    mentioned_type = resolve_catalog_event_type_mention(
+    match = resolve_catalog_event_type_match(
         message_text,
         answering_event_type_question=context.get("pending_action") == CATALOG_CAPTURE_ACTION,
     )
+    mentioned_type = match.event_type if match is not None else None
     if context.get("pending_action") == CATALOG_CAPTURE_ACTION and mentioned_type is not None:
         return IntentClassification(
             primary_intent="UNKNOWN",
@@ -648,7 +648,12 @@ def deterministic_booking_or_catalog_classification(
             {"catalogo", "catalogos"}
             & set(normalize_catalog_event_type_label(message_text).split())
         )
-        if catalog_request or mentioned_type == "PROPOSAL":
+        explicit_proposal = (
+            match is not None
+            and match.event_type == "PROPOSAL"
+            and len(normalize_catalog_event_type_label(match.matched_label).split()) >= 2
+        )
+        if catalog_request or explicit_proposal:
             return IntentClassification(
                 primary_intent="GENERAL_INFORMATION",
                 sub_intent=None,

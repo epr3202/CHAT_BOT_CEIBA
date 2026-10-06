@@ -2406,8 +2406,8 @@ de estrategia o escalar.
 
 Tras los bloqueos de conversación y la solicitud explícita de asesor, el orden es:
 rutas por `pending_action` → guard de reserva de precio fijo → `CATALOG_CAPTURE` y
-resolución de su frase de tipo → catálogo explícito con tipo único o información
-PROPOSAL de precio fijo sin captura → clasificador LLM si no se resolvió el turno.
+resolución de su frase de tipo → catálogo explícito con tipo único o frase PROPOSAL
+de al menos dos palabras sin captura → clasificador LLM si no se resolvió el turno.
 
 El guard de reserva solo se evalúa con `pending_action IS NULL`, bot habilitado y
 estado `BOT_ACTIVE` o `ANSWERING_INFORMATION`. Requiere que el evento del lead activo
@@ -2990,9 +2990,12 @@ EVENT_TYPE_EXTRACTION tanto por COLLECT_CATALOG_EVENT_TYPE como por la pregunta
 RESP-CATALOG-002. Solo después se evalúa el abandono.
 
 Sin captura, la palabra normalizada catalogo/catalogos y un tipo único activan
-GENERAL_INFORMATION/catalog_request determinista. La mención única PROPOSAL sin
-esa palabra activa GENERAL_INFORMATION/tipos de eventos y los catálogos
-PROACTIVE de precio fijo. Ambas rutas conservan plantillas y send_mode existentes.
+GENERAL_INFORMATION/catalog_request determinista. Sin esa palabra, un tipo único
+PROPOSAL cuya etiqueta reconocida tenga al menos dos palabras activa
+GENERAL_INFORMATION/tipos de eventos y los catálogos PROACTIVE de precio fijo.
+Los labels reservados a respuestas de captura se ignoran fuera de
+COLLECT_CATALOG_EVENT_TYPE según entities.md. Ambas rutas conservan plantillas
+y send_mode existentes.
 CATALOG_EVENT_TYPE_RESOLVED registra actor SYSTEM, event_type, matched_label,
 decision_source y source; orchestrator_decision registra DETERMINISTIC en los
 atajos anteriores al LLM. Pending_action se fija exclusivamente en el backend.

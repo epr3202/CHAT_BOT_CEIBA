@@ -215,9 +215,10 @@ canónico completo.
 Durante la captura de catálogo manda la resolución determinista; si falla, el
 extractor de tipo se evalúa tras una clasificación válida y antes del abandono.
 `RESP-CATALOG-002` es una pregunta de tipo de evento. Sin captura, catálogo más un
-tipo único se resuelve antes del LLM. Emerson también autoriza el atajo sin la
-palabra catálogo para una mención única PROPOSAL, por GENERAL_INFORMATION de
-precio fijo, para que T2/T3 del transcript no consuman el JSON truncado.
+tipo único se resuelve antes del LLM. El atajo sin la palabra catálogo exige una
+frase única PROPOSAL con etiqueta reconocida de dos o más palabras, por
+GENERAL_INFORMATION de precio fijo, para que T2/T3 del transcript no consuman
+el JSON truncado.
 
 Emerson aclara que la ruta de precio fijo mantiene prioridad PROPOSAL sobre
 ROMANTIC_DINNER en frases mixtas existentes. Se comparte el matcher y la tabla de
@@ -233,6 +234,13 @@ fuera de captura ignora esos labels para evitar resolver menciones incidentales.
 La normalización de entidades estructuradas conserva su contrato. La prioridad
 de precio fijo se limita a PROPOSAL sobre ROMANTIC_DINNER; cualquier otro tipo
 coexistente deja esa ruta sin resolver.
+
+La revisión C2 de Claude del PR #41 limita el atajo PROPOSAL autorizado
+inicialmente a esas frases explícitas de al menos dos palabras (`pedida de
+noviazgo`, `pedir noviazgo`, `anillo de compromiso`). Fuera de captura no basta
+una etiqueta de una palabra para evitar el clasificador sin pedir catálogo.
+`mandame otro catalogo` también pasa al clasificador: `otro` solo es una respuesta
+válida a la pregunta de tipo de evento, sin provocar un handoff determinista.
 
 Ante indisponibilidad IA, fuera de las ramas críticas y ubicación, se repite la
 última pregunta solo si hay pending_action vigente y su última versión está

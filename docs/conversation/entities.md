@@ -603,8 +603,12 @@ y queda sin resolver, y cada label completo sigue resolviendo a su propio tipo.
 Fuera de captura, esa frase solo menciona `ANNIVERSARY`. El backend evalúa estas
 frases antes del LLM durante la captura.
 Sin captura, una palabra `catalogo` o `catalogos` más un tipo único permite enviar
-el catálogo sin volver a preguntar. Una mención única de `PROPOSAL` también se
-resuelve antes del LLM por la ruta de información general de precio fijo.
+el catálogo sin volver a preguntar. Sin esa palabra, el atajo requiere un tipo
+único `PROPOSAL` cuya etiqueta reconocida tenga dos o más palabras, por ejemplo
+`pedida de noviazgo`, `pedir noviazgo` o `anillo de compromiso`; entonces se resuelve
+antes del LLM por la ruta de información general de precio fijo. Las menciones
+incidentales `noviazgo`, `propuesta` y `otro` pasan al clasificador; `mandame otro
+catalogo` tampoco dispara un catálogo o handoff determinista.
 
 La información de precio fijo ignora los labels reservados a respuestas de captura
 y conserva la prioridad comercial de `PROPOSAL` solo sobre `ROMANTIC_DINNER`, en
