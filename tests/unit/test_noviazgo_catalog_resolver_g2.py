@@ -33,7 +33,7 @@ from app.orchestrator.service import deterministic_booking_or_catalog_classifica
 def test_g2_7_phrase_resolver(text: str, expected: str | None) -> None:
     resolver = getattr(catalog, "resolve_catalog_event_type_mention", None)
     assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
-    assert resolver(text) == expected
+    assert resolver(text, answering_event_type_question=True) == expected
 
 
 @pytest.mark.parametrize(
@@ -47,7 +47,7 @@ def test_g2_7_phrase_resolver(text: str, expected: str | None) -> None:
 def test_g2_7_every_existing_label(event_type: str, label: str) -> None:
     resolver = getattr(catalog, "resolve_catalog_event_type_mention", None)
     assert callable(resolver), "R2 phrase resolver is missing"
-    assert resolver(label) == event_type
+    assert resolver(label, answering_event_type_question=True) == event_type
 
 
 @pytest.mark.parametrize("text", ["pedida de noviazgo", "PEDIR NOVIAZGO", "pedidas de mano"])
