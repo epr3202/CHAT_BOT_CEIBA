@@ -325,3 +325,56 @@ async def test_g2_deterministic_resolution_audited(harness: Harness) -> None:
     assert audit.new_value["event_type"] == "PROPOSAL"
     assert audit.new_value["matched_label"] == "pedida de noviazgo"
     assert audit.new_value["decision_source"] == "DETERMINISTIC"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "cuanto cuesta el salon? llevamos 3 años de noviazgo",
+        "tengo una propuesta comercial para ustedes",
+        "para celebrar 2 años de noviazgo",
+        "mandame otro catalogo",
+    ],
+)
+async def test_c1_c2_incidental_mentions_reach_general_classifier(
+    harness: Harness, text: str
+) -> None:
+    harness.outputs[text] = PAYLOAD_3450
+    await harness.turn(text)
+    result = await harness.snapshot()
+    assert harness.calls == [("classify", text)]
+    assert len(result["ai"]) == 1
+    assert result["ai"][0].task == "INTENT_CLASSIFICATION"
+    assert result["ai"][0].parsed_output == json.loads(PAYLOAD_3450)
+    assert result["ai"][0].validation_status == "VALID"
+    assert result["sends"] == []
+    assert all(row.catalog_asset_id != harness.proposal_id for row in result["outbox"])
+    assert result["context"][0] == "BOT_ACTIVE"
+    assert "CATALOG_EVENT_TYPE_RESOLVED" not in {row.action for row in result["audits"]}
+    assert "CATALOG_HANDOFF_NOT_AVAILABLE" not in {row.action for row in result["audits"]}
+
+
+@pytest.mark.parametrize(
+    "text,event_type",
+    [("noviazgo", "PROPOSAL"), ("propuesta", "PROPOSAL"), ("otro", "OTHER")],
+)
+async def test_c1_capture_accepts_short_event_type_answers(
+    harness: Harness,
+    text: str,
+    event_type: str,
+) -> None:
+    await harness.capture()
+    harness.outputs[text] = RAW_3449
+    await harness.turn(text)
+    result = await harness.snapshot()
+    assert harness.calls == []
+    assert result["ai"] == []
+    resolutions = [row for row in result["audits"] if row.action == "CATALOG_EVENT_TYPE_RESOLVED"]
+    assert len(resolutions) == 1
+    assert resolutions[0].new_value["event_type"] == event_type
+    if event_type == "PROPOSAL":
+        await assert_catalog(harness)
+    else:
+        # The fixture has no OTHER PDF: preserve the existing unavailable handoff.
+        assert result["sends"] == []
+        assert result["context"][1] == "WAIT_FOR_HUMAN"
