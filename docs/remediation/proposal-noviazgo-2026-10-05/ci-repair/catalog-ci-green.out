@@ -1,0 +1,23 @@
+.................................                                        [100%]
+=============================== warnings summary ===============================
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_015_admin_rejects_pdf_over_configured_size
+  /home/emerson/g1-noviazgo-2026-10-05/worktree/app/admin/routes.py:1541: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    file_size = validate_catalog_admin_file(request, file_path)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_022_admin_catalog_event_types_validate_send_mode_at_edge
+  /home/emerson/g1-noviazgo-2026-10-05/worktree/app/admin/routes.py:1543: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_catalog_event_type_mappings(event_type_mappings)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.txt-not a pdf-text/plain]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.pdf-not a pdf-application/pdf]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[../escape.pdf-%PDF-1.4\nvalid-application/pdf]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_025_admin_upload_rejects_configured_oversize
+  /home/emerson/g1-noviazgo-2026-10-05/worktree/app/admin/routes.py:1613: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    stored_path, file_hash, file_size, created_new_file = await store_catalog_upload(request, file)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_026_admin_upload_validation_leaves_no_orphan_file
+  /home/emerson/g1-noviazgo-2026-10-05/worktree/app/admin/routes.py:1610: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_catalog_event_type_mappings([mapping])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+33 passed, 7 warnings in 59.71s

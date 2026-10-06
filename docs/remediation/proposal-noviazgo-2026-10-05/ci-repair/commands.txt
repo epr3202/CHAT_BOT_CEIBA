@@ -1,0 +1,13 @@
+# Entorno sintético mínimo igual al CI, sin servicios externos reales.
+export TEST_DATABASE_URL=postgresql+asyncpg://ceiba:ceiba@172.18.0.2:5432/ceiba_test_ci_verify
+export DATABASE_URL="$TEST_DATABASE_URL"
+export META_APP_SECRET=test META_ACCESS_TOKEN=test OPENROUTER_API_KEY=test
+export QUALITY_STAGE=suite ENVIRONMENT=testing
+# QUALITY_STAGE selecciona reset seguro de fixture; todos los comandos son subsets.
+
+python -m pytest tests/staff_notifications/test_b3.py tests/staff_notifications/test_f2_reopen.py -q --tb=short
+python -m pytest tests/test_slice2a_catalogs_adversarial.py -q --tb=short
+python -m pytest tests/remediation/r3/test_r3_flow.py tests/test_noviazgo_catalog_capture_g2.py tests/test_noviazgo_fallback_boundaries.py -q --tb=short
+python -m pytest tests/booking_conversation/test_d2_window.py tests/booking_backend/test_g3_booking.py -q --tb=short
+python -m pytest tests/booking_conversation -q --tb=short
+ruff check .

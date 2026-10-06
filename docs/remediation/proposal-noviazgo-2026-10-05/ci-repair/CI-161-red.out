@@ -1,0 +1,273 @@
+=================================== FAILURES ===================================
+______________________ test_d2_calendar_conflict_after_23 ______________________
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7f387...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+
+    async def test_d2_calendar_conflict_after_23(harness):
+        assert "booking_latest_start" in Settings.model_fields
+        config = settings(BOOKING_HOURS_END="24:00", BOOKING_LATEST_START="21:00")
+        selected = plan(exclusive=True)
+        start = START.replace(hour=21)
+        harness.calendar.add_event(
+            "a",
+            "Evento existente — exclusividad",
+            start.replace(hour=23),
+            start.replace(hour=23, minute=30),
+        )
+        async with harness.db() as session:
+>           result = await fetch_booking_context(
+                session,
+                plan=selected,
+                starts_at=start,
+                ends_at=start + timedelta(hours=3),
+                calendar=harness.calendar,
+                settings=config,
+            )
+
+tests/booking_conversation/test_d2_window.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+app/reservation/availability.py:176: in fetch_booking_context
+    events = await calendar.list_events(starts_at, ends_at, ids)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (datetime.datetime(2030, 10, 10, 21, 0, tzinfo=zoneinfo.ZoneInfo(key='America/Bogota')), datetime.datetime(2030, 10, 11, 0, 0, tzinfo=zoneinfo.ZoneInfo(key='America/Bogota')), ['a', 'b'])
+kwargs = {}
+
+    async def checked_list(*args, **kwargs):
+        async with case.db() as session:
+            active = await session.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND pid <> pg_backend_pid() AND xact_start IS NOT NULL"
+                )
+            )
+>           assert active == 0, "Calendar called while a transaction is open"
+E           AssertionError: Calendar called while a transaction is open
+E           assert 1 == 0
+
+tests/booking_conversation/conftest.py:84: AssertionError
+__________ test_state_appropriate_degradation_and_next_turn[capture] ___________
+
+db = async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7f386b7e9e90>, autoflush=True, expire_on_commit=False)
+request = <FixtureRequest for <Coroutine test_state_appropriate_degradation_and_next_turn[capture]>>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f3875ffcf20>
+case = 'capture'
+
+    @pytest.mark.parametrize("case", ["active", "capture", "critical", "human", "waiting", "disabled"])
+    async def test_state_appropriate_degradation_and_next_turn(
+        db: Any,
+        request: pytest.FixtureRequest,
+        monkeypatch: pytest.MonkeyPatch,
+        case: str,
+    ) -> None:
+        configure(monkeypatch, 1)
+        state = {
+            "active": "BOT_ACTIVE",
+            "capture": "COLLECTING_EVENT_DATA",
+            "critical": "WAITING_FOR_APPOINTMENT_DATE",
+            "human": "HUMAN_ACTIVE",
+            "waiting": "WAITING_FOR_HUMAN",
+            "disabled": "BOT_ACTIVE",
+        }[case]
+        event_id = await prepare(
+            db,
+            state=state,
+            enabled=case != "disabled",
+            pending="COLLECT_EVENT_TYPE" if case == "capture" else None,
+        )
+        before = await snapshot(db)
+        tokens: list[str] = []
+        with respx.mock as router:
+            provider = Provider(router, {MAIN: [httpx.ConnectError("R3 synthetic") for _ in range(2)]})
+    
+            async def observe(request: httpx.Request) -> httpx.Response:
+                async with db() as session:
+                    token = await session.scalar(text("SELECT claim_token FROM inbox_job WHERE id=1"))
+                assert token is not None
+                tokens.append(str(token))
+                return provider.respond(request)
+    
+            provider.route.mock(side_effect=observe)
+            counts = await inbox.process_inbox_once(db)
+            provider.exhausted()
+            completed = await snapshot(db)
+            await inbound.process_webhook_event(event_id, db)
+            assert await snapshot(db) == completed
+        assert len(set(tokens)) == 1 and provider.calls == {MAIN: 2}
+        assert counts["COMPLETED"] == 1
+        job = completed["inbox_job"][0]
+        assert job["status"] == "COMPLETED" and job["attempts"] == 0
+        assert completed["webhook_event"][0]["status"] == "PROCESSED"
+        assert completed["message"] == before["message"]
+        assert (
+            completed["appointment"]
+            == completed["payment_evidence"]
+            == completed["quote_request"]
+            == []
+        )
+        if case in {"human", "waiting", "disabled"}:
+            assert completed["outbox"] == completed["handoff"] == []
+            assert job["completion_reason"].startswith("SILENT_")
+        elif case == "critical":
+            assert len(completed["handoff"]) == len(completed["outbox"]) == 1
+            assert completed["conversation"][0]["state"] == "WAITING_FOR_HUMAN"
+            assert (
+                completed["conversation"][0]["bot_enabled"] == before["conversation"][0]["bot_enabled"]
+            )
+        else:
+>           assert completed["conversation"][0]["last_question_code"] == "RESP-DISCOVERY-002"
+E           AssertionError: assert 'RESP-EVENT-DATA-013' == 'RESP-DISCOVERY-002'
+E             
+E             - RESP-DISCOVERY-002
+E             + RESP-EVENT-DATA-013
+
+tests/remediation/r3/test_r3_flow.py:92: AssertionError
+______________ test_tc_b3_010_staff_inbound_reopens_and_is_silent ______________
+
+client = <httpx.AsyncClient object at 0x7f3869acaf30>
+
+    async def test_tc_b3_010_staff_inbound_reopens_and_is_silent(client):
+        target = await recipient()
+        recent = await outbox(target, status="DEFERRED", created_at=NOW - timedelta(hours=1))
+        await outbox(target, status="DEFERRED", source_id="old", created_at=NOW - timedelta(hours=49))
+        payload = json.loads(
+            whatsapp_message_payload("staff.in.1", phone=PHONE.removeprefix("+"), text="Hola")
+        )
+        payload["entry"][0]["changes"][0]["value"]["messages"][0]["timestamp"] = str(
+            int(NOW.timestamp())
+        )
+        for _ in range(2):
+            await process_whatsapp_webhook(payload, app.state.db_sessionmaker)
+        saved = (await rows(type(target)))[0]
+        assert saved.last_inbound_at == NOW and saved.last_inbound_message_id == "staff.in.1"
+        for model in (Customer, Conversation, Message, InboxJob, Outbox):
+            assert await rows(model) == [], model.__name__
+        notifications = await rows(type(recent))
+>       assert [row.status for row in notifications] == ["PENDING", "DEFERRED"]
+E       AssertionError: assert ['DEFERRED', 'DEFERRED'] == ['PENDING', 'DEFERRED']
+E         
+E         At index 0 diff: 'DEFERRED' != 'PENDING'
+E         
+E         Full diff:
+E           [
+E         -     'PENDING',
+E         +     'DEFERRED',
+E               'DEFERRED',
+E           ]
+
+tests/staff_notifications/test_b3.py:310: AssertionError
+____ test_tc_cat_018c_unrenderable_template_chain_creates_handoff_and_logs _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f3877489c10>
+sessionmaker_fixture = async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7f387434fe90>, autoflush=True, expire_on_commit=False)
+
+    @pytest.mark.asyncio
+    async def test_tc_cat_018c_unrenderable_template_chain_creates_handoff_and_logs(
+        monkeypatch: pytest.MonkeyPatch,
+        sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    ) -> None:
+        logger = CapturingLogger()
+        monkeypatch.setattr(catalog_service, "logger", logger)
+        await approve_catalog_templates(
+            sessionmaker_fixture,
+            statuses={
+                "RESP-CATALOG-001": "DRAFT",
+                "RESP-CATALOG-002": "DRAFT",
+                "RESP-CATALOG-003": "DRAFT",
+            },
+        )
+        conversation_id, _lead_id, _event_id, inbound_id = await seed_conversation(sessionmaker_fixture)
+    
+        await orchestrate(
+            sessionmaker_fixture,
+            conversation_id,
+            inbound_id,
+            catalog_request_classification(),
+            "quiero información de planes románticos",
+        )
+    
+        async with sessionmaker_fixture() as session:
+            conversation = await session.get(Conversation, conversation_id)
+            handoff = await session.scalar(
+                select(Handoff).where(Handoff.conversation_id == conversation_id)
+            )
+            audit = await session.scalar(
+                select(AuditEvent).where(AuditEvent.action == "CATALOG_HANDOFF_TEMPLATE_UNAVAILABLE")
+            )
+        assert await count_outbox(sessionmaker_fixture) == 0
+        assert conversation is not None
+        assert conversation.state == ConversationState.WAITING_FOR_HUMAN.value
+        assert handoff is not None
+        assert handoff.status == "PENDING"
+        assert handoff.priority == "NORMAL"
+        assert handoff.reason == "TEMPLATE_UNAVAILABLE"
+        assert "TEMPLATE_UNAVAILABLE" in handoff.summary
+>       assert "RESP-CATALOG-002" in handoff.summary
+E       AssertionError: assert 'RESP-CATALOG-002' in 'Cliente: Sin nombre confirmado\nTelefono: +573013301846\nConversacion: 1\nMotivo: TEMPLATE_UNAVAILABLE - TEMPLATE_UNAVAILABLE for RESP-CATALOG-003; attempted response codes: RESP-CATALOG-003\nUltimos mensajes:\n- INBOUND: Hola'
+E        +  where 'Cliente: Sin nombre confirmado\nTelefono: +573013301846\nConversacion: 1\nMotivo: TEMPLATE_UNAVAILABLE - TEMPLATE_UNAVAILABLE for RESP-CATALOG-003; attempted response codes: RESP-CATALOG-003\nUltimos mensajes:\n- INBOUND: Hola' = <app.handoff.models.Handoff object at 0x7f3863e77e90>.summary
+
+tests/test_slice2a_catalogs_adversarial.py:974: AssertionError
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/payment_prereview/test_contracts.py: 6 warnings
+tests/payment_prereview/test_d6_no_http_in_tx.py: 4 warnings
+  /home/runner/work/CHAT_BOT_CEIBA/CHAT_BOT_CEIBA/app/payment/review.py:391: SADeprecationWarning: Passing expression to ``distinct`` to generate a DISTINCT ON clause is deprecated. Use instead the ``postgresql.distinct_on`` function as an extension.
+    .distinct(PaymentEvidenceReview.evidence_id)
+
+tests/remediation/r9/test_r9_races.py::test_killed_owned_process_keeps_committed_boundary[before_commit-pause]
+tests/remediation/r9/test_r9_races.py::test_killed_owned_process_keeps_committed_boundary[before_commit-admission]
+tests/remediation/r9/test_r9_races.py::test_killed_owned_process_keeps_committed_boundary[after_commit-pause]
+tests/remediation/r9/test_r9_races.py::test_killed_owned_process_keeps_committed_boundary[after_commit-admission]
+  /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=3017) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_015_admin_rejects_pdf_over_configured_size
+  /home/runner/work/CHAT_BOT_CEIBA/CHAT_BOT_CEIBA/app/admin/routes.py:1541: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    file_size = validate_catalog_admin_file(request, file_path)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_022_admin_catalog_event_types_validate_send_mode_at_edge
+  /home/runner/work/CHAT_BOT_CEIBA/CHAT_BOT_CEIBA/app/admin/routes.py:1543: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_catalog_event_type_mappings(event_type_mappings)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.txt-not a pdf-text/plain]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.pdf-not a pdf-application/pdf]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[../escape.pdf-%PDF-1.4\nvalid-application/pdf]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_025_admin_upload_rejects_configured_oversize
+  /home/runner/work/CHAT_BOT_CEIBA/CHAT_BOT_CEIBA/app/admin/routes.py:1613: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    stored_path, file_hash, file_size, created_new_file = await store_catalog_upload(request, file)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_026_admin_upload_validation_leaves_no_orphan_file
+  /home/runner/work/CHAT_BOT_CEIBA/CHAT_BOT_CEIBA/app/admin/routes.py:1610: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_catalog_event_type_mappings([mapping])
+
+tests/unit/test_knowledge.py::test_seed_loader_is_idempotent
+tests/unit/test_knowledge.py::test_seed_loader_is_idempotent
+  /home/runner/work/CHAT_BOT_CEIBA/CHAT_BOT_CEIBA/tests/unit/test_knowledge.py:70: SADeprecationWarning: The Result.tuples() method is deprecated, Row now behaves like a tuple and can unpack types directly. (deprecated since: 2.1.0)
+    .tuples()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_d2_window.py::test_d2_calendar_conflict_after_23 - AssertionError: Calendar called while a transaction is open
+assert 1 == 0
+FAILED tests/remediation/r3/test_r3_flow.py::test_state_appropriate_degradation_and_next_turn[capture] - AssertionError: assert 'RESP-EVENT-DATA-013' == 'RESP-DISCOVERY-002'
+  
+  - RESP-DISCOVERY-002
+  + RESP-EVENT-DATA-013
+FAILED tests/staff_notifications/test_b3.py::test_tc_b3_010_staff_inbound_reopens_and_is_silent - AssertionError: assert ['DEFERRED', 'DEFERRED'] == ['PENDING', 'DEFERRED']
+  
+  At index 0 diff: 'DEFERRED' != 'PENDING'
+  
+  Full diff:
+    [
+  -     'PENDING',
+  +     'DEFERRED',
+        'DEFERRED',
+    ]
+FAILED tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_018c_unrenderable_template_chain_creates_handoff_and_logs - AssertionError: assert 'RESP-CATALOG-002' in 'Cliente: Sin nombre confirmado\nTelefono: +573013301846\nConversacion: 1\nMotivo: TEMPLATE_UNAVAILABLE - TEMPLATE_UNAVAILABLE for RESP-CATALOG-003; attempted response codes: RESP-CATALOG-003\nUltimos mensajes:\n- INBOUND: Hola'
+ +  where 'Cliente: Sin nombre confirmado\nTelefono: +573013301846\nConversacion: 1\nMotivo: TEMPLATE_UNAVAILABLE - TEMPLATE_UNAVAILABLE for RESP-CATALOG-003; attempted response codes: RESP-CATALOG-003\nUltimos mensajes:\n- INBOUND: Hola' = <app.handoff.models.Handoff object at 0x7f3863e77e90>.summary
+4 failed, 2447 passed, 24 warnings in 1916.85s (0:31:56)
+
