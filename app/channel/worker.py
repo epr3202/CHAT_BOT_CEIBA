@@ -29,6 +29,7 @@ from app.channel.models import Message, Outbox
 from app.channel.outbound import WhatsAppInvalidMediaError, WhatsAppOutboundClient
 from app.config.database import create_engine, create_sessionmaker
 from app.config.logging import configure_logging
+from app.config.readiness import validate_payment_settings
 from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation
 
@@ -641,10 +642,10 @@ async def run_worker() -> None:
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
     )
-    sessionmaker = create_sessionmaker(engine)
-
-    async with WhatsAppOutboundClient(settings) as sender:
-        try:
+    try:
+        sessionmaker = create_sessionmaker(engine)
+        await validate_payment_settings(settings, sessionmaker)
+        async with WhatsAppOutboundClient(settings) as sender:
             await asyncio.gather(
                 _run_outbox_loop(sessionmaker, sender, settings),
                 _run_staff_outbox_loop(sessionmaker, sender, settings),
@@ -654,8 +655,8 @@ async def run_worker() -> None:
                 _run_balance_reminder_loop(sessionmaker, settings),
                 _run_customer_notification_loop(sessionmaker, sender, settings),
             )
-        finally:
-            await engine.dispose()
+    finally:
+        await engine.dispose()
 
 
 async def _run_staff_outbox_loop(

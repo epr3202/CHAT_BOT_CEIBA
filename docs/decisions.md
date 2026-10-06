@@ -343,3 +343,11 @@ verificación de cada merge, sin revisión intermedia de Claude. También autori
 el cambio exclusivo de BANK_BREB_KEY en producción antes de tocar main. Este
 registro documenta la autorización; los resultados y SHAs se reportan después
 de ejecutar y verificar cada paso.
+
+## 2026-10-05 — Llave Bre-B en las instrucciones de pago
+
+Emerson decide incorporar la llave Bre-B como método de pago. La configuración
+BANK_BREB_KEY procede exclusivamente de Settings. El arranque de API y worker
+falla con un error claro si la última plantilla APPROVED de pago usa breb_key
+y la configuración está vacía. La plantilla anterior sin esa variable conserva
+su compatibilidad durante la publicación.

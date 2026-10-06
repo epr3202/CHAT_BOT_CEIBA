@@ -13,7 +13,7 @@ from app.admin.routes import router as admin_router
 from app.channel.webhook import router as whatsapp_webhook_router
 from app.config.database import create_engine, create_sessionmaker
 from app.config.logging import configure_logging
-from app.config.readiness import check_database
+from app.config.readiness import check_database, validate_payment_settings
 from app.config.settings import Settings, get_settings
 
 
@@ -27,9 +27,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
     )
-    app.state.db_sessionmaker = create_sessionmaker(app.state.db_engine)
-    yield
-    await app.state.db_engine.dispose()
+    try:
+        app.state.db_sessionmaker = create_sessionmaker(app.state.db_engine)
+        await validate_payment_settings(settings, app.state.db_sessionmaker)
+        yield
+    finally:
+        await app.state.db_engine.dispose()
 
 
 app = FastAPI(title="La Ceiba Club House API", lifespan=lifespan)
