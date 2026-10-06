@@ -74,6 +74,7 @@ from app.conversation.fixed_price_booking import (
     GENERIC_CAPTURE_ACTIONS,
     SELF_SERVICE_BOOKING_REASON,
     booking_guard_eligible,
+    is_explicit_visit_request,
     is_fixed_price_booking,
     match_booking_plan,
 )
@@ -583,6 +584,14 @@ def deterministic_booking_or_catalog_classification(
             reasoning_code="BOOKING_STEP",
         )
     self_service = settings is not None and settings.self_service_booking_enabled
+    eligible = booking_guard_eligible(
+        context.get("state"),
+        context.get("pending_action"),
+        context.get("bot_enabled", True),
+        self_service=self_service,
+    )
+    if eligible and is_explicit_visit_request(message_text):
+        return None
     named_plan = match_booking_plan(message_text, facts.get("plans", [])) if self_service else None
     explicit_date = (
         resolve_visit_date_text(
@@ -593,12 +602,7 @@ def deterministic_booking_or_catalog_classification(
         if self_service and facts.get("catalog_sent") == "yes"
         else None
     )
-    if booking_guard_eligible(
-        context.get("state"),
-        context.get("pending_action"),
-        context.get("bot_enabled", True),
-        self_service=self_service,
-    ) and (
+    if eligible and (
         named_plan is not None
         or is_fixed_price_booking(
             message_text,
@@ -1429,8 +1433,62 @@ async def handle_waiting_for_appointment_date(
         today=current_bogota_datetime().date(),
         require_absolute_confirmation=True,
     )
+    resolved_date = decision.resolved_date
+    date_to_confirm = resolved_date if decision.inferred_month else None
+    if conversation.pending_action == "CONFIRM_VISIT_DATE":
+        draft = require_visit_draft(conversation)
+        try:
+            candidate = date.fromisoformat(draft.get("candidate_visit_date", ""))
+        except (TypeError, ValueError):
+            candidate = None
+        confirmation = resolve_contextual_confirmation(
+            orchestration_input.message_text,
+            conversation.pending_action,
+            conversation.last_question_code,
+        )
+        if confirmation == "DENY":
+            draft.pop("candidate_visit_date", None)
+            conversation.visit_draft = draft
+            set_pending_action(conversation, "SELECT_VISIT_DATE")
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                "RESP-VISIT-003",
+                {},
+            )
+            return
+        if confirmation == "CONFIRM" and candidate is not None:
+            resolved_date = candidate
+            date_to_confirm = None
+        elif resolved_date is None and candidate is not None:
+            date_to_confirm = candidate
+        if date_to_confirm is None:
+            draft.pop("candidate_visit_date", None)
+            conversation.visit_draft = draft
+            set_pending_action(conversation, "SELECT_VISIT_DATE")
+
+    if date_to_confirm is not None:
+        draft = require_visit_draft(conversation)
+        draft["candidate_visit_date"] = date_to_confirm.isoformat()
+        conversation.visit_draft = draft
+        set_pending_action(conversation, "CONFIRM_VISIT_DATE")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-EVENT-DATA-003",
+            {"resolved_date": date_to_confirm},
+        )
+        return
+
     if decision.needs_confirmation or decision.interpretation == "RELATIVA":
-        # INTERIM(states.md): pending approved absolute-date confirmation copy.
+        # Other relative expressions and conflicting weekdays keep their
+        # existing request for a new date; only inferred months use confirmation.
         await enqueue_template(
             session,
             knowledge_sessionmaker,
@@ -1441,7 +1499,7 @@ async def handle_waiting_for_appointment_date(
             {},
         )
         return
-    if decision.resolved_date is None:
+    if resolved_date is None:
         await enqueue_template(
             session,
             knowledge_sessionmaker,
@@ -1454,7 +1512,7 @@ async def handle_waiting_for_appointment_date(
         return
 
     availability = await availability_service(settings, knowledge_sessionmaker).available_slots(
-        decision.resolved_date,
+        resolved_date,
         today=current_bogota_datetime().date(),
         request_id=orchestration_input.request_id,
     )
@@ -1484,7 +1542,7 @@ async def handle_waiting_for_appointment_date(
         return
 
     draft = require_visit_draft(conversation)
-    draft["visit_date"] = decision.resolved_date.isoformat()
+    draft["visit_date"] = resolved_date.isoformat()
     draft["offered_slots"] = [slot.start_time.strftime("%H:%M") for slot in availability.slots]
     conversation.visit_draft = draft
     await transition_conversation(
@@ -1517,7 +1575,7 @@ async def handle_waiting_for_appointment_date(
         orchestration_input.inbound_message,
         availability.response_code,
         {
-            "visit_date": format_date_natural(decision.resolved_date),
+            "visit_date": format_date_natural(resolved_date),
             "appointment_options": format_appointment_options(
                 [slot.start_time for slot in availability.slots]
             ),
@@ -2463,49 +2521,82 @@ async def handle_general_information(
                     "source": "EXPLICIT_CATALOG_MENTION",
                 },
             )
-        result = await handle_explicit_catalog_request(
-            session,
-            knowledge_sessionmaker,
-            conversation,
-            orchestration_input.customer,
-            orchestration_input.inbound_message,
-            lead.lead_id if lead is not None else None,
-            event.event_type if event is not None else None,
+        classified_event_type = classified_catalog_event_type(classification)
+        catalog_event_type = (
             match.event_type
             if match is not None
-            else classified_catalog_event_type(classification),
-            orchestration_input.request_id,
+            else classified_event_type
+            if classified_event_type is not None
+            else event.event_type
+            if event is not None
+            else None
         )
-        persist_classification_context(conversation, classification)
-        conversation.failed_understanding_count = 0
-        conversation.pending_confirmation = None
-        if result.outcome == CatalogRequestOutcome.ASK_EVENT_TYPE:
-            set_pending_action(conversation, CATALOG_CAPTURE_ACTION)
-            audit_orchestrator_event(
+        fixed_price_entity = None
+        if catalog_event_type in FIXED_PRICE_EVENT_TYPES:
+            if match is not None or classified_event_type is None:
+                fixed_price_entity = ExtractedEntity(
+                    entity="event_type",
+                    raw_value=match.matched_label if match is not None else catalog_event_type,
+                    normalized_value=catalog_event_type,
+                    quality_status="PROVIDED",
+                    confidence=1.0,
+                )
+            else:
+                fixed_price_entity = next(
+                    (
+                        entity
+                        for entity in fixed_price_entities
+                        if normalize_event_type(entity.normalized_value or entity.raw_value)
+                        == catalog_event_type
+                    ),
+                    None,
+                )
+        if fixed_price_entity is None:
+            result = await handle_explicit_catalog_request(
                 session,
-                "CATALOG_CAPTURE_STARTED",
+                knowledge_sessionmaker,
                 conversation,
-                reason="Catalog request requires event type",
-                request_id=orchestration_input.request_id,
-                extra={"previous_pending_action": previous_pending_action},
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                lead.lead_id if lead is not None else None,
+                event.event_type if event is not None else None,
+                match.event_type if match is not None else classified_event_type,
+                orchestration_input.request_id,
             )
-        elif not catalog_result_requires_human(result):
-            set_pending_action(conversation, previous_pending_action)
+            persist_classification_context(conversation, classification)
+            conversation.failed_understanding_count = 0
+            conversation.pending_confirmation = None
+            if result.outcome == CatalogRequestOutcome.ASK_EVENT_TYPE:
+                set_pending_action(conversation, CATALOG_CAPTURE_ACTION)
+                audit_orchestrator_event(
+                    session,
+                    "CATALOG_CAPTURE_STARTED",
+                    conversation,
+                    reason="Catalog request requires event type",
+                    request_id=orchestration_input.request_id,
+                    extra={"previous_pending_action": previous_pending_action},
+                )
+            elif not catalog_result_requires_human(result):
+                set_pending_action(conversation, previous_pending_action)
 
-        target_state = previous_state
-        if not catalog_result_requires_human(result) and conversation.state != target_state.value:
-            await transition_conversation(
-                session,
-                conversation,
-                target_state,
-                actor=SYSTEM_ACTOR,
-                reason="Catalog information handled",
-            )
-        return
+            target_state = previous_state
+            if (
+                not catalog_result_requires_human(result)
+                and conversation.state != target_state.value
+            ):
+                await transition_conversation(
+                    session,
+                    conversation,
+                    target_state,
+                    actor=SYSTEM_ACTOR,
+                    reason="Catalog information handled",
+                )
+            return
     if fixed_price_entity is not None:
         match = resolve_fixed_price_information_match(orchestration_input.message_text)
         if (
-            match is not None
+            not is_catalog_request_category(category)
+            and match is not None
             and mentioned_event_type is not None
             and normalize_event_type(
                 fixed_price_entity.normalized_value or fixed_price_entity.raw_value

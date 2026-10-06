@@ -2719,6 +2719,18 @@ Siempre deberá confirmarse una fecha relativa antes de:
 
 ## 28.6 Fechas incompletas
 
+### Día sin mes
+
+Las expresiones «el N» y «día N» proponen el día del mes actual si todavía no
+pasó; en otro caso proponen su siguiente ocurrencia en un mes válido. No se
+resuelven días fuera de 1–31 ni fechas fuera del rango del calendario.
+
+En visitas y reservas de precio fijo, el mes inferido siempre requiere confirmar
+la fecha absoluta mediante RESP-EVENT-DATA-003 antes de consultar disponibilidad.
+La candidata se conserva en el borrador del flujo y nunca se trata como una cita
+ni una reserva confirmada. Los números aislados y las cantidades de asistentes
+no se interpretan como este tipo de fecha.
+
 ### Día y mes sin año
 
 Podrá inferirse el siguiente año válido, pero deberá confirmarse.

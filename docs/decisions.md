@@ -245,3 +245,50 @@ válida a la pregunta de tipo de evento, sin provocar un handoff determinista.
 Ante indisponibilidad IA, fuera de las ramas críticas y ubicación, se repite la
 última pregunta solo si hay pending_action vigente y su última versión está
 APPROVED y tiene allowed_variables vacío. El fallo técnico no agota la captura.
+
+## 2026-10-06 — Catálogo explícito de precio fijo conserva contexto de reserva
+
+La conversación 205, sobre main `621eeead`, recibió el catálogo de pedidas de
+mano por la rama explícita sin crear lead/evento PROPOSAL. El siguiente
+«Me gustaría agendar para el 14» llegó a visitas por falta del tipo persistido.
+
+Emerson decide que una solicitud explícita con tipo de precio fijo resuelto use
+la misma rama de información de precio fijo: crear/reutilizar lead/evento,
+aplicar event_type desde el backend, texto aprobado más DOCUMENT PROACTIVE y
+FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO. PROPOSAL y ROMANTIC_DINNER comparten
+ese contrato y restauran el mismo pending/estado; el PDF se deduplica por lead y
+asset, incluso al repetir el catálogo. La resolución puede venir de una mención,
+entidad aceptada del clasificador o tipo ya persistido del lead activo. Una
+entidad pendiente de confirmación no se transforma en un tipo firme.
+
+Los tipos no fijos y COLLECT_CATALOG_EVENT_TYPE conservan la ruta de catálogo
+explícita. No se crean estados, pending_action, plantillas ni migraciones.
+
+## 2026-10-06 — Visita explícita conserva prioridad frente al autoservicio
+
+En el contexto de precio fijo de la conversación 205, las expresiones existentes
+agendar, reservar, separar, apartar, programar, cuadrar y «quiero la fecha» inician
+el autoservicio, con o sin fecha. Viven únicamente en BOOKING_EXPRESSIONS de
+app/conversation/fixed_price_booking.py.
+
+Las expresiones visita, visitar, «conocer el lugar» e «ir a ver», del mismo módulo,
+conservan prioridad en los turnos elegibles. Su predicado compartido excluye tanto
+el atajo de reserva con fecha/hora como el atajo de mención de catálogo; pasan al
+clasificador para atender la visita. Los pendientes y estados pausados mantienen
+su precedencia; las solicitudes activas mantienen sus bloqueos existentes.
+
+## 2026-10-06 — Confirmar fecha con día y mes inferido
+
+La conversación 205 aportó «el 14» como event_date pendiente de confirmación.
+El backend resuelve el día del mes actual si no pasó, o su siguiente ocurrencia
+válida, reutilizando parse_customer_date_expression con un span el/día N acotado.
+Valida día 1–31 y el rango del calendario antes de inferir el mes.
+
+En visita se conserva la candidata en visit_draft y se pregunta con la existente
+RESP-EVENT-DATA-003 y CONFIRM_VISIT_DATE; solo después de sí se valida agenda y
+se ofrecen horarios. No descarta la candidata ante una respuesta desconocida;
+no la convierte en visita confirmada. En precio fijo, el mismo parser alimenta
+la confirmación ya existente del borrador de reserva antes de pedir la hora.
+Las fechas completas inválidas, números aislados y cantidades no se reinterpretan
+como día sin mes. Los contratos anteriores de relativas y fechas completas se
+conservan; esta regla no crea plantillas, estados, pending_action ni migraciones.

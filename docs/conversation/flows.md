@@ -499,10 +499,19 @@ Respuesta:
 
 La resolución de una solicitud explícita de catálogo sigue este orden:
 
-1. Usar el `event_type` válido extraído del mensaje actual por el clasificador.
-2. Si el mensaje actual no aporta uno, usar el `event_type` del evento del lead
-   activo.
-3. Si existe un candidato, buscar los catálogos mapeados para ese tipo y enviar los
+1. Usar el tipo único reconocido por el matcher determinista del mensaje actual.
+   Si no resuelve, usar el `event_type` válido extraído por el clasificador; si el
+   mensaje no aporta uno, usar el `event_type` del evento del lead activo.
+2. Si el tipo efectivo es `ROMANTIC_DINNER` o `PROPOSAL`, seguir la misma rama de
+   información general de precio fijo: crear o reutilizar el lead y su evento,
+   aplicar el tipo confirmado y enviar la plantilla aprobada de la experiencia
+   junto con los catálogos `PROACTIVE`. Con autoservicio activo, el texto precede
+   al documento. Auditar `FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO`; conservar
+   las reglas de estado y pendientes de esa rama para el siguiente turno de
+   reserva. Una entidad del clasificador que requiera confirmación no se aplica
+   como tipo firme. Una resolución del matcher conserva una sola auditoría
+   `CATALOG_EVENT_TYPE_RESOLVED`, con fuente `EXPLICIT_CATALOG_MENTION`.
+3. Para los demás candidatos, buscar los catálogos mapeados para ese tipo y enviar los
    que admitan los modos `ON_REQUEST` o `PROACTIVE`, con
    `trigger = EXPLICIT_REQUEST`.
 4. Si se envía al menos un catálogo, conservar el `pending_action` que existía antes
@@ -512,8 +521,8 @@ La resolución de una solicitud explícita de catálogo sigue este orden:
    `CATALOG_CAPTURE_STARTED`. El evento registra en `extra` el `pending_action`
    desplazado, que no se restaura durante esta captura.
 
-Si existe un candidato válido pero no tiene catálogos mapeados, ejecutar como una
-sola decisión de negocio idempotente:
+Si la ruta explícita de los demás candidatos no tiene catálogos mapeados,
+ejecutar como una sola decisión de negocio idempotente:
 
 1. Responder `RESP-CATALOG-003`.
 2. Crear un handoff con razón `CATALOG_NOT_AVAILABLE` y resumen determinista que

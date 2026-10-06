@@ -701,6 +701,22 @@ El estado se mantiene y el bot solicita otra fecha.
 
 El estado se mantiene hasta que el cliente confirme la fecha absoluta.
 
+## 10.8 Día sin mes
+
+Una expresión «el N» o «día N» conserva la fecha candidata inferida en
+`visit_draft.candidate_visit_date`, permanece en `WAITING_FOR_APPOINTMENT_DATE`,
+y fija `pending_action = CONFIRM_VISIT_DATE`. Usa RESP-EVENT-DATA-003 con la fecha
+absoluta antes de consultar disponibilidad.
+
+La afirmación consume la candidata y valida las reglas y la disponibilidad de
+visitas antes de ofrecer horarios. La negación descarta la candidata, vuelve a
+`SELECT_VISIT_DATE` y solicita otra fecha con RESP-VISIT-003. Una respuesta que
+no confirme ni aporte otra fecha repite la pregunta de confirmación y conserva
+la candidata. Otra expresión «el N» o «día N» reemplaza la candidata y requiere
+confirmación de nuevo. Una fecha absoluta aceptada reemplaza la candidata y se
+valida. Otras fechas relativas y los días de semana contradictorios conservan
+el comportamiento previo de solicitar otra fecha.
+
 ---
 
 # 11. WAITING_FOR_APPOINTMENT_SELECTION
@@ -2994,8 +3010,16 @@ GENERAL_INFORMATION/catalog_request determinista. Sin esa palabra, un tipo únic
 PROPOSAL cuya etiqueta reconocida tenga al menos dos palabras activa
 GENERAL_INFORMATION/tipos de eventos y los catálogos PROACTIVE de precio fijo.
 Los labels reservados a respuestas de captura se ignoran fuera de
-COLLECT_CATALOG_EVENT_TYPE según entities.md. Ambas rutas conservan plantillas
-y send_mode existentes.
+COLLECT_CATALOG_EVENT_TYPE según entities.md. Una solicitud de catálogo cuyo
+tipo efectivo sea PROPOSAL o ROMANTIC_DINNER sigue la rama de información general
+de precio fijo: crea o reutiliza lead y evento, aplica el tipo confirmado y envía
+la plantilla aprobada de la experiencia y el documento con trigger PROACTIVE.
+Con autoservicio activo, el texto precede al documento. Esta rama conserva su
+estado y sus reglas de pendientes para permitir el siguiente turno de reserva,
+y audita FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO. El tipo efectivo prioriza
+el matcher, después una entidad del clasificador y finalmente el evento activo;
+una entidad que requiera confirmación no se persiste como tipo firme. Los demás
+catálogos y la captura conservan la ruta explícita y sus modos de envío.
 CATALOG_EVENT_TYPE_RESOLVED registra actor SYSTEM, event_type, matched_label,
 decision_source y source; orchestrator_decision registra DETERMINISTIC en los
 atajos anteriores al LLM. Pending_action se fija exclusivamente en el backend.

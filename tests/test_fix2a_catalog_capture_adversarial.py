@@ -14,7 +14,7 @@ from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import ExtractedEntity, IntentClassification
 from app.appointment.models import Appointment
 from app.audit.models import AuditEvent
-from app.catalog.models import CatalogAsset, CatalogEventTypeMap
+from app.catalog.models import CatalogAsset, CatalogEventTypeMap, CatalogSend
 from app.channel.inbound import process_whatsapp_webhook
 from app.channel.media import sha256_file
 from app.channel.models import Message, Outbox
@@ -265,9 +265,13 @@ async def audit(sessionmaker: async_sessionmaker[AsyncSession], action: str) -> 
 
 @pytest.mark.asyncio
 async def test_tc_catcap_001_same_message_entity_sends_without_lead(
-    sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await seed_catalog(sessionmaker_fixture, tmp_path)
+    monkeypatch.setenv("SELF_SERVICE_BOOKING_ENABLED", "true")
+    get_settings.cache_clear()
+    await seed_catalog(sessionmaker_fixture, tmp_path, send_mode="PROACTIVE")
     conversation_id, _ = await seed_context(
         sessionmaker_fixture, with_lead=False, pending_action="CONFIRM_QUOTE_REQUEST"
     )
@@ -281,11 +285,29 @@ async def test_tc_catcap_001_same_message_entity_sends_without_lead(
     )
 
     conversation = await snapshot(sessionmaker_fixture, conversation_id)
-    assert len(await outboxes(sessionmaker_fixture, kind="DOCUMENT")) == 1
-    assert conversation.last_question_code != "RESP-CATALOG-002"
+    rows = await outboxes(sessionmaker_fixture)
+    assert [row.message_kind for row in rows] == ["TEXT", "DOCUMENT"]
+    assert rows[0].payload["text"]["body"] == next(
+        entry.answer_template
+        for entry in iter_seed_entries()
+        if entry.code == "RESP-EVENTS-ROMANTIC-001"
+    )
+    assert conversation.last_question_code == "RESP-EVENTS-ROMANTIC-001"
     assert conversation.pending_action == "CONFIRM_QUOTE_REQUEST"
+    assert conversation.state == ConversationState.BOT_ACTIVE.value
+    assert conversation.active_lead_id is not None
     async with sessionmaker_fixture() as session:
+        event = await session.scalar(
+            select(Event).where(Event.lead_id == conversation.active_lead_id)
+        )
+        catalog_send = await session.scalar(select(CatalogSend))
         handoff_count = await session.scalar(select(func.count()).select_from(Handoff))
+    assert event is not None and event.event_type == "ROMANTIC_DINNER"
+    assert catalog_send is not None and catalog_send.trigger == "PROACTIVE"
+    fixed_audit = await audit(sessionmaker_fixture, "FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO")
+    assert fixed_audit is not None and fixed_audit.new_value["event_type"] == "ROMANTIC_DINNER"
+    assert fixed_audit.new_value["lead_id"] == str(conversation.active_lead_id)
+    assert fixed_audit.new_value["sent_count"] == 1
     assert handoff_count == 0
 
 
@@ -495,10 +517,14 @@ async def test_tc_catcap_008_cycle_preserves_confirmed_appointment(
 
 @pytest.mark.asyncio
 async def test_tc_catcap_009_message_entity_precedes_lead_event(
-    sessionmaker_fixture: async_sessionmaker[AsyncSession], tmp_path: Path
+    sessionmaker_fixture: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    romantic_asset_id = await seed_catalog(sessionmaker_fixture, tmp_path)
-    conversation_id, _ = await seed_context(sessionmaker_fixture, event_type="WEDDING")
+    monkeypatch.setenv("SELF_SERVICE_BOOKING_ENABLED", "true")
+    get_settings.cache_clear()
+    romantic_asset_id = await seed_catalog(sessionmaker_fixture, tmp_path, send_mode="PROACTIVE")
+    conversation_id, lead_id = await seed_context(sessionmaker_fixture, event_type="WEDDING")
 
     await orchestrate(
         sessionmaker_fixture,
@@ -508,9 +534,28 @@ async def test_tc_catcap_009_message_entity_precedes_lead_event(
         request_id="req-catcap-009",
     )
 
-    documents = await outboxes(sessionmaker_fixture, kind="DOCUMENT")
-    assert len(documents) == 1
-    assert documents[0].catalog_asset_id == romantic_asset_id
+    rows = await outboxes(sessionmaker_fixture)
+    assert [row.message_kind for row in rows] == ["TEXT", "DOCUMENT"]
+    assert rows[0].payload["text"]["body"] == next(
+        entry.answer_template
+        for entry in iter_seed_entries()
+        if entry.code == "RESP-EVENTS-ROMANTIC-001"
+    )
+    assert rows[1].catalog_asset_id == romantic_asset_id
+    conversation = await snapshot(sessionmaker_fixture, conversation_id)
+    assert conversation.active_lead_id == lead_id
+    assert conversation.state == ConversationState.BOT_ACTIVE.value
+    assert conversation.pending_action is None
+    assert conversation.last_question_code == "RESP-EVENTS-ROMANTIC-001"
+    async with sessionmaker_fixture() as session:
+        event = await session.scalar(select(Event).where(Event.lead_id == lead_id))
+        catalog_send = await session.scalar(select(CatalogSend))
+    assert event is not None and event.event_type == "ROMANTIC_DINNER"
+    assert catalog_send is not None and catalog_send.trigger == "PROACTIVE"
+    fixed_audit = await audit(sessionmaker_fixture, "FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO")
+    assert fixed_audit is not None and fixed_audit.new_value["event_type"] == "ROMANTIC_DINNER"
+    assert fixed_audit.new_value["lead_id"] == str(lead_id)
+    assert fixed_audit.new_value["sent_count"] == 1
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,10 @@
+R1 context subset (-k not g2_4)
+..............                                                           [100%]
+14 passed, 4 deselected in 78.38s (0:01:18)
+
+R1 legacy subset (g2_1 or tc_catcap_001 or tc_catcap_009)
+...                                                                      [100%]
+3 passed, 34 deselected in 26.62s
+
+ruff check app/orchestrator/service.py
+All checks passed!

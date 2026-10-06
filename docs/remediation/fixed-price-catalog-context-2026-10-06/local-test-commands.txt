@@ -1,0 +1,28 @@
+# Local affected subsets only; no full pytest run locally.
+# Interpreter: /home/emerson/desarollo/chat_bot_ceiba/.venv/bin/python
+# cwd: /home/emerson/g1-noviazgo-2026-10-05/fixed-price-context-worktree
+# ENVIRONMENT=testing QUALITY_STAGE=suite
+# META_APP_SECRET=test META_ACCESS_TOKEN=test OPENROUTER_API_KEY=test
+# Each invocation has its own DATABASE_URL and TEST_DATABASE_URL:
+# postgresql+asyncpg://ceiba:ceiba@172.18.0.2:5432/ceiba_test_fixed_context_final_<group>
+
+# G2 red, before implementation (output: G2-red.out)
+python -m pytest tests/booking_conversation/test_fixed_price_catalog_context_g2.py tests/booking_conversation/test_fixed_catalog_dates_g2.py tests/unit/test_fixed_catalog_dates_g2.py -q --tb=short
+
+# G2 green, after the explicitly authorized expectation correction (G2-green.out)
+python -m pytest tests/booking_conversation/test_fixed_price_catalog_context_g2.py tests/booking_conversation/test_fixed_catalog_dates_g2.py tests/unit/test_fixed_catalog_dates_g2.py -q --tb=short
+
+# Booking integration, exclusive plans and payment instructions (final-booking-green.out)
+python -m pytest tests/booking_conversation/ -q --tb=short
+
+# Catalog/general information, old G2 and catalog invariants (final-catalog-green.out)
+python -m pytest tests/conversational/test_romantic_catalog.py tests/test_fix2a_catalog_capture_adversarial.py tests/test_noviazgo_catalog_capture_g2.py tests/test_noviazgo_fallback_boundaries.py tests/test_slice2a_catalogs_adversarial.py tests/unit/test_orchestrator.py -q --tb=short
+
+# Visits/calendar guards (final-visits-green.out)
+python -m pytest tests/visit_booking_guard/ tests/test_slice2b3a_service_completion_adversarial.py -q --tb=short
+
+# Resolver/date/booking recognition regressions (final-units-green.out)
+python -m pytest tests/unit/test_fixed_catalog_dates_g2.py tests/unit/test_fixed_price_booking.py tests/unit/test_noviazgo_catalog_resolver_g2.py -q --tb=short
+
+ruff check .
+git diff --check

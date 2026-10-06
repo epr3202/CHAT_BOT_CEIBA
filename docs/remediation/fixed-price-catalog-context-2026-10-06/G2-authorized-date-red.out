@@ -1,0 +1,16 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_g2_1_proposal_catalog_sets_booking_context ________________
+tests/booking_conversation/test_fixed_price_catalog_context_g2.py:177: in test_g2_1_proposal_catalog_sets_booking_context
+    assert draft.get("date") == "2026-10-14"
+E   AssertionError: assert None == '2026-10-14'
+E    +  where None = <built-in method get of dict object at 0x7d566633dc00>('date')
+E    +    where <built-in method get of dict object at 0x7d566633dc00> = {}.get
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 22:34:34 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 22:34:34 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-05 22:34:34 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-05 22:34:34 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_fixed_price_catalog_context_g2.py::test_g2_1_proposal_catalog_sets_booking_context
+1 failed in 6.01s
