@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, sentinel
 
 import pytest
 
+import app.models_registry  # noqa: F401
 from app.config import readiness
 from app.config.settings import Settings
 from app.conversation import knowledge
