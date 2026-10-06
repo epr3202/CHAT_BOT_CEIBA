@@ -263,3 +263,16 @@ entidad pendiente de confirmación no se transforma en un tipo firme.
 
 Los tipos no fijos y COLLECT_CATALOG_EVENT_TYPE conservan la ruta de catálogo
 explícita. No se crean estados, pending_action, plantillas ni migraciones.
+
+## 2026-10-06 — Visita explícita conserva prioridad frente al autoservicio
+
+En el contexto de precio fijo de la conversación 205, las expresiones existentes
+agendar, reservar, separar, apartar, programar, cuadrar y «quiero la fecha» inician
+el autoservicio, con o sin fecha. Viven únicamente en BOOKING_EXPRESSIONS de
+app/conversation/fixed_price_booking.py.
+
+Las expresiones visita, visitar, «conocer el lugar» e «ir a ver», del mismo módulo,
+conservan prioridad en los turnos elegibles. Su predicado compartido excluye tanto
+el atajo de reserva con fecha/hora como el atajo de mención de catálogo; pasan al
+clasificador para atender la visita. Los pendientes y estados pausados mantienen
+su precedencia; las solicitudes activas mantienen sus bloqueos existentes.

@@ -87,11 +87,16 @@ def booking_guard_eligible(
     )
 
 
+def is_explicit_visit_request(message_text: str) -> bool:
+    normalized = normalize_catalog_event_type_label(message_text)
+    return bool(_VISIT_PATTERN.search(normalized))
+
+
 def is_fixed_price_booking(message_text: str, event_type: str | None) -> bool:
     if event_type not in FIXED_PRICE_EVENT_TYPES:
         return False
     normalized = normalize_catalog_event_type_label(message_text)
-    return bool(_BOOKING_PATTERN.search(normalized) and not _VISIT_PATTERN.search(normalized))
+    return bool(_BOOKING_PATTERN.search(normalized) and not is_explicit_visit_request(message_text))
 
 
 def _within_edit_distance(left: str, right: str, max_edits: int) -> bool:
@@ -126,7 +131,7 @@ def match_booking_plan(message_text: str, plans: list[dict[str, Any]]) -> dict[s
     multiple matches and visit requests leave the existing selection flow in control.
     """
     normalized = normalize_catalog_event_type_label(message_text)
-    if _VISIT_PATTERN.search(normalized):
+    if is_explicit_visit_request(message_text):
         return None
     words = set(re.findall(r"\w+", normalized))
     matches = []

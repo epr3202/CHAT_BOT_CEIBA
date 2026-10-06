@@ -74,6 +74,7 @@ from app.conversation.fixed_price_booking import (
     GENERIC_CAPTURE_ACTIONS,
     SELF_SERVICE_BOOKING_REASON,
     booking_guard_eligible,
+    is_explicit_visit_request,
     is_fixed_price_booking,
     match_booking_plan,
 )
@@ -583,6 +584,14 @@ def deterministic_booking_or_catalog_classification(
             reasoning_code="BOOKING_STEP",
         )
     self_service = settings is not None and settings.self_service_booking_enabled
+    eligible = booking_guard_eligible(
+        context.get("state"),
+        context.get("pending_action"),
+        context.get("bot_enabled", True),
+        self_service=self_service,
+    )
+    if eligible and is_explicit_visit_request(message_text):
+        return None
     named_plan = match_booking_plan(message_text, facts.get("plans", [])) if self_service else None
     explicit_date = (
         resolve_visit_date_text(
@@ -593,12 +602,7 @@ def deterministic_booking_or_catalog_classification(
         if self_service and facts.get("catalog_sent") == "yes"
         else None
     )
-    if booking_guard_eligible(
-        context.get("state"),
-        context.get("pending_action"),
-        context.get("bot_enabled", True),
-        self_service=self_service,
-    ) and (
+    if eligible and (
         named_plan is not None
         or is_fixed_price_booking(
             message_text,
