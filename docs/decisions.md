@@ -367,3 +367,10 @@ de deploy publica la versión explícita del seed.
 La validación del pago sigue siendo comprobante más revisión humana. No cambia
 el flujo de evidencias ni el recordatorio Meta recordatorio_saldo_reserva, que
 contiene datos bancarios propios y queda fuera del alcance de esta decisión.
+
+El presentador de breb_key acepta únicamente Settings y rechaza valores
+bancarios enviados por el cliente. El guard bancario existente también exige
+la llave antes de crear una solicitud de pago cuando la plantilla la usa.
+El handler pasa la variable solo para esa plantilla; no agrega variables
+extra a la versión anterior y mantiene KnowledgeRenderError si breb_key no
+está en allowed_variables.

@@ -21,7 +21,11 @@ from app.conversation.fixed_price_booking import (
     is_fixed_price_catalog_followup,
     match_booking_plan,
 )
-from app.conversation.knowledge import KnowledgeRenderError
+from app.conversation.knowledge import (
+    KnowledgeRenderError,
+    get_latest_response,
+    variables_in_template,
+)
 from app.conversation.service import transition_conversation
 from app.plan.models import Plan
 from app.reservation.availability import (
@@ -587,15 +591,21 @@ async def handle_booking_step(
                 ):
                     await continue_slots(session, settings, sm, turn, plan)
                     return
-                if not all(
-                    getattr(settings, field).strip()
-                    for field in (
-                        "booking_bank_name",
-                        "booking_account_type",
-                        "booking_account_number",
-                        "booking_account_holder",
-                    )
-                ):
+                payment_template = await get_latest_response(sm, "RESP-BOOKING-PAYMENT-001")
+                requires_breb_key = (
+                    payment_template is not None
+                    and payment_template.status == "APPROVED"
+                    and "breb_key" in variables_in_template(payment_template.answer_template)
+                )
+                bank_fields = (
+                    "booking_bank_name",
+                    "booking_account_type",
+                    "booking_account_number",
+                    "booking_account_holder",
+                )
+                if requires_breb_key:
+                    bank_fields += ("bank_breb_key",)
+                if not all(getattr(settings, field).strip() for field in bank_fields):
                     await handoff(session, settings, sm, turn, "datos bancarios no configurados")
                     return
                 # Recheck the advisory availability on confirmation. The deferred read
@@ -673,19 +683,22 @@ async def handle_booking_step(
                     actor="SYSTEM",
                     reason="Solicitud pendiente de pago; sin bloqueo",
                 )
+                payment_variables: dict[str, Any] = {
+                    "deposit_amount": deposit_amount(plan),
+                    "bank_name": settings,
+                    "account_type": settings,
+                    "account_number": settings,
+                    "account_holder": settings,
+                }
+                if requires_breb_key:
+                    payment_variables["breb_key"] = settings
                 await send(
                     session,
                     settings,
                     sm,
                     turn,
                     "PAYMENT",
-                    {
-                        "deposit_amount": deposit_amount(plan),
-                        "bank_name": settings,
-                        "account_type": settings,
-                        "account_number": settings,
-                        "account_holder": settings,
-                    },
+                    payment_variables,
                 )
                 return
             else:
