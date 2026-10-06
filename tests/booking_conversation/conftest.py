@@ -1,11 +1,14 @@
 import re
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, text
+from sqlalchemy import event, select
+from sqlalchemy.engine import Connection, Engine
 
 from app.admin import routes
+from app.calendar.adapter import CalendarEvent
 from app.config.settings import get_settings
 from app.conversation.models import KnowledgeEntry
 from scripts.load_plans import load_plans
@@ -72,21 +75,29 @@ async def harness(  # noqa: F811
             )
     monkeypatch.setattr(routes, "get_calendar_adapter", lambda settings: case.calendar)
     original_list = case.calendar.list_events
+    database_url = case.db.kw["bind"].sync_engine.url
+    observed_connections: set[Connection] = set()
 
-    async def checked_list(*args, **kwargs):
-        async with case.db() as session:
-            active = await session.scalar(
-                text(
-                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
-                    "AND pid <> pg_backend_pid() AND xact_start IS NOT NULL"
-                )
-            )
-            assert active == 0, "Calendar called while a transaction is open"
+    def record_transaction_begin(connection: Connection) -> None:
+        if connection.engine.url == database_url:
+            observed_connections.add(connection)
+
+    async def checked_list(*args: Any, **kwargs: Any) -> list[CalendarEvent]:
+        # Observe the caller's actual transaction state across harness/API engines.
+        # Commit/rollback events fire before the DB operation completes, so retain
+        # each connection and inspect it only when the external call is attempted.
+        assert not any(connection.in_transaction() for connection in observed_connections), (
+            "Calendar called while a transaction is open"
+        )
         return await original_list(*args, **kwargs)
 
+    event.listen(Engine, "begin", record_transaction_begin)
     monkeypatch.setattr(case.calendar, "list_events", checked_list)
-    yield case
-    get_settings.cache_clear()
+    try:
+        yield case
+    finally:
+        event.remove(Engine, "begin", record_transaction_begin)
+        get_settings.cache_clear()
 
 
 @pytest.fixture

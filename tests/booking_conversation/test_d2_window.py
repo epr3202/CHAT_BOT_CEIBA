@@ -1,12 +1,15 @@
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config.settings import Settings, get_settings
 from app.plan.models import Plan
 from app.reservation.availability import fetch_booking_context, validate_booking_window
 from tests.booking_backend.helpers import START, plan, settings
 from tests.integration.helpers import login_headers
+from tests.visit_booking_guard.helpers import Harness
 
 
 @pytest.mark.parametrize(
@@ -50,6 +53,22 @@ async def test_d2_calendar_conflict_after_23(harness):
             settings=config,
         )
     assert not result.available
+
+
+async def test_d2_calendar_guard_rejects_other_engine_transaction(harness: Harness) -> None:
+    engine = create_async_engine(harness.db.kw["bind"].url)
+    start = START.replace(hour=21)
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+            with pytest.raises(AssertionError, match="Calendar called while a transaction is open"):
+                await harness.calendar.list_events(start, start + timedelta(hours=3), ["a"])
+            await connection.commit()
+            assert (
+                await harness.calendar.list_events(start, start + timedelta(hours=3), ["a"]) == []
+            )
+    finally:
+        await engine.dispose()
 
 
 async def test_d2_panel_manual_and_reschedule(api, harness, monkeypatch):
