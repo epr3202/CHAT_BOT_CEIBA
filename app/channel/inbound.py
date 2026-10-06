@@ -47,10 +47,10 @@ logger = structlog.get_logger(__name__)
 
 ACTIVE_CONVERSATION_EXCLUDED_STATUSES = ("RESOLVED", "CLOSED")
 SYSTEM_ACTOR = "SYSTEM"
-# RESP-DISCOVERY-* and RESP-PRICE-002 are documented but not emitted today. Review this
-# set if those templates become active. RESP-CATALOG-002 intentionally remains excluded.
+# Questions that ask for an event type, including the directed catalog capture.
+# RESP-DISCOVERY-002 is a general technical fallback, not an event-type question.
 EVENT_TYPE_QUESTION_CODES = frozenset(
-    {"RESP-GREETING-001", "RESP-EVENT-DATA-013", "RESP-PRICE-001"}
+    {"RESP-GREETING-001", "RESP-EVENT-DATA-013", "RESP-PRICE-001", "RESP-CATALOG-002"}
 )
 
 
@@ -951,8 +951,9 @@ def should_extract_event_type(
     classification: IntentClassification,
 ) -> bool:
     pending_fields = context.get("pending_fields")
-    event_type_pending = context.get("pending_action") == "COLLECT_EVENT_TYPE" and (
-        not isinstance(pending_fields, list) or "event_type" in pending_fields
+    event_type_pending = context.get("pending_action") == "COLLECT_CATALOG_EVENT_TYPE" or (
+        context.get("pending_action") == "COLLECT_EVENT_TYPE"
+        and (not isinstance(pending_fields, list) or "event_type" in pending_fields)
     )
     event_type_question = context.get("last_question_code") in EVENT_TYPE_QUESTION_CODES
     if not event_type_pending and not event_type_question:

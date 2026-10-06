@@ -60,7 +60,7 @@ PHONE = "+573001112233"
 SECOND_PHONE = "+573009998877"
 NOW = datetime(2026, 8, 24, 9, tzinfo=ZoneInfo("America/Bogota"))
 EVENT_TYPE_QUESTION_CODES = frozenset(
-    {"RESP-GREETING-001", "RESP-EVENT-DATA-013", "RESP-PRICE-001"}
+    {"RESP-GREETING-001", "RESP-EVENT-DATA-013", "RESP-PRICE-001", "RESP-CATALOG-002"}
 )
 MIGRATION_PATH = (
     Path(__file__).parents[1] / "alembic" / "versions" / "20260824_0023_pr_b1_capture_context.py"
