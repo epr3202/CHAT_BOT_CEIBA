@@ -348,9 +348,9 @@ de ejecutar y verificar cada paso.
 
 Emerson decide incorporar la llave Bre-B como método de pago. La configuración
 BANK_BREB_KEY procede exclusivamente de Settings. El arranque de API y worker
-falla con un error claro si la última plantilla APPROVED de pago usa breb_key
-y la configuración está vacía. La plantilla anterior sin esa variable conserva
-su compatibilidad durante la publicación.
+falla con un error claro si la última versión de la plantilla de pago está
+APPROVED, usa breb_key y la configuración está vacía. La plantilla anterior sin
+esa variable conserva su compatibilidad durante la publicación.
 
 RESP-BOOKING-PAYMENT-001 v3 agrega únicamente la línea
 «Llave Bre-B: {breb_key}» junto a los datos bancarios existentes; el resto del

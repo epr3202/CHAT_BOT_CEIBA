@@ -1,0 +1,74 @@
+E   AssertionError: assert None == 'CEIBA-BREB-SYNTHETIC-TEST'
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: Falta validate_payment_settings para el arranque de Bre-B
+E   assert False
+E   AssertionError: El arranque debe validar la plantilla de pago
+E   assert 'validate' in ['engine', 'sessionmaker', 'api_yield', 'dispose']
+E   AssertionError: El arranque debe validar la plantilla de pago
+E   assert 'validate' in ['engine', 'sessionmaker', 'meta_construct', 'meta_enter', 'dispose', 'meta_exit']
+E   AssertionError: Un fallo de validación debe impedir el arranque
+E   assert None is not None
+E   AssertionError: Un fallo de validación debe impedir el arranque
+E   assert None is not None
+E   AssertionError: assert '¡Listo! Tu f... lo confirma.' == '¡Listo! Tu f... lo confirma.'
+E   AssertionError: assert 1 == 3
+E   AssertionError: Approved payment must render; got UNKNOWN_VARIABLE
+E   assert KnowledgeRenderError('UNKNOWN_VARIABLE') is None
+E   assert 0 == 1
+E   AssertionError: assert 1 == 3
+E   AssertionError: assert 'UNCHANGED' == 'BUMP'
+E   AssertionError: assert 'UNCHANGED' == 'BUMP'
+E   AssertionError: assert 'UNCHANGED' == 'BUMP'
+E   AssertionError: assert ('CREATE' == 'CREATE'
+E   AssertionError: assert ('UNCHANGED' == 'BUMP'
+E   AssertionError: assert ('UNCHANGED' == 'BUMP'
+E   AssertionError: assert 'WAITING_FOR_HUMAN' == 'BOT_ACTIVE'
+E   AssertionError: assert 'WAITING_FOR_HUMAN' == 'BOT_ACTIVE'
+E   AssertionError: assert 'RESP-BOOKING-PAYMENT-001' not in ['RESP-BOOKING-PAYMENT-001', 'RESP-HANDOFF-001']
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_settings_uses_environment_alias
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_blank_production_setting_rejects_active_payment[]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_blank_production_setting_rejects_active_payment[ \t\n ]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_valid_production_setting_allows_active_payment
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_old_approved_payment_does_not_require_key
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_unused_allowed_variable_does_not_require_key
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_missing_payment_does_not_require_key
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_latest_unapproved_payment_ignores_older_approved_version[DRAFT]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_latest_unapproved_payment_ignores_older_approved_version[INACTIVE]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_nonproduction_does_not_query_payment_template[testing]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_nonproduction_does_not_query_payment_template[development]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_startup_validates_before_api_yield_or_meta[API]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_startup_validates_before_api_yield_or_meta[WORKER]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_invalid_startup_disposes_engine_without_starting_consumers[API]
+FAILED tests/unit/test_breb_key_config_g2.py::test_g2_breb_key_invalid_startup_disposes_engine_without_starting_consumers[WORKER]
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_payment_seed_has_only_the_approved_breb_line_added
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_payment_seed_is_effectively_approved_version_three
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_seed_payment_renders_breb_from_backend_settings
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_seed_v3_inactivates_old_versions_and_is_idempotent
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_sync_create_respects_the_payment_seed_version
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_sync_changed_payment_never_precedes_its_seed_version[existing_versions0-3]
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_sync_changed_payment_never_precedes_its_seed_version[existing_versions1-3]
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_sync_changed_payment_never_precedes_its_seed_version[existing_versions2-9]
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_sync_create_executes_v3_once_and_dry_run_is_read_only
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_sync_execute_keeps_one_approved_payment_and_preserves_history[2-3]
+FAILED tests/unit/test_breb_key_knowledge_g2.py::test_r2_sync_execute_keeps_one_approved_payment_and_preserves_history[8-9]
+FAILED tests/booking_conversation/test_breb_key_payment_g2.py::test_g2_payment_instructions_include_breb_and_preserve_bank_text[ROMANTIC_DINNER]
+FAILED tests/booking_conversation/test_breb_key_payment_g2.py::test_g2_payment_instructions_include_breb_and_preserve_bank_text[PROPOSAL]
+FAILED tests/booking_conversation/test_breb_key_payment_g2.py::test_g2_new_payment_template_without_key_does_not_create_payment_request
+29 failed, 5 passed in 31.59s

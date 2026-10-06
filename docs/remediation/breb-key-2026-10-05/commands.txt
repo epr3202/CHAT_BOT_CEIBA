@@ -1,0 +1,23 @@
+Todas las llamadas de pytest usan QUALITY_STAGE=suite, ENVIRONMENT=testing y credenciales sintéticas.
+BANK_BREB_KEY=CEIBA-BREB-TEST.
+DATABASE_URL y TEST_DATABASE_URL apuntan a PostgreSQL local 172.18.0.2:5432,
+usuario/clave sintéticos ceiba/ceiba, bases ceiba_test_breb_<grupo>.
+No se ejecutó pytest completo en local.
+
+G2 (antes y después):
+python -m pytest -q --tb=short tests/unit/test_breb_key_config_g2.py tests/unit/test_breb_key_knowledge_g2.py tests/booking_conversation/test_breb_key_payment_g2.py
+
+Knowledge/settings:
+python -m pytest -q --tb=short tests/unit/test_breb_key_config_g2.py tests/unit/test_breb_key_knowledge_g2.py tests/unit/test_knowledge.py tests/unit/test_settings.py tests/unit/test_sync_knowledge_versions.py tests/unit/test_export_knowledge_review.py
+
+Flujo de reserva/pago:
+python -m pytest -q --tb=short tests/booking_conversation
+
+Alineación de plantillas de pago:
+python -m pytest -q --tb=short tests/payment_settlement/test_booking_template_alignment.py
+
+Regresión del E2E existente y fixtures:
+python -m pytest -q --tb=short tests/unit/test_knowledge.py::test_approved_templates_render_without_internal_enums_or_iso_dates tests/booking_conversation/test_contracts.py::test_b_r10_seed_literals_and_lineage tests/booking_conversation/test_contracts.py::test_b_r11_literal_e2e
+
+Lint:
+ruff check .
