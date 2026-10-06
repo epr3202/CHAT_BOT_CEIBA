@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
@@ -118,6 +119,9 @@ from app.quote.models import QuoteRequest
 from app.scheduling.availability import AvailabilityService
 
 logger = structlog.get_logger(__name__)
+_decision_source: ContextVar[Literal["DETERMINISTIC", "LLM", "FALLBACK"]] = ContextVar(
+    "orchestrator_decision_source", default="LLM"
+)
 
 SYSTEM_ACTOR = "SYSTEM"
 SENSITIVE_HANDOFF_INTENTS = {
@@ -195,6 +199,7 @@ async def orchestrate_inbound_message(
     conversation = orchestration_input.conversation
     state_before = ConversationState(conversation.state).value
     intent = classification.primary_intent if classification is not None else "UNKNOWN"
+    decision_token = _decision_source.set(orchestration_input.decision_source)
     try:
         await _orchestrate_inbound_message(
             session,
@@ -205,6 +210,8 @@ async def orchestrate_inbound_message(
             ai_error_reason,
         )
     finally:
+        decision_source = _decision_source.get()
+        _decision_source.reset(decision_token)
         state_after = ConversationState(conversation.state).value
         transition = f"{state_before}->{state_after}" if state_before != state_after else None
         logger.info(
@@ -219,7 +226,7 @@ async def orchestrate_inbound_message(
             state_before=state_before,
             state_after=state_after,
             transition=transition,
-            decision_source=orchestration_input.decision_source,
+            decision_source=decision_source,
             pending_action=conversation.pending_action,
         )
 
@@ -2487,7 +2494,14 @@ async def handle_general_information(
         return
     if fixed_price_entity is not None:
         match = resolve_fixed_price_information_match(orchestration_input.message_text)
-        if match is not None and mentioned_event_type is not None:
+        if (
+            match is not None
+            and mentioned_event_type is not None
+            and normalize_event_type(
+                fixed_price_entity.normalized_value or fixed_price_entity.raw_value
+            )
+            == match.event_type
+        ):
             audit_orchestrator_event(
                 session,
                 "CATALOG_EVENT_TYPE_RESOLVED",
@@ -4418,6 +4432,11 @@ def audit_orchestrator_event(
     request_id: str | None,
     extra: dict[str, Any] | None = None,
 ) -> None:
+    if (
+        action == "CATALOG_EVENT_TYPE_RESOLVED"
+        and (extra or {}).get("decision_source") == "DETERMINISTIC"
+    ):
+        _decision_source.set("DETERMINISTIC")
     session.add(
         AuditEvent(
             actor=SYSTEM_ACTOR,

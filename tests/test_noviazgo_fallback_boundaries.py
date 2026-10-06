@@ -143,3 +143,26 @@ async def test_fallback_preserves_counter_and_exact_approved_text(
     expected = next(e.answer_template for e in iter_seed_entries() if e.code == question)
     assert snapshot["context"][1:] == ("COLLECT_CUSTOMER_NAME", question, 1)
     assert snapshot["outbox"][0].payload["text"]["body"] == expected
+
+
+async def test_mixed_fixed_price_resolution_reports_deterministic_source(harness: Harness) -> None:
+    with capture_logs() as logs:
+        await harness.turn("Pedida de mano con cena romántica")
+    snapshot = await harness.snapshot()
+    assert harness.calls == [("classify", "Pedida de mano con cena romántica")]
+    assert snapshot["outbox"][-1].catalog_asset_id == harness.proposal_id
+    assert any(
+        row.action == "CATALOG_EVENT_TYPE_RESOLVED"
+        and row.new_value["source"] == "FIXED_PRICE_MENTION"
+        and row.new_value["decision_source"] == "DETERMINISTIC"
+        for row in snapshot["audits"]
+    )
+    decisions = [row for row in logs if row["event"] == "orchestrator_decision"]
+    assert decisions[-1]["decision_source"] == "DETERMINISTIC"
+    # A following technical fallback must retain its own provenance.
+    harness.outputs["indefinido"] = RAW_3449
+    with capture_logs() as next_logs:
+        await harness.turn("indefinido")
+    assert [row for row in next_logs if row["event"] == "orchestrator_decision"][-1][
+        "decision_source"
+    ] == "FALLBACK"

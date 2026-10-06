@@ -2996,3 +2996,9 @@ PROACTIVE de precio fijo. Ambas rutas conservan plantillas y send_mode existente
 CATALOG_EVENT_TYPE_RESOLVED registra actor SYSTEM, event_type, matched_label,
 decision_source y source; orchestrator_decision registra DETERMINISTIC en los
 atajos anteriores al LLM. Pending_action se fija exclusivamente en el backend.
+
+El log final también usa DETERMINISTIC cuando el matcher decide el tipo en la
+ruta de precio fijo después de una clasificación general (frases mixtas con
+prioridad PROPOSAL). La clasificación sigue registrada en ai_execution; el log
+identifica la fuente de la decisión de negocio. Esta fuente se conserva solo
+durante ese turno y se restaura antes del siguiente.
