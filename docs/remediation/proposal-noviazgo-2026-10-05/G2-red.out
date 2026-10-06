@@ -1,0 +1,475 @@
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF..F.F         [100%]
+=================================== FAILURES ===================================
+____________ test_g2_7_phrase_resolver[pedida de noviazgo-PROPOSAL] ____________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_phrase_resolver[Pedidas de noviazgo.-PROPOSAL] ___________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+______________ test_g2_7_phrase_resolver[PEDIR NOVIAZGO-PROPOSAL] ______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+_____________ test_g2_7_phrase_resolver[pedirle noviazgo-PROPOSAL] _____________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+_ test_g2_7_phrase_resolver[quiero ver el cat\xe1logo de pedidas de noviazgo-PROPOSAL] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+________ test_g2_7_phrase_resolver[\xbfQuieres ser mi novia?-PROPOSAL] _________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+_____________ test_g2_7_phrase_resolver[pedidas de mano-PROPOSAL] ______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_phrase_resolver[anillo de compromiso-PROPOSAL] ___________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+_____________ test_g2_7_phrase_resolver[boda civil-CIVIL_WEDDING] ______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+_____ test_g2_7_phrase_resolver[los planes rom\xe1nticos-ROMANTIC_DINNER] ______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_phrase_resolver[aniversario de noviazgo-None] ____________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+_____________ test_g2_7_phrase_resolver[no s\xe9 todav\xeda-None] ______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+__________________ test_g2_7_phrase_resolver[noviazgos-None] ___________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+__________ test_g2_7_phrase_resolver[quiero algo para mi novia-None] ___________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+______ test_g2_7_phrase_resolver[cat\xe1logo: boda, civil-CIVIL_WEDDING] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+__________ test_g2_7_phrase_resolver[boda civil y cumplea\xf1os-None] __________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+________________ test_g2_7_phrase_resolver[supernoviazgo-None] _________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:32: in test_g2_7_phrase_resolver
+    assert callable(resolver), "R2 must expose its phrase resolver before any import is required"
+E   AssertionError: R2 must expose its phrase resolver before any import is required
+E   assert False
+E    +  where False = callable(None)
+_________________ test_g2_7_every_existing_label[WEDDING-boda] _________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______________ test_g2_7_every_existing_label[WEDDING-matrimonio] ______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_every_existing_label[CIVIL_WEDDING-boda civil] ___________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+________ test_g2_7_every_existing_label[CIVIL_WEDDING-matrimonio civil] ________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+________ test_g2_7_every_existing_label[CIVIL_WEDDING-ceremonia civil] _________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______________ test_g2_7_every_existing_label[PROPOSAL-propuesta] ______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_______ test_g2_7_every_existing_label[PROPOSAL-propuesta de matrimonio] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_every_existing_label[PROPOSAL-pedida de mano] ____________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+____________ test_g2_7_every_existing_label[BIRTHDAY-cumplea\xf1os] ____________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_every_existing_label[GRADUATION-graduaci\xf3n] ___________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_______________ test_g2_7_every_existing_label[GRADUATION-grado] _______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_every_existing_label[ANNIVERSARY-aniversario] ____________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______ test_g2_7_every_existing_label[ROMANTIC_DINNER-cena rom\xe1ntica] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______ test_g2_7_every_existing_label[ROMANTIC_DINNER-plan rom\xe1ntico] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_____ test_g2_7_every_existing_label[ROMANTIC_DINNER-planes rom\xe1nticos] _____
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+___ test_g2_7_every_existing_label[ROMANTIC_DINNER-los planes rom\xe1nticos] ___
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______ test_g2_7_every_existing_label[CORPORATE_EVENT-evento corporativo] ______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______ test_g2_7_every_existing_label[CORPORATE_EVENT-evento empresarial] ______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_________ test_g2_7_every_existing_label[FAMILY_EVENT-evento familiar] _________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_______ test_g2_7_every_existing_label[FAMILY_EVENT-reuni\xf3n familiar] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_______________ test_g2_7_every_existing_label[BAPTISM-bautizo] ________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_______________ test_g2_7_every_existing_label[BAPTISM-bautismo] _______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_____ test_g2_7_every_existing_label[FIRST_COMMUNION-primera comuni\xf3n] ______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+___________ test_g2_7_every_existing_label[BABY_SHOWER-baby shower] ____________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_______________ test_g2_7_every_existing_label[WORKSHOP-taller] ________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+__________ test_g2_7_every_existing_label[POOL_DAY-d\xeda de piscina] __________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+________ test_g2_7_every_existing_label[POOL_DAY-pasad\xeda de piscina] ________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_________ test_g2_7_every_existing_label[PRIVATE_DINNER-cena privada] __________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+___ test_g2_7_every_existing_label[GENDER_REVEAL-revelaci\xf3n de g\xe9nero] ___
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______ test_g2_7_every_existing_label[GENDER_REVEAL-revelacion de genero] ______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+_________ test_g2_7_every_existing_label[GENDER_REVEAL-gender reveal] __________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+__________________ test_g2_7_every_existing_label[OTHER-otro] __________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+__________ test_g2_7_every_existing_label[OTHER-otro tipo de evento] ___________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:46: in test_g2_7_every_existing_label
+    assert callable(resolver), "R2 phrase resolver is missing"
+E   AssertionError: R2 phrase resolver is missing
+E   assert False
+E    +  where False = callable(None)
+______________ test_g2_6_fixed_price_resolver[pedida de noviazgo] ______________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:52: in test_g2_6_fixed_price_resolver
+    assert catalog.resolve_fixed_price_information_type(text) == "PROPOSAL"
+E   AssertionError: assert None == 'PROPOSAL'
+E    +  where None = <function resolve_fixed_price_information_type at 0x749d6062ade0>('pedida de noviazgo')
+E    +    where <function resolve_fixed_price_information_type at 0x749d6062ade0> = catalog.resolve_fixed_price_information_type
+________________ test_g2_6_fixed_price_resolver[PEDIR NOVIAZGO] ________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:52: in test_g2_6_fixed_price_resolver
+    assert catalog.resolve_fixed_price_information_type(text) == "PROPOSAL"
+E   AssertionError: assert None == 'PROPOSAL'
+E    +  where None = <function resolve_fixed_price_information_type at 0x749d6062ade0>('PEDIR NOVIAZGO')
+E    +    where <function resolve_fixed_price_information_type at 0x749d6062ade0> = catalog.resolve_fixed_price_information_type
+_______________ test_g2_6_fixed_price_resolver[pedidas de mano] ________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:52: in test_g2_6_fixed_price_resolver
+    assert catalog.resolve_fixed_price_information_type(text) == "PROPOSAL"
+E   AssertionError: assert None == 'PROPOSAL'
+E    +  where None = <function resolve_fixed_price_information_type at 0x749d6062ade0>('pedidas de mano')
+E    +    where <function resolve_fixed_price_information_type at 0x749d6062ade0> = catalog.resolve_fixed_price_information_type
+_____________________ test_g2_1_full_production_transcript _____________________
+tests/test_noviazgo_catalog_capture_g2.py:212: in test_g2_1_full_production_transcript
+    assert [row.message_kind for row in first["outbox"]] == ["DOCUMENT"]
+E   AssertionError: assert ['TEXT'] == ['DOCUMENT']
+E     
+E     At index 0 diff: 'TEXT' != 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:09 [info     ] orchestrator_decision          decision_source=LLM intent=GENERAL_INFORMATION pending_action=COLLECT_CATALOG_EVENT_TYPE request_id=bcb1062d-4a20-47ca-bd8b-a99a3511fac0 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:09 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=bcb1062d-4a20-47ca-bd8b-a99a3511fac0
+2026-10-05 18:58:09 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ROUTED_NON_TEXT request_id=2f338b76-5151-46f1-aaa0-0f5f8b224939
+2026-10-05 18:58:10 [info     ] orchestrator_decision          decision_source=FALLBACK intent=UNKNOWN pending_action=COLLECT_CATALOG_EVENT_TYPE request_id=87b4ffa4-0355-4075-8fd3-6fb84f1f2d72 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:10 [info     ] inbox_completed                conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=87b4ffa4-0355-4075-8fd3-6fb84f1f2d72
+2026-10-05 18:58:10 [info     ] orchestrator_decision          decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=041168ad-c88d-4d86-bcaf-f71e398b0c0d state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:10 [info     ] inbox_completed                conversation_id=1 job_id=4 outcome=COMPLETED reason=ORCHESTRATED request_id=041168ad-c88d-4d86-bcaf-f71e398b0c0d
+___________________ test_g2_2_capture_sticker_then_noviazgo ____________________
+tests/test_noviazgo_catalog_capture_g2.py:228: in test_g2_2_capture_sticker_then_noviazgo
+    await assert_catalog(harness)
+tests/test_noviazgo_catalog_capture_g2.py:185: in assert_catalog
+    assert [row.message_kind for row in rows] == (
+E   AssertionError: assert ['TEXT'] == ['DOCUMENT']
+E     
+E     At index 0 diff: 'TEXT' != 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:12 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ROUTED_NON_TEXT request_id=5e2f1709-dc2d-425d-86ba-fa41b6242db4
+2026-10-05 18:58:12 [info     ] orchestrator_decision          decision_source=FALLBACK intent=UNKNOWN pending_action=COLLECT_CATALOG_EVENT_TYPE request_id=1784501b-b0b2-4c8d-bb65-fb81325de2ab state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:12 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=1784501b-b0b2-4c8d-bb65-fb81325de2ab
+_______________________ test_g2_3_capture_options_phrase _______________________
+tests/test_noviazgo_catalog_capture_g2.py:236: in test_g2_3_capture_options_phrase
+    await assert_catalog(harness)
+tests/test_noviazgo_catalog_capture_g2.py:185: in assert_catalog
+    assert [row.message_kind for row in rows] == (
+E   AssertionError: assert ['TEXT'] == ['DOCUMENT']
+E     
+E     At index 0 diff: 'TEXT' != 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:15 [info     ] orchestrator_decision          decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=1c8ebe55-7112-46bc-8aa5-b9031e092236 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:15 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=1c8ebe55-7112-46bc-8aa5-b9031e092236
+_______________ test_g2_4_invalid_json_repeats_catalog_question ________________
+tests/test_noviazgo_catalog_capture_g2.py:247: in test_g2_4_invalid_json_repeats_catalog_question
+    assert result["context"] == before
+E   AssertionError: assert ('BOT_ACTIVE'...OVERY-002', 1) == ('BOT_ACTIVE'...TALOG-002', 1)
+E     
+E     At index 2 diff: 'RESP-DISCOVERY-002' != 'RESP-CATALOG-002'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:18 [info     ] orchestrator_decision          decision_source=FALLBACK intent=UNKNOWN pending_action=COLLECT_CATALOG_EVENT_TYPE request_id=cd1da420-6a63-4045-8bdf-3b342fe477d5 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:18 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=cd1da420-6a63-4045-8bdf-3b342fe477d5
+____________________ test_g2_5_extractor_before_abandonment ____________________
+tests/test_noviazgo_catalog_capture_g2.py:261: in test_g2_5_extractor_before_abandonment
+    await assert_catalog(harness)
+tests/test_noviazgo_catalog_capture_g2.py:185: in assert_catalog
+    assert [row.message_kind for row in rows] == (
+E   AssertionError: assert ['TEXT'] == ['DOCUMENT']
+E     
+E     At index 0 diff: 'TEXT' != 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:21 [info     ] orchestrator_decision          decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=5b1fd627-bf7d-4574-8037-13eb8d19300f state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:21 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=5b1fd627-bf7d-4574-8037-13eb8d19300f
+________________ test_g2_6_new_general_information_fixed_price _________________
+tests/test_noviazgo_catalog_capture_g2.py:272: in test_g2_6_new_general_information_fixed_price
+    result = await assert_catalog(harness, explicit=False)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_noviazgo_catalog_capture_g2.py:185: in assert_catalog
+    assert [row.message_kind for row in rows] == (
+E   AssertionError: assert ['TEXT'] == ['TEXT', 'DOCUMENT']
+E     
+E     Right contains one more item: 'DOCUMENT'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:24 [info     ] orchestrator_decision          decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=f222c5ec-4142-4226-b671-a07086c63c71 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:24 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=f222c5ec-4142-4226-b671-a07086c63c71
+_ test_g2_9_other_pending_question[COLLECT_CUSTOMER_NAME-RESP-CUSTOMER-001-RESP-CUSTOMER-001] _
+tests/test_noviazgo_catalog_capture_g2.py:309: in test_g2_9_other_pending_question
+    assert result["context"][1:] == (pending, expected, 1)
+E   AssertionError: assert ('COLLECT_CUS...OVERY-002', 1) == ('COLLECT_CUS...TOMER-001', 1)
+E     
+E     At index 1 diff: 'RESP-DISCOVERY-002' != 'RESP-CUSTOMER-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:32 [info     ] orchestrator_decision          decision_source=FALLBACK intent=UNKNOWN pending_action=COLLECT_CUSTOMER_NAME request_id=37dd7d77-869c-4e4e-b700-a9d8c1214914 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:32 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=37dd7d77-869c-4e4e-b700-a9d8c1214914
+___________________ test_g2_deterministic_resolution_audited ___________________
+tests/test_noviazgo_catalog_capture_g2.py:323: in test_g2_deterministic_resolution_audited
+    assert audit is not None
+E   assert None is not None
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 18:58:37 [info     ] orchestrator_decision          decision_source=LLM intent=GENERAL_INFORMATION pending_action=None request_id=d93d757b-4c38-41a9-b5d4-bf3a923fb45a state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 18:58:37 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=d93d757b-4c38-41a9-b5d4-bf3a923fb45a
+=========================== short test summary info ============================
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[pedida de noviazgo-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[Pedidas de noviazgo.-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[PEDIR NOVIAZGO-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[pedirle noviazgo-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[quiero ver el cat\xe1logo de pedidas de noviazgo-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[\xbfQuieres ser mi novia?-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[pedidas de mano-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[anillo de compromiso-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[boda civil-CIVIL_WEDDING]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[los planes rom\xe1nticos-ROMANTIC_DINNER]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[aniversario de noviazgo-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[no s\xe9 todav\xeda-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[noviazgos-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[quiero algo para mi novia-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[cat\xe1logo: boda, civil-CIVIL_WEDDING]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[boda civil y cumplea\xf1os-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_phrase_resolver[supernoviazgo-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[WEDDING-boda]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[WEDDING-matrimonio]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[CIVIL_WEDDING-boda civil]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[CIVIL_WEDDING-matrimonio civil]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[CIVIL_WEDDING-ceremonia civil]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[PROPOSAL-propuesta]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[PROPOSAL-propuesta de matrimonio]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[PROPOSAL-pedida de mano]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[BIRTHDAY-cumplea\xf1os]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[GRADUATION-graduaci\xf3n]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[GRADUATION-grado]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[ANNIVERSARY-aniversario]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[ROMANTIC_DINNER-cena rom\xe1ntica]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[ROMANTIC_DINNER-plan rom\xe1ntico]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[ROMANTIC_DINNER-planes rom\xe1nticos]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[ROMANTIC_DINNER-los planes rom\xe1nticos]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[CORPORATE_EVENT-evento corporativo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[CORPORATE_EVENT-evento empresarial]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[FAMILY_EVENT-evento familiar]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[FAMILY_EVENT-reuni\xf3n familiar]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[BAPTISM-bautizo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[BAPTISM-bautismo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[FIRST_COMMUNION-primera comuni\xf3n]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[BABY_SHOWER-baby shower]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[WORKSHOP-taller]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[POOL_DAY-d\xeda de piscina]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[POOL_DAY-pasad\xeda de piscina]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[PRIVATE_DINNER-cena privada]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[GENDER_REVEAL-revelaci\xf3n de g\xe9nero]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[GENDER_REVEAL-revelacion de genero]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[GENDER_REVEAL-gender reveal]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[OTHER-otro]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_7_every_existing_label[OTHER-otro tipo de evento]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_6_fixed_price_resolver[pedida de noviazgo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_6_fixed_price_resolver[PEDIR NOVIAZGO]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_g2_6_fixed_price_resolver[pedidas de mano]
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_1_full_production_transcript
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_2_capture_sticker_then_noviazgo
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_3_capture_options_phrase
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_4_invalid_json_repeats_catalog_question
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_5_extractor_before_abandonment
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_6_new_general_information_fixed_price
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_9_other_pending_question[COLLECT_CUSTOMER_NAME-RESP-CUSTOMER-001-RESP-CUSTOMER-001]
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_g2_deterministic_resolution_audited
+61 failed, 3 passed in 31.59s

@@ -1,6 +1,6 @@
 import json
 from datetime import timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -300,8 +300,10 @@ async def test_tc_b3_010_staff_inbound_reopens_and_is_silent(client):
     payload["entry"][0]["changes"][0]["value"]["messages"][0]["timestamp"] = str(
         int(NOW.timestamp())
     )
-    for _ in range(2):
-        await process_whatsapp_webhook(payload, app.state.db_sessionmaker)
+    with patch("app.notifications.service.datetime") as clock:
+        clock.now.return_value = NOW
+        for _ in range(2):
+            await process_whatsapp_webhook(payload, app.state.db_sessionmaker)
     saved = (await rows(type(target)))[0]
     assert saved.last_inbound_at == NOW and saved.last_inbound_message_id == "staff.in.1"
     for model in (Customer, Conversation, Message, InboxJob, Outbox):

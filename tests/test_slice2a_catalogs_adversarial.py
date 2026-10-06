@@ -952,7 +952,7 @@ async def test_tc_cat_018c_unrenderable_template_chain_creates_handoff_and_logs(
         conversation_id,
         inbound_id,
         catalog_request_classification(),
-        "quiero información de planes románticos",
+        "envíame el catálogo",
     )
 
     async with sessionmaker_fixture() as session:

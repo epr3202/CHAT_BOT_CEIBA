@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
@@ -46,7 +47,9 @@ from app.channel.states import Channel
 from app.config.settings import Settings, get_settings
 from app.conversation.catalog_event_type import (
     FIXED_PRICE_EVENT_TYPES,
-    resolve_catalog_event_type_label,
+    normalize_catalog_event_type_label,
+    resolve_catalog_event_type_match,
+    resolve_fixed_price_information_match,
     resolve_fixed_price_information_type,
 )
 from app.conversation.confirmation import (
@@ -74,7 +77,7 @@ from app.conversation.fixed_price_booking import (
     is_fixed_price_booking,
     match_booking_plan,
 )
-from app.conversation.knowledge import KnowledgeRenderError, render_response
+from app.conversation.knowledge import KnowledgeRenderError, get_latest_response, render_response
 from app.conversation.models import Conversation
 from app.conversation.pending_actions import validate_pending_action
 from app.conversation.pending_confirmation import (
@@ -115,6 +118,9 @@ from app.quote.models import QuoteRequest
 from app.scheduling.availability import AvailabilityService
 
 logger = structlog.get_logger(__name__)
+_decision_source: ContextVar[Literal["DETERMINISTIC", "LLM", "FALLBACK"]] = ContextVar(
+    "orchestrator_decision_source", default="LLM"
+)
 
 SYSTEM_ACTOR = "SYSTEM"
 SENSITIVE_HANDOFF_INTENTS = {
@@ -192,6 +198,7 @@ async def orchestrate_inbound_message(
     conversation = orchestration_input.conversation
     state_before = ConversationState(conversation.state).value
     intent = classification.primary_intent if classification is not None else "UNKNOWN"
+    decision_token = _decision_source.set(orchestration_input.decision_source)
     try:
         await _orchestrate_inbound_message(
             session,
@@ -202,10 +209,13 @@ async def orchestrate_inbound_message(
             ai_error_reason,
         )
     finally:
+        decision_source = _decision_source.get()
+        _decision_source.reset(decision_token)
         state_after = ConversationState(conversation.state).value
         transition = f"{state_before}->{state_after}" if state_before != state_after else None
         logger.info(
             "orchestrator_decision",
+            conversation_id=conversation.id,
             request_id=(
                 str(orchestration_input.request_id)
                 if orchestration_input.request_id is not None
@@ -215,7 +225,7 @@ async def orchestrate_inbound_message(
             state_before=state_before,
             state_after=state_after,
             transition=transition,
-            decision_source=orchestration_input.decision_source,
+            decision_source=decision_source,
             pending_action=conversation.pending_action,
         )
 
@@ -616,9 +626,12 @@ def deterministic_booking_or_catalog_classification(
                 SELF_SERVICE_BOOKING_REASON if self_service else FIXED_PRICE_BOOKING_REASON
             ),
         )
-    if context.get("pending_action") == CATALOG_CAPTURE_ACTION and (
-        resolve_catalog_event_type_label(message_text) is not None
-    ):
+    match = resolve_catalog_event_type_match(
+        message_text,
+        answering_event_type_question=context.get("pending_action") == CATALOG_CAPTURE_ACTION,
+    )
+    mentioned_type = match.event_type if match is not None else None
+    if context.get("pending_action") == CATALOG_CAPTURE_ACTION and mentioned_type is not None:
         return IntentClassification(
             primary_intent="UNKNOWN",
             sub_intent=None,
@@ -630,6 +643,40 @@ def deterministic_booking_or_catalog_classification(
             priority="NORMAL",
             reasoning_code="CATALOG_LABEL_MATCH",
         )
+    if context.get("pending_action") in {None, "NONE"} and mentioned_type is not None:
+        catalog_request = bool(
+            {"catalogo", "catalogos"}
+            & set(normalize_catalog_event_type_label(message_text).split())
+        )
+        explicit_proposal = (
+            match is not None
+            and match.event_type == "PROPOSAL"
+            and len(normalize_catalog_event_type_label(match.matched_label).split()) >= 2
+        )
+        if catalog_request or explicit_proposal:
+            return IntentClassification(
+                primary_intent="GENERAL_INFORMATION",
+                sub_intent=None,
+                confidence=1.0,
+                information_category="catalog_request" if catalog_request else "tipos de eventos",
+                extracted_entities=[
+                    ExtractedEntity(
+                        entity="event_type",
+                        raw_value=message_text,
+                        normalized_value=mentioned_type,
+                        quality_status="PROVIDED",
+                        confidence=1.0,
+                    )
+                ],
+                requested_action=None,
+                needs_confirmation=False,
+                needs_human=False,
+                handoff_reason=None,
+                priority="NORMAL",
+                reasoning_code="CATALOG_MENTION_MATCH"
+                if catalog_request
+                else "FIXED_PRICE_INFORMATION_MATCH",
+            )
     return None
 
 
@@ -799,9 +846,12 @@ async def resolve_catalog_event_type_capture(
     if conversation.pending_action != CATALOG_CAPTURE_ACTION:
         return False, False
 
-    event_type = classified_catalog_event_type(classification)
-    if event_type is None:
-        event_type = resolve_catalog_event_type_label(orchestration_input.message_text)
+    match = resolve_catalog_event_type_match(
+        orchestration_input.message_text, answering_event_type_question=True
+    )
+    event_type = (
+        match.event_type if match is not None else classified_catalog_event_type(classification)
+    )
 
     if event_type is not None:
         lead = await active_lead(session, conversation)
@@ -827,12 +877,21 @@ async def resolve_catalog_event_type_capture(
             session,
             "CATALOG_EVENT_TYPE_RESOLVED",
             conversation,
-            reason="Catalog event type resolved deterministically",
+            reason="Catalog event type resolved",
             request_id=orchestration_input.request_id,
             extra={
                 "event_type": event_type,
                 "outcome": result.outcome.value,
                 "sent_count": result.sent_count,
+                "matched_label": match.matched_label if match is not None else None,
+                "decision_source": "DETERMINISTIC"
+                if match is not None
+                else orchestration_input.decision_source,
+                "source": "CATALOG_CAPTURE_MENTION"
+                if match is not None
+                else "EVENT_TYPE_EXTRACTION"
+                if orchestration_input.directed_event_type is not None
+                else "INTENT_CLASSIFICATION",
             },
         )
         return True, False
@@ -2389,6 +2448,21 @@ async def handle_general_information(
     if is_catalog_request_category(category):
         lead = await active_lead(session, conversation)
         event = await active_event(session, lead)
+        match = resolve_catalog_event_type_match(orchestration_input.message_text)
+        if match is not None:
+            audit_orchestrator_event(
+                session,
+                "CATALOG_EVENT_TYPE_RESOLVED",
+                conversation,
+                reason="Catalog request event type resolved from text",
+                request_id=orchestration_input.request_id,
+                extra={
+                    "event_type": match.event_type,
+                    "matched_label": match.matched_label,
+                    "decision_source": "DETERMINISTIC",
+                    "source": "EXPLICIT_CATALOG_MENTION",
+                },
+            )
         result = await handle_explicit_catalog_request(
             session,
             knowledge_sessionmaker,
@@ -2397,7 +2471,9 @@ async def handle_general_information(
             orchestration_input.inbound_message,
             lead.lead_id if lead is not None else None,
             event.event_type if event is not None else None,
-            classified_catalog_event_type(classification),
+            match.event_type
+            if match is not None
+            else classified_catalog_event_type(classification),
             orchestration_input.request_id,
         )
         persist_classification_context(conversation, classification)
@@ -2427,6 +2503,28 @@ async def handle_general_information(
             )
         return
     if fixed_price_entity is not None:
+        match = resolve_fixed_price_information_match(orchestration_input.message_text)
+        if (
+            match is not None
+            and mentioned_event_type is not None
+            and normalize_event_type(
+                fixed_price_entity.normalized_value or fixed_price_entity.raw_value
+            )
+            == match.event_type
+        ):
+            audit_orchestrator_event(
+                session,
+                "CATALOG_EVENT_TYPE_RESOLVED",
+                conversation,
+                reason="Fixed-price information event type resolved from text",
+                request_id=orchestration_input.request_id,
+                extra={
+                    "event_type": match.event_type,
+                    "matched_label": match.matched_label,
+                    "decision_source": "DETERMINISTIC",
+                    "source": "FIXED_PRICE_MENTION",
+                },
+            )
         lead, event = await get_or_create_capture_models(
             session,
             conversation,
@@ -4060,6 +4158,25 @@ async def handle_ai_unavailable(
         )
         return
 
+    question_code = conversation.last_question_code
+    if conversation.pending_action not in {None, "NONE"} and question_code:
+        question = await get_latest_response(knowledge_sessionmaker, question_code)
+        if (
+            question is not None
+            and question.status == "APPROVED"
+            and question.allowed_variables == []
+        ):
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                customer,
+                inbound_message,
+                question_code,
+                {},
+            )
+            return
+
     await enqueue_template(
         session,
         knowledge_sessionmaker,
@@ -4325,6 +4442,11 @@ def audit_orchestrator_event(
     request_id: str | None,
     extra: dict[str, Any] | None = None,
 ) -> None:
+    if (
+        action == "CATALOG_EVENT_TYPE_RESOLVED"
+        and (extra or {}).get("decision_source") == "DETERMINISTIC"
+    ):
+        _decision_source.set("DETERMINISTIC")
     session.add(
         AuditEvent(
             actor=SYSTEM_ACTOR,

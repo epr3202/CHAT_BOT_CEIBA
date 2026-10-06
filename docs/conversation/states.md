@@ -1401,7 +1401,8 @@ La acción deja de estar vigente cuando:
   se crea el handoff `CATALOG_NOT_AVAILABLE` y la acción se reemplaza por
   `WAIT_FOR_HUMAN`;
 * se agota la única re-pregunta permitida; o
-* el cliente cambia claramente a otra intención accionable.
+* el cliente cambia claramente a otra intención accionable, después de fallar la
+  resolución por frase y el extractor dirigido de tipo de evento.
 
 Cuando esta acción desplaza otra acción pendiente, la acción anterior se registra
 en el evento de auditoría, pero no se restaura mientras continúa la captura de tipo
@@ -2405,7 +2406,8 @@ de estrategia o escalar.
 
 Tras los bloqueos de conversación y la solicitud explícita de asesor, el orden es:
 rutas por `pending_action` → guard de reserva de precio fijo → `CATALOG_CAPTURE` y
-resolución de su etiqueta de tipo → clasificador LLM si no se resolvió el turno.
+resolución de su frase de tipo → catálogo explícito con tipo único o frase PROPOSAL
+de al menos dos palabras sin captura → clasificador LLM si no se resolvió el turno.
 
 El guard de reserva solo se evalúa con `pending_action IS NULL`, bot habilitado y
 estado `BOT_ACTIVE` o `ANSWERING_INFORMATION`. Requiere que el evento del lead activo
@@ -2421,7 +2423,7 @@ Una fecha relativa o con día de semana contradictorio guarda solo la expresión
 en `event_date_raw`, sin modificar `event_date`, `event_date_type` ni `event_month`
 existentes; el detalle del handoff incluye «pendiente de confirmación».
 
-Con `COLLECT_CATALOG_EVENT_TYPE`, una etiqueta reconocida se resuelve mediante el
+Con `COLLECT_CATALOG_EVENT_TYPE`, una frase reconocida se resuelve mediante el
 atajo `CATALOG_LABEL_MATCH`, sin clasificador ni fila `ai_execution`. Conserva el
 handler de catálogo, sus plantillas y el resultado de la resolución del tipo.
 
@@ -2976,3 +2978,30 @@ notifica en la conversación válida de la evidencia del mismo cliente, aunque s
 nueva. Plantilla no APPROVED o fallo de
 render → NOTIFICATION_SKIPPED sin romper la aceptación. El flag apagado no envía
 plantillas BOOKING.
+
+
+## Captura de catálogo: precedencia y auditoría (2026-10-05)
+
+El matcher de `entities.md` se ejecuta antes del clasificador en la captura de
+catálogo. Si resuelve, el catálogo usa la ruta explícita existente (modos
+ON_REQUEST y PROACTIVE, trigger EXPLICIT_REQUEST), se cierra la captura y no se
+crea ai_execution. Si falla y la clasificación general es válida, se permite
+EVENT_TYPE_EXTRACTION tanto por COLLECT_CATALOG_EVENT_TYPE como por la pregunta
+RESP-CATALOG-002. Solo después se evalúa el abandono.
+
+Sin captura, la palabra normalizada catalogo/catalogos y un tipo único activan
+GENERAL_INFORMATION/catalog_request determinista. Sin esa palabra, un tipo único
+PROPOSAL cuya etiqueta reconocida tenga al menos dos palabras activa
+GENERAL_INFORMATION/tipos de eventos y los catálogos PROACTIVE de precio fijo.
+Los labels reservados a respuestas de captura se ignoran fuera de
+COLLECT_CATALOG_EVENT_TYPE según entities.md. Ambas rutas conservan plantillas
+y send_mode existentes.
+CATALOG_EVENT_TYPE_RESOLVED registra actor SYSTEM, event_type, matched_label,
+decision_source y source; orchestrator_decision registra DETERMINISTIC en los
+atajos anteriores al LLM. Pending_action se fija exclusivamente en el backend.
+
+El log final también usa DETERMINISTIC cuando el matcher decide el tipo en la
+ruta de precio fijo después de una clasificación general (frases mixtas con
+prioridad PROPOSAL). La clasificación sigue registrada en ai_execution; el log
+identifica la fuente de la decisión de negocio. Esta fuente se conserva solo
+durante ese turno y se restaura antes del siguiente.

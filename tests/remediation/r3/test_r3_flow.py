@@ -89,7 +89,11 @@ async def test_state_appropriate_degradation_and_next_turn(
             completed["conversation"][0]["bot_enabled"] == before["conversation"][0]["bot_enabled"]
         )
     else:
-        assert completed["conversation"][0]["last_question_code"] == "RESP-DISCOVERY-002"
+        if case == "capture":
+            for field in ("pending_action", "last_question_code", "failed_understanding_count"):
+                assert completed["conversation"][0][field] == before["conversation"][0][field]
+        else:
+            assert completed["conversation"][0]["last_question_code"] == "RESP-DISCOVERY-002"
         assert len(completed["outbox"]) == 1 and completed["handoff"] == []
     next_final = None
     if case == "critical":
