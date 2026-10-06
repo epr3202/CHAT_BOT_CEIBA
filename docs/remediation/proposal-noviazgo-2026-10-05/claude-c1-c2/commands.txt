@@ -1,0 +1,20 @@
+# Local: PostgreSQL de test en contenedor; tres procesos con bases distintas.
+# Ejecutar desde el worktree de fix/proposal-noviazgo-catalog-capture.
+# PYTHON debe apuntar al Python del venv; TEST_DATABASE_URL a una BD cuyo nombre contenga test.
+
+# Rojo antes de C1/C2 (baseline 9dce534, tests nuevos):
+python -m pytest tests/unit/test_noviazgo_catalog_resolver_g2.py tests/test_noviazgo_catalog_capture_g2.py -q --tb=short -k 'test_c1 or test_c2'
+
+# Verde C1 y mecanismo G2-7:
+python -m pytest tests/unit/test_noviazgo_catalog_resolver_g2.py tests/test_noviazgo_catalog_capture_g2.py -q --tb=short -k 'test_g2_7 or test_c1'
+
+# Verde G2 y fronteras de fallback:
+python -m pytest tests/unit/test_noviazgo_catalog_resolver_g2.py tests/test_noviazgo_catalog_capture_g2.py tests/test_noviazgo_fallback_boundaries.py -q --tb=short
+
+# Verde captura previa, precio fijo e información general:
+python -m pytest tests/test_fix2a_catalog_capture_adversarial.py tests/conversational/test_romantic_catalog.py -q --tb=short
+
+# Verde normalización, guard de precio fijo y orquestador:
+python -m pytest tests/unit/test_fixed_price_booking.py tests/unit/test_event_type_normalization.py tests/unit/test_orchestrator.py -q --tb=short
+
+ruff check .

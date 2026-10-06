@@ -1,0 +1,5 @@
+Baseline: 9dce534de0be00b1608cd7dfc04e979a16f968d0
+G2-1/G2-6 and all other existing decorated tests: byte-identical.
+G2-7: only two authorized answering_event_type_question=True arguments.
+G2-7 parameter tables, decorators and expected values: byte-identical.
+Literal classifier/extractor payloads: unchanged.

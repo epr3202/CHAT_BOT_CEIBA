@@ -1,0 +1,209 @@
+FFFFFFFFFFFFFF.F.FFFFFFFFFFFF...                                         [100%]
+=================================== FAILURES ===================================
+___________________ test_c1_answer_only_labels_are_explicit ____________________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:64: in test_c1_answer_only_labels_are_explicit
+    assert getattr(catalog, "CATALOG_ANSWER_ONLY_LABELS", None) == ANSWER_ONLY_LABELS
+E   AssertionError: assert None == frozenset({'grado', 'noviazgo', 'otro', 'otro tipo de evento', 'propuesta', 'taller'})
+E    +  where None = getattr(catalog, 'CATALOG_ANSWER_ONLY_LABELS', None)
+________ test_c1_answer_only_labels_are_ignored_outside_capture[grado] _________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:69: in test_c1_answer_only_labels_are_ignored_outside_capture
+    assert catalog.resolve_catalog_event_type_mention(label) is None
+E   AssertionError: assert 'GRADUATION' is None
+E    +  where 'GRADUATION' = <function resolve_catalog_event_type_mention at 0x79ec53a23420>('grado')
+E    +    where <function resolve_catalog_event_type_mention at 0x79ec53a23420> = catalog.resolve_catalog_event_type_mention
+_______ test_c1_answer_only_labels_are_ignored_outside_capture[noviazgo] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:69: in test_c1_answer_only_labels_are_ignored_outside_capture
+    assert catalog.resolve_catalog_event_type_mention(label) is None
+E   AssertionError: assert 'PROPOSAL' is None
+E    +  where 'PROPOSAL' = <function resolve_catalog_event_type_mention at 0x79ec53a23420>('noviazgo')
+E    +    where <function resolve_catalog_event_type_mention at 0x79ec53a23420> = catalog.resolve_catalog_event_type_mention
+_________ test_c1_answer_only_labels_are_ignored_outside_capture[otro] _________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:69: in test_c1_answer_only_labels_are_ignored_outside_capture
+    assert catalog.resolve_catalog_event_type_mention(label) is None
+E   AssertionError: assert 'OTHER' is None
+E    +  where 'OTHER' = <function resolve_catalog_event_type_mention at 0x79ec53a23420>('otro')
+E    +    where <function resolve_catalog_event_type_mention at 0x79ec53a23420> = catalog.resolve_catalog_event_type_mention
+_ test_c1_answer_only_labels_are_ignored_outside_capture[otro tipo de evento] __
+tests/unit/test_noviazgo_catalog_resolver_g2.py:69: in test_c1_answer_only_labels_are_ignored_outside_capture
+    assert catalog.resolve_catalog_event_type_mention(label) is None
+E   AssertionError: assert 'OTHER' is None
+E    +  where 'OTHER' = <function resolve_catalog_event_type_mention at 0x79ec53a23420>('otro tipo de evento')
+E    +    where <function resolve_catalog_event_type_mention at 0x79ec53a23420> = catalog.resolve_catalog_event_type_mention
+______ test_c1_answer_only_labels_are_ignored_outside_capture[propuesta] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:69: in test_c1_answer_only_labels_are_ignored_outside_capture
+    assert catalog.resolve_catalog_event_type_mention(label) is None
+E   AssertionError: assert 'PROPOSAL' is None
+E    +  where 'PROPOSAL' = <function resolve_catalog_event_type_mention at 0x79ec53a23420>('propuesta')
+E    +    where <function resolve_catalog_event_type_mention at 0x79ec53a23420> = catalog.resolve_catalog_event_type_mention
+________ test_c1_answer_only_labels_are_ignored_outside_capture[taller] ________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:69: in test_c1_answer_only_labels_are_ignored_outside_capture
+    assert catalog.resolve_catalog_event_type_mention(label) is None
+E   AssertionError: assert 'WORKSHOP' is None
+E    +  where 'WORKSHOP' = <function resolve_catalog_event_type_mention at 0x79ec53a23420>('taller')
+E    +    where <function resolve_catalog_event_type_mention at 0x79ec53a23420> = catalog.resolve_catalog_event_type_mention
+_______ test_c1_answer_only_labels_resolve_in_capture[noviazgo-PROPOSAL] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:86: in test_c1_answer_only_labels_resolve_in_capture
+    assert "answering_event_type_question" in inspect.signature(resolver).parameters
+E   assert 'answering_event_type_question' in mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">}))
+E    +  where mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">})) = <Signature (text: 'str') -> 'str | None'>.parameters
+E    +    where <Signature (text: 'str') -> 'str | None'> = <function signature at 0x79ec5517f1a0>(<function resolve_catalog_event_type_mention at 0x79ec53a23420>)
+E    +      where <function signature at 0x79ec5517f1a0> = inspect.signature
+______ test_c1_answer_only_labels_resolve_in_capture[propuesta-PROPOSAL] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:86: in test_c1_answer_only_labels_resolve_in_capture
+    assert "answering_event_type_question" in inspect.signature(resolver).parameters
+E   assert 'answering_event_type_question' in mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">}))
+E    +  where mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">})) = <Signature (text: 'str') -> 'str | None'>.parameters
+E    +    where <Signature (text: 'str') -> 'str | None'> = <function signature at 0x79ec5517f1a0>(<function resolve_catalog_event_type_mention at 0x79ec53a23420>)
+E    +      where <function signature at 0x79ec5517f1a0> = inspect.signature
+__________ test_c1_answer_only_labels_resolve_in_capture[otro-OTHER] ___________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:86: in test_c1_answer_only_labels_resolve_in_capture
+    assert "answering_event_type_question" in inspect.signature(resolver).parameters
+E   assert 'answering_event_type_question' in mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">}))
+E    +  where mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">})) = <Signature (text: 'str') -> 'str | None'>.parameters
+E    +    where <Signature (text: 'str') -> 'str | None'> = <function signature at 0x79ec5517f1a0>(<function resolve_catalog_event_type_mention at 0x79ec53a23420>)
+E    +      where <function signature at 0x79ec5517f1a0> = inspect.signature
+___ test_c1_answer_only_labels_resolve_in_capture[otro tipo de evento-OTHER] ___
+tests/unit/test_noviazgo_catalog_resolver_g2.py:86: in test_c1_answer_only_labels_resolve_in_capture
+    assert "answering_event_type_question" in inspect.signature(resolver).parameters
+E   assert 'answering_event_type_question' in mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">}))
+E    +  where mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">})) = <Signature (text: 'str') -> 'str | None'>.parameters
+E    +    where <Signature (text: 'str') -> 'str | None'> = <function signature at 0x79ec5517f1a0>(<function resolve_catalog_event_type_mention at 0x79ec53a23420>)
+E    +      where <function signature at 0x79ec5517f1a0> = inspect.signature
+_______ test_c1_answer_only_labels_resolve_in_capture[grado-GRADUATION] ________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:86: in test_c1_answer_only_labels_resolve_in_capture
+    assert "answering_event_type_question" in inspect.signature(resolver).parameters
+E   assert 'answering_event_type_question' in mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">}))
+E    +  where mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">})) = <Signature (text: 'str') -> 'str | None'>.parameters
+E    +    where <Signature (text: 'str') -> 'str | None'> = <function signature at 0x79ec5517f1a0>(<function resolve_catalog_event_type_mention at 0x79ec53a23420>)
+E    +      where <function signature at 0x79ec5517f1a0> = inspect.signature
+________ test_c1_answer_only_labels_resolve_in_capture[taller-WORKSHOP] ________
+tests/unit/test_noviazgo_catalog_resolver_g2.py:86: in test_c1_answer_only_labels_resolve_in_capture
+    assert "answering_event_type_question" in inspect.signature(resolver).parameters
+E   assert 'answering_event_type_question' in mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">}))
+E    +  where mappingproxy(OrderedDict({'text': <Parameter "text: 'str'">})) = <Signature (text: 'str') -> 'str | None'>.parameters
+E    +    where <Signature (text: 'str') -> 'str | None'> = <function signature at 0x79ec5517f1a0>(<function resolve_catalog_event_type_mention at 0x79ec53a23420>)
+E    +      where <function signature at 0x79ec5517f1a0> = inspect.signature
+_ test_c1_fixed_price_respects_other_event_ambiguity[aniversario de noviazgo-None] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:103: in test_c1_fixed_price_respects_other_event_ambiguity
+    assert catalog.resolve_fixed_price_information_type(text) == expected
+E   AssertionError: assert 'PROPOSAL' == None
+E    +  where 'PROPOSAL' = <function resolve_fixed_price_information_type at 0x79ec53a23560>('aniversario de noviazgo')
+E    +    where <function resolve_fixed_price_information_type at 0x79ec53a23560> = catalog.resolve_fixed_price_information_type
+______ test_c1_fixed_price_respects_other_event_ambiguity[noviazgo-None] _______
+tests/unit/test_noviazgo_catalog_resolver_g2.py:103: in test_c1_fixed_price_respects_other_event_ambiguity
+    assert catalog.resolve_fixed_price_information_type(text) == expected
+E   AssertionError: assert 'PROPOSAL' == None
+E    +  where 'PROPOSAL' = <function resolve_fixed_price_information_type at 0x79ec53a23560>('noviazgo')
+E    +    where <function resolve_fixed_price_information_type at 0x79ec53a23560> = catalog.resolve_fixed_price_information_type
+_ test_c1_fixed_price_respects_other_event_ambiguity[pedida de mano para una boda civil-None] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:103: in test_c1_fixed_price_respects_other_event_ambiguity
+    assert catalog.resolve_fixed_price_information_type(text) == expected
+E   AssertionError: assert 'PROPOSAL' == None
+E    +  where 'PROPOSAL' = <function resolve_fixed_price_information_type at 0x79ec53a23560>('pedida de mano para una boda civil')
+E    +    where <function resolve_fixed_price_information_type at 0x79ec53a23560> = catalog.resolve_fixed_price_information_type
+_ test_c1_fixed_price_respects_other_event_ambiguity[aniversario con pedida de noviazgo-None] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:103: in test_c1_fixed_price_respects_other_event_ambiguity
+    assert catalog.resolve_fixed_price_information_type(text) == expected
+E   AssertionError: assert 'PROPOSAL' == None
+E    +  where 'PROPOSAL' = <function resolve_fixed_price_information_type at 0x79ec53a23560>('aniversario con pedida de noviazgo')
+E    +    where <function resolve_fixed_price_information_type at 0x79ec53a23560> = catalog.resolve_fixed_price_information_type
+_ test_c1_fixed_price_respects_other_event_ambiguity[pedida de mano con cena rom\xe1ntica y cumplea\xf1os-None] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:103: in test_c1_fixed_price_respects_other_event_ambiguity
+    assert catalog.resolve_fixed_price_information_type(text) == expected
+E   AssertionError: assert 'PROPOSAL' == None
+E    +  where 'PROPOSAL' = <function resolve_fixed_price_information_type at 0x79ec53a23560>('pedida de mano con cena romántica y cumpleaños')
+E    +    where <function resolve_fixed_price_information_type at 0x79ec53a23560> = catalog.resolve_fixed_price_information_type
+_ test_c2_incidental_mentions_do_not_bypass_classifier[cuanto cuesta el salon? llevamos 3 a\xf1os de noviazgo] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:116: in test_c2_incidental_mentions_do_not_bypass_classifier
+    assert deterministic_booking_or_catalog_classification(text, {"pending_action": None}) is None
+E   AssertionError: assert IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') is None
+E    +  where IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') = deterministic_booking_or_catalog_classification('cuanto cuesta el salon? llevamos 3 años de noviazgo', {'pending_action': None})
+_ test_c2_incidental_mentions_do_not_bypass_classifier[tengo una propuesta comercial para ustedes] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:116: in test_c2_incidental_mentions_do_not_bypass_classifier
+    assert deterministic_booking_or_catalog_classification(text, {"pending_action": None}) is None
+E   AssertionError: assert IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') is None
+E    +  where IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') = deterministic_booking_or_catalog_classification('tengo una propuesta comercial para ustedes', {'pending_action': None})
+_ test_c2_incidental_mentions_do_not_bypass_classifier[para celebrar 2 a\xf1os de noviazgo] _
+tests/unit/test_noviazgo_catalog_resolver_g2.py:116: in test_c2_incidental_mentions_do_not_bypass_classifier
+    assert deterministic_booking_or_catalog_classification(text, {"pending_action": None}) is None
+E   AssertionError: assert IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') is None
+E    +  where IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') = deterministic_booking_or_catalog_classification('para celebrar 2 años de noviazgo', {'pending_action': None})
+_ test_c2_incidental_mentions_do_not_bypass_classifier[mandame otro catalogo] __
+tests/unit/test_noviazgo_catalog_resolver_g2.py:116: in test_c2_incidental_mentions_do_not_bypass_classifier
+    assert deterministic_booking_or_catalog_classification(text, {"pending_action": None}) is None
+E   AssertionError: assert IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...eeds_human=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='CATALOG_MENTION_MATCH') is None
+E    +  where IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...eeds_human=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='CATALOG_MENTION_MATCH') = deterministic_booking_or_catalog_classification('mandame otro catalogo', {'pending_action': None})
+_____ test_c2_single_word_proposal_label_cannot_expand_deterministic_guard _____
+tests/unit/test_noviazgo_catalog_resolver_g2.py:124: in test_c2_single_word_proposal_label_cannot_expand_deterministic_guard
+    assert deterministic_booking_or_catalog_classification("compromiso", {}) is None
+E   AssertionError: assert IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') is None
+E    +  where IntentClassification(primary_intent='GENERAL_INFORMATION', secondary_intents=[], sub_intent=None, confidence=1.0, info...an=False, handoff_reason=None, priority='NORMAL', context_reference={}, reasoning_code='FIXED_PRICE_INFORMATION_MATCH') = deterministic_booking_or_catalog_classification('compromiso', {})
+_ test_c1_c2_incidental_mentions_reach_general_classifier[cuanto cuesta el salon? llevamos 3 a\xf1os de noviazgo] _
+tests/test_noviazgo_catalog_capture_g2.py:345: in test_c1_c2_incidental_mentions_reach_general_classifier
+    assert harness.calls == [("classify", text)]
+E   AssertionError: assert [] == [('classify',...de noviazgo')]
+E     
+E     Right contains one more item: ('classify', 'cuanto cuesta el salon? llevamos 3 años de noviazgo')
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 19:23:46 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=e63a6ddd-ad03-45c3-80f2-5f9b38f40c71 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 19:23:46 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=e63a6ddd-ad03-45c3-80f2-5f9b38f40c71
+_ test_c1_c2_incidental_mentions_reach_general_classifier[tengo una propuesta comercial para ustedes] _
+tests/test_noviazgo_catalog_capture_g2.py:345: in test_c1_c2_incidental_mentions_reach_general_classifier
+    assert harness.calls == [("classify", text)]
+E   AssertionError: assert [] == [('classify',...ara ustedes')]
+E     
+E     Right contains one more item: ('classify', 'tengo una propuesta comercial para ustedes')
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 19:23:49 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=4b2904e9-3755-4515-8222-3f7b8ce81d94 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 19:23:49 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=4b2904e9-3755-4515-8222-3f7b8ce81d94
+_ test_c1_c2_incidental_mentions_reach_general_classifier[para celebrar 2 a\xf1os de noviazgo] _
+tests/test_noviazgo_catalog_capture_g2.py:345: in test_c1_c2_incidental_mentions_reach_general_classifier
+    assert harness.calls == [("classify", text)]
+E   AssertionError: assert [] == [('classify',...de noviazgo')]
+E     
+E     Right contains one more item: ('classify', 'para celebrar 2 años de noviazgo')
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 19:23:51 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=536592c6-1a3f-424e-b90a-5cf1a2478616 state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-05 19:23:51 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=536592c6-1a3f-424e-b90a-5cf1a2478616
+_ test_c1_c2_incidental_mentions_reach_general_classifier[mandame otro catalogo] _
+tests/test_noviazgo_catalog_capture_g2.py:345: in test_c1_c2_incidental_mentions_reach_general_classifier
+    assert harness.calls == [("classify", text)]
+E   AssertionError: assert [] == [('classify',...ro catalogo')]
+E     
+E     Right contains one more item: ('classify', 'mandame otro catalogo')
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 19:23:56 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=WAIT_FOR_HUMAN request_id=c9aae037-de95-4601-8b52-713175356e07 state_after=WAITING_FOR_HUMAN state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_HUMAN
+2026-10-05 19:23:56 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=c9aae037-de95-4601-8b52-713175356e07
+=========================== short test summary info ============================
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_are_explicit
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_are_ignored_outside_capture[grado]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_are_ignored_outside_capture[noviazgo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_are_ignored_outside_capture[otro]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_are_ignored_outside_capture[otro tipo de evento]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_are_ignored_outside_capture[propuesta]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_are_ignored_outside_capture[taller]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_resolve_in_capture[noviazgo-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_resolve_in_capture[propuesta-PROPOSAL]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_resolve_in_capture[otro-OTHER]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_resolve_in_capture[otro tipo de evento-OTHER]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_resolve_in_capture[grado-GRADUATION]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_answer_only_labels_resolve_in_capture[taller-WORKSHOP]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_fixed_price_respects_other_event_ambiguity[aniversario de noviazgo-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_fixed_price_respects_other_event_ambiguity[noviazgo-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_fixed_price_respects_other_event_ambiguity[pedida de mano para una boda civil-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_fixed_price_respects_other_event_ambiguity[aniversario con pedida de noviazgo-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c1_fixed_price_respects_other_event_ambiguity[pedida de mano con cena rom\xe1ntica y cumplea\xf1os-None]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c2_incidental_mentions_do_not_bypass_classifier[cuanto cuesta el salon? llevamos 3 a\xf1os de noviazgo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c2_incidental_mentions_do_not_bypass_classifier[tengo una propuesta comercial para ustedes]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c2_incidental_mentions_do_not_bypass_classifier[para celebrar 2 a\xf1os de noviazgo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c2_incidental_mentions_do_not_bypass_classifier[mandame otro catalogo]
+FAILED tests/unit/test_noviazgo_catalog_resolver_g2.py::test_c2_single_word_proposal_label_cannot_expand_deterministic_guard
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_c1_c2_incidental_mentions_reach_general_classifier[cuanto cuesta el salon? llevamos 3 a\xf1os de noviazgo]
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_c1_c2_incidental_mentions_reach_general_classifier[tengo una propuesta comercial para ustedes]
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_c1_c2_incidental_mentions_reach_general_classifier[para celebrar 2 a\xf1os de noviazgo]
+FAILED tests/test_noviazgo_catalog_capture_g2.py::test_c1_c2_incidental_mentions_reach_general_classifier[mandame otro catalogo]
+27 failed, 5 passed, 79 deselected in 24.91s
