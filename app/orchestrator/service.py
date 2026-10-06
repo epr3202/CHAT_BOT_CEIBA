@@ -77,7 +77,7 @@ from app.conversation.fixed_price_booking import (
     is_fixed_price_booking,
     match_booking_plan,
 )
-from app.conversation.knowledge import KnowledgeRenderError, render_response
+from app.conversation.knowledge import KnowledgeRenderError, get_latest_response, render_response
 from app.conversation.models import Conversation
 from app.conversation.pending_actions import validate_pending_action
 from app.conversation.pending_confirmation import (
@@ -4133,6 +4133,25 @@ async def handle_ai_unavailable(
             {"map_url": "https://maps.app.goo.gl/hvxQH8UFN7upKMwU8?g_st=iw"},
         )
         return
+
+    question_code = conversation.last_question_code
+    if conversation.pending_action not in {None, "NONE"} and question_code:
+        question = await get_latest_response(knowledge_sessionmaker, question_code)
+        if (
+            question is not None
+            and question.status == "APPROVED"
+            and question.allowed_variables == []
+        ):
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                customer,
+                inbound_message,
+                question_code,
+                {},
+            )
+            return
 
     await enqueue_template(
         session,

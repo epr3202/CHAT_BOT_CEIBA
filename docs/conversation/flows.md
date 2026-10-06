@@ -532,20 +532,21 @@ Antes de aplicar las bandas de confianza o las restricciones generales de accion
 de la clasificación, el orquestador intenta resolver el tipo de evento de forma
 determinista:
 
-1. Aceptar una entidad `event_type` válida contra el catálogo de
-   `entities.md`.
-2. Si no existe una entidad válida, exigir igualdad exacta del texto completo
-   normalizado con uno de los labels canónicos de `entities.md` §7.1, aplicando
-   allí la normalización definida. Nunca usar substring ni matching parcial.
-3. No inferir libremente un tipo de evento cuando ninguno de esos mecanismos lo
-   resuelva.
+1. Antes del LLM, resolver frases con límites de palabra mediante los labels de
+   `entities.md` §7.1. Gana la frase más larga en su posición; se descartan
+   coincidencias contenidas. Solo resolver cuando queda un tipo distinto.
+2. Si no resuelve y el clasificador general devuelve una clasificación válida,
+   aceptar su entidad válida o ejecutar EVENT_TYPE_EXTRACTION por la pregunta
+   RESP-CATALOG-002 o la acción COLLECT_CATALOG_EVENT_TYPE.
+3. Solo después de fallar ambos mecanismos se permite evaluar el abandono o
+   contar un intento no resuelto. No inferir libremente un tipo.
 
 El resultado se procesa así:
 
 * Resuelto con catálogos mapeados: enviar los catálogos con
   `trigger = EXPLICIT_REQUEST` y modos `ON_REQUEST` o `PROACTIVE`, limpiar la
   acción, reiniciar `failed_understanding_count = 0` y auditar
-  `CATALOG_EVENT_TYPE_RESOLVED`.
+  `CATALOG_EVENT_TYPE_RESOLVED` con event_type, matched_label, decision_source y source.
 * Resuelto sin catálogos mapeados: responder `RESP-CATALOG-003`, limpiar la acción,
   crear un handoff con razón `CATALOG_NOT_AVAILABLE` y resumen determinista que
   incluya el `event_type` solicitado, transicionar a `WAITING_FOR_HUMAN`, pausar el
@@ -564,10 +565,17 @@ El resultado se procesa así:
   limpiar la acción, auditar `CATALOG_CAPTURE_ABANDONED` y enrutar el mismo mensaje
   normalmente. No volver a encolar el catálogo.
 
-Las intenciones prioritarias y sensibles, incluida `EMERGENCY` y las que producen
-handoff, conservan su prioridad: abandonan esta captura, limpian la acción y siguen
-su flujo autorizado. Todos los eventos de auditoría de esta sección propagan el
+La solicitud explícita determinista de asesor conserva su guard previo. Tras
+fallar la resolución de tipo y el extractor, las intenciones prioritarias y
+sensibles, incluida `EMERGENCY` y las que producen handoff, abandonan esta captura,
+limpian la acción y siguen su flujo autorizado. Todos los eventos de auditoría de esta sección propagan el
 `request_id` del turno.
+
+La indisponibilidad técnica IA no cuenta como intento no resuelto: después de las
+ramas críticas y ubicación, se repite la pregunta APPROVED sin variables cuando
+hay una acción pendiente vigente. Si la pregunta tiene variables, está ausente o
+su última versión no está APPROVED, se mantiene RESP-DISCOVERY-002. Se conservan
+la acción y el contador.
 
 Todo el ciclo conserva `FLOW-GEN-008`: la reentrega del mismo mensaje entrante no
 produce una segunda respuesta ni un segundo envío de catálogo.

@@ -390,7 +390,13 @@ No afirmar que el bot está cerrado.
 
 ### Condición
 
-El cliente no explica su necesidad.
+El cliente no explica su necesidad. También se usa como fallback técnico cuando
+la IA no está disponible fuera de capturas, o cuando no existe una última
+pregunta APPROVED sin variables que pueda repetirse con seguridad. Si hay una
+acción pendiente distinta de NONE y la última versión de su pregunta está
+APPROVED con allowed_variables vacío, se repite esa misma pregunta y se conservan
+pending_action, last_question_code y failed_understanding_count. Las ramas de
+estados críticos (escalamiento) y ubicación tienen precedencia y se mantienen.
 
 ### Texto aprobado
 
