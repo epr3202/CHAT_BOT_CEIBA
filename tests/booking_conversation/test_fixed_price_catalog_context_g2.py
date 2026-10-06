@@ -173,7 +173,9 @@ async def test_g2_1_proposal_catalog_sets_booking_context(harness: Harness, tmp_
     await assert_plan_options(harness, "PROPOSAL", 3)
     assert not harness.classifier_calls
     assert not await harness.rows(AIExecution)
-    assert "date" not in draft_of(await harness.conversation())
+    draft = draft_of(await harness.conversation())
+    assert draft.get("date") == "2026-10-14"
+    assert draft.get("date_confirmation") is True
 
 
 async def test_g2_2_romantic_catalog_sets_booking_context(harness: Harness, tmp_path: Path) -> None:
