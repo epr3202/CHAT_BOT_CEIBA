@@ -203,15 +203,41 @@ async def test_g2_1_full_production_transcript(harness: Harness) -> None:
     harness.outputs.update({T1: PAYLOAD_3448, T2: RAW_3449, T3: PAYLOAD_3450})
     await harness.turn(T1)
     first = await harness.snapshot()
+    async with harness.sessions() as session:
+        first_lead_id = await session.scalar(
+            select(Conversation.active_lead_id).where(Conversation.id == harness.conversation_id)
+        )
+        first_event_type = await session.scalar(
+            select(Event.event_type).where(Event.lead_id == first_lead_id)
+        )
     sticker_id = await harness.turn(kind="sticker")
     sticker = await harness.snapshot()
     await harness.turn(T2)
     await harness.turn(T3)
     final = await harness.snapshot()
     # Check the transcript only after all four turns have actually executed.
-    assert [row.message_kind for row in first["outbox"]] == ["DOCUMENT"]
-    assert first["outbox"][0].catalog_asset_id == harness.proposal_id
-    assert first["context"][1] is None
+    assert [row.message_kind for row in first["outbox"]] == ["TEXT", "DOCUMENT"]
+    assert first["outbox"][0].payload["text"]["body"] == next(
+        entry.answer_template
+        for entry in iter_seed_entries()
+        if entry.code == "RESP-EVENTS-PROPOSAL-001"
+    )
+    assert first["outbox"][1].catalog_asset_id == harness.proposal_id
+    assert first["context"] == ("BOT_ACTIVE", None, "RESP-EVENTS-PROPOSAL-001", 0)
+    assert first_lead_id is not None and first_event_type == "PROPOSAL"
+    assert len(first["sends"]) == 1 and first["sends"][0].trigger == "PROACTIVE"
+    fixed_audit = next(
+        (
+            row
+            for row in first["audits"]
+            if row.action == "FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO"
+        ),
+        None,
+    )
+    assert fixed_audit is not None and fixed_audit.actor == "SYSTEM"
+    assert fixed_audit.new_value["event_type"] == "PROPOSAL"
+    assert fixed_audit.new_value["lead_id"] == str(first_lead_id)
+    assert fixed_audit.new_value["sent_count"] == 1
     assert ("classify", T1) not in harness.calls
     assert sticker["context"] == first["context"]
     assert not any(row.external_message_id == sticker_id for row in final["ai"])
