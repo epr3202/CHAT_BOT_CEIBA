@@ -1,0 +1,12 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________ test_mixed_fixed_price_resolution_reports_deterministic_source ________
+tests/test_noviazgo_fallback_boundaries.py:159: in test_mixed_fixed_price_resolution_reports_deterministic_source
+    assert decisions[-1]['decision_source'] == 'DETERMINISTIC'
+E   AssertionError: assert 'LLM' == 'DETERMINISTIC'
+E     
+E     - DETERMINISTIC
+E     + LLM
+=========================== short test summary info ============================
+FAILED tests/test_noviazgo_fallback_boundaries.py::test_mixed_fixed_price_resolution_reports_deterministic_source
+1 failed, 15 deselected in 5.19s

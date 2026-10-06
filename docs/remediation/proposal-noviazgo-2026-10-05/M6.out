@@ -1,0 +1,237 @@
+BEGIN
+                                       Table "public.audit_event"
+   Column   |           Type           | Collation | Nullable |                 Default                 
+------------+--------------------------+-----------+----------+-----------------------------------------
+ id         | integer                  |           | not null | nextval('audit_event_id_seq'::regclass)
+ actor      | character varying(64)    |           | not null | 
+ action     | character varying(128)   |           | not null | 
+ entity     | character varying(128)   |           | not null | 
+ old_value  | json                     |           |          | 
+ new_value  | json                     |           |          | 
+ reason     | character varying(255)   |           | not null | 
+ request_id | character varying(128)   |           |          | 
+ created_at | timestamp with time zone |           | not null | now()
+Indexes:
+    "audit_event_pkey" PRIMARY KEY, btree (id)
+
+                                          Table "public.catalog_event_type_map"
+      Column      |           Type           | Collation | Nullable |                      Default                       
+------------------+--------------------------+-----------+----------+----------------------------------------------------
+ id               | integer                  |           | not null | nextval('catalog_event_type_map_id_seq'::regclass)
+ catalog_asset_id | uuid                     |           | not null | 
+ event_type       | character varying(64)    |           | not null | 
+ created_at       | timestamp with time zone |           | not null | now()
+ send_mode        | character varying(32)    |           | not null | 'ON_REQUEST'::character varying
+Indexes:
+    "catalog_event_type_map_pkey" PRIMARY KEY, btree (id)
+    "ix_catalog_event_type_map_catalog_asset_id" btree (catalog_asset_id)
+    "ix_catalog_event_type_map_event_type" btree (event_type)
+    "uq_catalog_asset_event_type" UNIQUE CONSTRAINT, btree (catalog_asset_id, event_type)
+Check constraints:
+    "ck_catalog_event_type_map_event_type" CHECK (event_type::text = ANY (ARRAY['WEDDING'::character varying, 'CIVIL_WEDDING'::character varying, 'PROPOSAL'::character varying, 'BIRTHDAY'::character varying, 'GRADUATION'::character varying, 'ANNIVERSARY'::character varying, 'ROMANTIC_DINNER'::character varying, 'CORPORATE_EVENT'::character varying, 'FAMILY_EVENT'::character varying, 'BAPTISM'::character varying, 'FIRST_COMMUNION'::character varying, 'BABY_SHOWER'::character varying, 'WORKSHOP'::character varying, 'POOL_DAY'::character varying, 'PRIVATE_DINNER'::character varying, 'GENDER_REVEAL'::character varying, 'OTHER'::character varying]::text[]))
+    "ck_catalog_event_type_map_send_mode" CHECK (send_mode::text = ANY (ARRAY['PROACTIVE'::character varying, 'ON_REQUEST'::character varying]::text[]))
+Foreign-key constraints:
+    "catalog_event_type_map_catalog_asset_id_fkey" FOREIGN KEY (catalog_asset_id) REFERENCES catalog_asset(catalog_asset_id)
+
+ id | actor | action | entity | created_at_utc | new_value | old_value 
+----+-------+--------+--------+----------------+-----------+-----------
+(0 rows)
+
+                           Table "public.catalog_send"
+       Column        |           Type           | Collation | Nullable | Default 
+---------------------+--------------------------+-----------+----------+---------
+ catalog_send_id     | uuid                     |           | not null | 
+ lead_id             | uuid                     |           | not null | 
+ catalog_asset_id    | uuid                     |           | not null | 
+ trigger             | character varying(32)    |           | not null | 
+ outbound_message_id | integer                  |           | not null | 
+ created_at          | timestamp with time zone |           | not null | now()
+Indexes:
+    "catalog_send_pkey" PRIMARY KEY, btree (catalog_send_id)
+    "ix_catalog_send_catalog_asset_id" btree (catalog_asset_id)
+    "ix_catalog_send_lead_id" btree (lead_id)
+    "uq_catalog_send_proactive_lead_asset" UNIQUE, btree (lead_id, catalog_asset_id) WHERE trigger::text = 'PROACTIVE'::text
+Check constraints:
+    "ck_catalog_send_trigger" CHECK (trigger::text = ANY (ARRAY['PROACTIVE'::character varying, 'EXPLICIT_REQUEST'::character varying]::text[]))
+Foreign-key constraints:
+    "catalog_send_catalog_asset_id_fkey" FOREIGN KEY (catalog_asset_id) REFERENCES catalog_asset(catalog_asset_id)
+    "catalog_send_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    "catalog_send_outbound_message_id_fkey" FOREIGN KEY (outbound_message_id) REFERENCES outbox(id)
+
+                                             Table "public.outbox"
+         Column         |           Type           | Collation | Nullable |              Default               
+------------------------+--------------------------+-----------+----------+------------------------------------
+ id                     | integer                  |           | not null | nextval('outbox_id_seq'::regclass)
+ conversation_id        | integer                  |           | not null | 
+ message_id             | integer                  |           | not null | 
+ channel                | character varying(32)    |           | not null | 
+ recipient_phone_number | character varying(32)    |           | not null | 
+ payload                | json                     |           | not null | 
+ status                 | character varying(32)    |           | not null | 
+ created_at             | timestamp with time zone |           | not null | now()
+ attempts               | integer                  |           | not null | 
+ last_error             | character varying(1000)  |           |          | 
+ sent_at                | timestamp with time zone |           |          | 
+ next_attempt_at        | timestamp with time zone |           |          | 
+ claimed_at             | timestamp with time zone |           |          | 
+ message_kind           | character varying(32)    |           | not null | 
+ catalog_asset_id       | uuid                     |           |          | 
+ claim_token            | uuid                     |           |          | 
+ delivery_context       | jsonb                    |           |          | 
+ send_admission         | jsonb                    |           |          | 
+ delivery_reason        | character varying(128)   |           |          | 
+ delivery_decided_at    | timestamp with time zone |           |          | 
+Indexes:
+    "outbox_pkey" PRIMARY KEY, btree (id)
+    "ix_outbox_conversation_id" btree (conversation_id)
+    "ix_outbox_message_id" btree (message_id)
+    "ix_outbox_status_next_attempt_at" btree (status, next_attempt_at)
+Check constraints:
+    "ck_outbox_channel" CHECK (channel::text = 'WHATSAPP'::text)
+    "ck_outbox_document_has_catalog_asset" CHECK (message_kind::text <> 'DOCUMENT'::text OR catalog_asset_id IS NOT NULL)
+    "ck_outbox_message_kind" CHECK (message_kind::text = ANY (ARRAY['TEXT'::character varying, 'DOCUMENT'::character varying]::text[]))
+Foreign-key constraints:
+    "fk_outbox_catalog_asset_id_catalog_asset" FOREIGN KEY (catalog_asset_id) REFERENCES catalog_asset(catalog_asset_id)
+    "outbox_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    "outbox_message_id_fkey" FOREIGN KEY (message_id) REFERENCES message(id)
+Referenced by:
+    TABLE "catalog_send" CONSTRAINT "catalog_send_outbound_message_id_fkey" FOREIGN KEY (outbound_message_id) REFERENCES outbox(id)
+
+                                                   Table "public.conversation"
+               Column                |           Type           | Collation | Nullable |                 Default                  
+-------------------------------------+--------------------------+-----------+----------+------------------------------------------
+ id                                  | integer                  |           | not null | nextval('conversation_id_seq'::regclass)
+ customer_id                         | integer                  |           | not null | 
+ channel                             | character varying(32)    |           | not null | 
+ state                               | character varying(64)    |           | not null | 
+ created_at                          | timestamp with time zone |           | not null | now()
+ last_message_at                     | timestamp with time zone |           |          | 
+ last_intent                         | character varying(64)    |           |          | 
+ pending_action                      | character varying(128)   |           |          | 
+ last_question_code                  | character varying(128)   |           |          | 
+ failed_understanding_count          | integer                  |           | not null | 
+ bot_enabled                         | boolean                  |           | not null | 
+ pending_confirmation                | jsonb                    |           |          | 
+ assigned_agent_id                   | integer                  |           |          | 
+ pending_fields                      | jsonb                    |           | not null | 
+ active_lead_id                      | uuid                     |           |          | 
+ visit_draft                         | jsonb                    |           |          | 
+ services_failed_understanding_count | integer                  |           |          | 
+ automation_epoch                    | uuid                     |           | not null | gen_random_uuid()
+ booking_draft                       | jsonb                    |           |          | 
+Indexes:
+    "conversation_pkey" PRIMARY KEY, btree (id)
+    "ix_conversation_active_lead_id" btree (active_lead_id)
+    "ix_conversation_assigned_agent_id" btree (assigned_agent_id)
+    "ix_conversation_customer_id" btree (customer_id)
+Check constraints:
+    "ck_conversation_channel" CHECK (channel::text = 'WHATSAPP'::text)
+    "ck_conversation_pending_action" CHECK (pending_action IS NULL OR (pending_action::text = ANY (ARRAY['NONE'::character varying, 'CLASSIFY_MESSAGE'::character varying, 'ANSWER_INFORMATION'::character varying, 'SEND_CATALOG'::character varying, 'COLLECT_CATALOG_EVENT_TYPE'::character varying, 'COLLECT_EVENT_TYPE'::character varying, 'COLLECT_GUEST_COUNT'::character varying, 'COLLECT_EVENT_DATE'::character varying, 'COLLECT_CUSTOMER_NAME'::character varying, 'COLLECT_BUDGET'::character varying, 'COLLECT_SERVICES'::character varying, 'CONFIRM_QUOTE_REQUEST'::character varying, 'SELECT_VISIT_DATE'::character varying, 'CONFIRM_VISIT_DATE'::character varying, 'SELECT_VISIT_TIME'::character varying, 'COLLECT_VISIT_ATTENDEES'::character varying, 'COLLECT_VISIT_REASON'::character varying, 'CONFIRM_APPOINTMENT'::character varying, 'CONFIRM_RESCHEDULE'::character varying, 'CONFIRM_VISIT_CANCELLATION'::character varying, 'CONFIRM_EVENT_CANCELLATION'::character varying, 'WAIT_FOR_HUMAN'::character varying, 'WAIT_FOR_PAYMENT_REVIEW'::character varying, 'WAIT_FOR_RESERVATION_CONFIRMATION'::character varying, 'SELECT_BOOKING_PLAN'::character varying, 'SELECT_BOOKING_DATETIME'::character varying, 'SELECT_BOOKING_TIME'::character varying, 'CONFIRM_BOOKING'::character varying, 'COLLECT_BOOKING_NAME'::character varying]::text[])))
+    "ck_conversation_state" CHECK (state::text = ANY (ARRAY['NEW'::character varying, 'BOT_ACTIVE'::character varying, 'ANSWERING_INFORMATION'::character varying, 'COLLECTING_EVENT_DATA'::character varying, 'QUOTE_REQUEST_READY'::character varying, 'WAITING_FOR_APPOINTMENT_DATE'::character varying, 'WAITING_FOR_APPOINTMENT_SELECTION'::character varying, 'APPOINTMENT_PENDING_CONFIRMATION'::character varying, 'APPOINTMENT_CONFIRMED'::character varying, 'WAITING_FOR_HUMAN'::character varying, 'HUMAN_ACTIVE'::character varying, 'RETURNED_TO_BOT'::character varying, 'RESOLVED'::character varying, 'CLOSED'::character varying]::text[]))
+Foreign-key constraints:
+    "conversation_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+    "fk_conversation_active_lead_id_lead" FOREIGN KEY (active_lead_id) REFERENCES lead(lead_id)
+    "fk_conversation_assigned_agent_id_agent" FOREIGN KEY (assigned_agent_id) REFERENCES agent(id)
+Referenced by:
+    TABLE "ai_execution" CONSTRAINT "ai_execution_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "handoff" CONSTRAINT "handoff_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "inbox_job" CONSTRAINT "inbox_job_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "message" CONSTRAINT "message_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "outbox" CONSTRAINT "outbox_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "payment_evidence" CONSTRAINT "payment_evidence_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    TABLE "reservation" CONSTRAINT "reservation_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+
+                              Table "public.lead"
+       Column       |           Type           | Collation | Nullable | Default 
+--------------------+--------------------------+-----------+----------+---------
+ lead_id            | uuid                     |           | not null | 
+ customer_id        | integer                  |           | not null | 
+ lead_status        | character varying(32)    |           | not null | 
+ channel            | character varying(32)    |           | not null | 
+ estimated_budget   | numeric(12,2)            |           |          | 
+ budget_range       | character varying(32)    |           | not null | 
+ budget_data_status | character varying(32)    |           | not null | 
+ created_at         | timestamp with time zone |           | not null | now()
+ updated_at         | timestamp with time zone |           | not null | now()
+Indexes:
+    "lead_pkey" PRIMARY KEY, btree (lead_id)
+    "ix_lead_customer_id" btree (customer_id)
+Check constraints:
+    "ck_lead_budget_data_status" CHECK (budget_data_status::text = ANY (ARRAY['NOT_ASKED'::character varying, 'ASKED_PENDING'::character varying, 'PROVIDED'::character varying, 'DECLINED'::character varying, 'RANGE_PROVIDED'::character varying, 'CORRECTED'::character varying]::text[]))
+    "ck_lead_budget_range" CHECK (budget_range::text = ANY (ARRAY['NOT_PROVIDED'::character varying, 'BELOW_REFERENCE'::character varying, 'REFERENCE_RANGE'::character varying, 'PREMIUM'::character varying, 'CUSTOM'::character varying]::text[]))
+    "ck_lead_channel" CHECK (channel::text = 'WHATSAPP'::text)
+    "ck_lead_status" CHECK (lead_status::text = ANY (ARRAY['NEW'::character varying, 'QUALIFYING'::character varying, 'QUALIFIED'::character varying, 'QUOTE_REQUESTED'::character varying, 'VISIT_SCHEDULED'::character varying]::text[]))
+Foreign-key constraints:
+    "lead_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+Referenced by:
+    TABLE "appointment" CONSTRAINT "appointment_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    TABLE "catalog_send" CONSTRAINT "catalog_send_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    TABLE "event" CONSTRAINT "event_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    TABLE "conversation" CONSTRAINT "fk_conversation_active_lead_id_lead" FOREIGN KEY (active_lead_id) REFERENCES lead(lead_id)
+    TABLE "payment_evidence" CONSTRAINT "payment_evidence_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    TABLE "quote_request" CONSTRAINT "quote_request_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    TABLE "reservation" CONSTRAINT "reservation_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+
+                              Table "public.event"
+       Column       |           Type           | Collation | Nullable | Default 
+--------------------+--------------------------+-----------+----------+---------
+ event_id           | uuid                     |           | not null | 
+ lead_id            | uuid                     |           | not null | 
+ event_type         | character varying(64)    |           |          | 
+ event_type_other   | character varying(150)   |           |          | 
+ event_date         | date                     |           |          | 
+ event_month        | character varying(7)     |           |          | 
+ event_date_type    | character varying(32)    |           |          | 
+ event_date_raw     | character varying(200)   |           |          | 
+ guest_count        | integer                  |           |          | 
+ guest_count_min    | integer                  |           |          | 
+ guest_count_max    | integer                  |           |          | 
+ guest_count_status | character varying(32)    |           |          | 
+ special_requests   | text                     |           |          | 
+ created_at         | timestamp with time zone |           | not null | now()
+ updated_at         | timestamp with time zone |           | not null | now()
+ plan_id            | uuid                     |           |          | 
+Indexes:
+    "event_pkey" PRIMARY KEY, btree (event_id)
+    "ix_event_lead_id" btree (lead_id)
+    "ix_event_plan_id" btree (plan_id)
+Check constraints:
+    "ck_event_date_type" CHECK (event_date_type IS NULL OR (event_date_type::text = ANY (ARRAY['EXACT'::character varying, 'APPROXIMATE'::character varying, 'FLEXIBLE'::character varying, 'UNKNOWN'::character varying]::text[])))
+    "ck_event_guest_count_status" CHECK (guest_count_status IS NULL OR (guest_count_status::text = ANY (ARRAY['PROVIDED'::character varying, 'RANGE'::character varying, 'ESTIMATED'::character varying]::text[])))
+    "ck_event_type" CHECK (event_type IS NULL OR (event_type::text = ANY (ARRAY['WEDDING'::character varying, 'CIVIL_WEDDING'::character varying, 'PROPOSAL'::character varying, 'BIRTHDAY'::character varying, 'GRADUATION'::character varying, 'ANNIVERSARY'::character varying, 'ROMANTIC_DINNER'::character varying, 'CORPORATE_EVENT'::character varying, 'FAMILY_EVENT'::character varying, 'BAPTISM'::character varying, 'FIRST_COMMUNION'::character varying, 'BABY_SHOWER'::character varying, 'WORKSHOP'::character varying, 'POOL_DAY'::character varying, 'PRIVATE_DINNER'::character varying, 'GENDER_REVEAL'::character varying, 'OTHER'::character varying]::text[])))
+Foreign-key constraints:
+    "event_lead_id_fkey" FOREIGN KEY (lead_id) REFERENCES lead(lead_id)
+    "fk_event_plan" FOREIGN KEY (plan_id) REFERENCES plan(plan_id)
+Referenced by:
+    TABLE "event_service_request" CONSTRAINT "event_service_request_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    TABLE "quote_request" CONSTRAINT "quote_request_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+    TABLE "reservation" CONSTRAINT "reservation_event_id_fkey" FOREIGN KEY (event_id) REFERENCES event(event_id)
+
+ outbox_id | created_at_utc | conversation_id | phone_masked | status | sent_at_utc | catalog_send_id | trigger | current_lead_event_type | historical_type_note 
+-----------+----------------+-----------------+--------------+--------+-------------+-----------------+---------+-------------------------+----------------------
+(0 rows)
+
+                                       Table "public.audit_event"
+   Column   |           Type           | Collation | Nullable |                 Default                 
+------------+--------------------------+-----------+----------+-----------------------------------------
+ id         | integer                  |           | not null | nextval('audit_event_id_seq'::regclass)
+ actor      | character varying(64)    |           | not null | 
+ action     | character varying(128)   |           | not null | 
+ entity     | character varying(128)   |           | not null | 
+ old_value  | json                     |           |          | 
+ new_value  | json                     |           |          | 
+ reason     | character varying(255)   |           | not null | 
+ request_id | character varying(128)   |           |          | 
+ created_at | timestamp with time zone |           | not null | now()
+Indexes:
+    "audit_event_pkey" PRIMARY KEY, btree (id)
+
+  id  |  actor  |            action            |       created_at_utc       |                                                                                                                new_value                                                                                                                 
+------+---------+------------------------------+----------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 6900 | Leandro | CATALOG_EVENT_TYPES_REPLACED | 2026-10-05 13:30:13.544269 | {"event_types": ["WEDDING", "PROPOSAL"], "catalog_asset_id": "d34aebc0-6d51-44e2-99be-dc214afe672f", "event_type_mappings": [{"send_mode": "PROACTIVE", "event_type": "WEDDING"}, {"send_mode": "PROACTIVE", "event_type": "PROPOSAL"}]}
+ 6902 | Leandro | CATALOG_ASSET_UPDATED        | 2026-10-05 13:31:34.124825 | {"name": "Quieres ser mi novia", "active": false, "version": 1, "file_path": "2827c1d2d4d1bd9c.pdf", "catalog_asset_id": "d34aebc0-6d51-44e2-99be-dc214afe672f"}
+ 6903 | Leandro | CATALOG_ASSET_UPDATED        | 2026-10-05 13:31:36.143344 | {"name": "Quieres ser mi novia", "active": true, "version": 1, "file_path": "2827c1d2d4d1bd9c.pdf", "catalog_asset_id": "d34aebc0-6d51-44e2-99be-dc214afe672f"}
+ 6933 | Leandro | CATALOG_ASSET_UPDATED        | 2026-10-05 23:42:12.049075 | {"name": "Quieres ser mi novia", "active": false, "version": 1, "file_path": "2827c1d2d4d1bd9c.pdf", "catalog_asset_id": "d34aebc0-6d51-44e2-99be-dc214afe672f"}
+(4 rows)
+
+ROLLBACK

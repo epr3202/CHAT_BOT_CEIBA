@@ -1,0 +1,42 @@
+BEGIN
+                                          Table "public.catalog_event_type_map"
+      Column      |           Type           | Collation | Nullable |                      Default                       
+------------------+--------------------------+-----------+----------+----------------------------------------------------
+ id               | integer                  |           | not null | nextval('catalog_event_type_map_id_seq'::regclass)
+ catalog_asset_id | uuid                     |           | not null | 
+ event_type       | character varying(64)    |           | not null | 
+ created_at       | timestamp with time zone |           | not null | now()
+ send_mode        | character varying(32)    |           | not null | 'ON_REQUEST'::character varying
+Indexes:
+    "catalog_event_type_map_pkey" PRIMARY KEY, btree (id)
+    "ix_catalog_event_type_map_catalog_asset_id" btree (catalog_asset_id)
+    "ix_catalog_event_type_map_event_type" btree (event_type)
+    "uq_catalog_asset_event_type" UNIQUE CONSTRAINT, btree (catalog_asset_id, event_type)
+Check constraints:
+    "ck_catalog_event_type_map_event_type" CHECK (event_type::text = ANY (ARRAY['WEDDING'::character varying, 'CIVIL_WEDDING'::character varying, 'PROPOSAL'::character varying, 'BIRTHDAY'::character varying, 'GRADUATION'::character varying, 'ANNIVERSARY'::character varying, 'ROMANTIC_DINNER'::character varying, 'CORPORATE_EVENT'::character varying, 'FAMILY_EVENT'::character varying, 'BAPTISM'::character varying, 'FIRST_COMMUNION'::character varying, 'BABY_SHOWER'::character varying, 'WORKSHOP'::character varying, 'POOL_DAY'::character varying, 'PRIVATE_DINNER'::character varying, 'GENDER_REVEAL'::character varying, 'OTHER'::character varying]::text[]))
+    "ck_catalog_event_type_map_send_mode" CHECK (send_mode::text = ANY (ARRAY['PROACTIVE'::character varying, 'ON_REQUEST'::character varying]::text[]))
+Foreign-key constraints:
+    "catalog_event_type_map_catalog_asset_id_fkey" FOREIGN KEY (catalog_asset_id) REFERENCES catalog_asset(catalog_asset_id)
+
+                                       Table "public.audit_event"
+   Column   |           Type           | Collation | Nullable |                 Default                 
+------------+--------------------------+-----------+----------+-----------------------------------------
+ id         | integer                  |           | not null | nextval('audit_event_id_seq'::regclass)
+ actor      | character varying(64)    |           | not null | 
+ action     | character varying(128)   |           | not null | 
+ entity     | character varying(128)   |           | not null | 
+ old_value  | json                     |           |          | 
+ new_value  | json                     |           |          | 
+ reason     | character varying(255)   |           | not null | 
+ request_id | character varying(128)   |           |          | 
+ created_at | timestamp with time zone |           | not null | now()
+Indexes:
+    "audit_event_pkey" PRIMARY KEY, btree (id)
+
+ map_id | event_type | send_mode |     map_created_at_utc     | audit_id |  actor  |            action            |    audit_created_at_utc    
+--------+------------+-----------+----------------------------+----------+---------+------------------------------+----------------------------
+      9 | WEDDING    | PROACTIVE | 2026-10-05 13:30:13.544269 |     6900 | Leandro | CATALOG_EVENT_TYPES_REPLACED | 2026-10-05 13:30:13.544269
+     10 | PROPOSAL   | PROACTIVE | 2026-10-05 13:30:13.544269 |     6900 | Leandro | CATALOG_EVENT_TYPES_REPLACED | 2026-10-05 13:30:13.544269
+(2 rows)
+
+ROLLBACK

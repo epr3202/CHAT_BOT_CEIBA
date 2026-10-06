@@ -1,0 +1,41 @@
+BEGIN
+                                            Table "public.ai_execution"
+        Column         |           Type           | Collation | Nullable |                 Default                  
+-----------------------+--------------------------+-----------+----------+------------------------------------------
+ id                    | integer                  |           | not null | nextval('ai_execution_id_seq'::regclass)
+ task                  | character varying(64)    |           | not null | 
+ model                 | character varying(255)   |           | not null | 
+ latency_ms            | integer                  |           | not null | 
+ success               | boolean                  |           | not null | 
+ error_reason          | character varying(64)    |           |          | 
+ prompt_version        | character varying(64)    |           | not null | 
+ conversation_id       | integer                  |           |          | 
+ input_character_count | integer                  |           | not null | 
+ created_at            | timestamp with time zone |           | not null | now()
+ request_id            | uuid                     |           |          | 
+ external_message_id   | text                     |           |          | 
+ input_payload         | jsonb                    |           |          | 
+ raw_output            | text                     |           |          | 
+ parsed_output         | jsonb                    |           |          | 
+ validation_status     | text                     |           |          | 
+ error                 | text                     |           |          | 
+Indexes:
+    "ai_execution_pkey" PRIMARY KEY, btree (id)
+    "ix_ai_execution_conversation_id" btree (conversation_id)
+Check constraints:
+    "ck_ai_execution_task" CHECK (task::text = ANY (ARRAY['INTENT_CLASSIFICATION'::character varying, 'SERVICES_CLASSIFICATION'::character varying, 'EVENT_TYPE_EXTRACTION'::character varying, 'RECEIPT_EXTRACTION'::character varying]::text[]))
+    "ck_ai_execution_validation_status" CHECK (validation_status = ANY (ARRAY['VALID'::text, 'NORMALIZED'::text, 'INVALID_SCHEMA'::text, 'DISCARDED'::text, 'HTTP_ERROR'::text]))
+Foreign-key constraints:
+    "ai_execution_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+Referenced by:
+    TABLE "payment_evidence_review" CONSTRAINT "payment_evidence_review_ai_execution_id_fkey" FOREIGN KEY (ai_execution_id) REFERENCES ai_execution(id)
+
+          task           |      prompt_version      | total | invalid_json | percentage | failed_min_length | failed_median_length | failed_max_length 
+-------------------------+--------------------------+-------+--------------+------------+-------------------+----------------------+-------------------
+ EVENT_TYPE_EXTRACTION   | event_type_extraction_v1 |    41 |            0 |       0.00 |                   |                      |                  
+ INTENT_CLASSIFICATION   | intent_v4                |   204 |            4 |       1.96 |                13 |                   62 |               324
+ RECEIPT_EXTRACTION      | receipt_v1               |     2 |            0 |       0.00 |                   |                      |                  
+ SERVICES_CLASSIFICATION | services_v1              |     1 |            0 |       0.00 |                   |                      |                  
+(4 rows)
+
+ROLLBACK
