@@ -2463,49 +2463,82 @@ async def handle_general_information(
                     "source": "EXPLICIT_CATALOG_MENTION",
                 },
             )
-        result = await handle_explicit_catalog_request(
-            session,
-            knowledge_sessionmaker,
-            conversation,
-            orchestration_input.customer,
-            orchestration_input.inbound_message,
-            lead.lead_id if lead is not None else None,
-            event.event_type if event is not None else None,
+        classified_event_type = classified_catalog_event_type(classification)
+        catalog_event_type = (
             match.event_type
             if match is not None
-            else classified_catalog_event_type(classification),
-            orchestration_input.request_id,
+            else classified_event_type
+            if classified_event_type is not None
+            else event.event_type
+            if event is not None
+            else None
         )
-        persist_classification_context(conversation, classification)
-        conversation.failed_understanding_count = 0
-        conversation.pending_confirmation = None
-        if result.outcome == CatalogRequestOutcome.ASK_EVENT_TYPE:
-            set_pending_action(conversation, CATALOG_CAPTURE_ACTION)
-            audit_orchestrator_event(
+        fixed_price_entity = None
+        if catalog_event_type in FIXED_PRICE_EVENT_TYPES:
+            if match is not None or classified_event_type is None:
+                fixed_price_entity = ExtractedEntity(
+                    entity="event_type",
+                    raw_value=match.matched_label if match is not None else catalog_event_type,
+                    normalized_value=catalog_event_type,
+                    quality_status="PROVIDED",
+                    confidence=1.0,
+                )
+            else:
+                fixed_price_entity = next(
+                    (
+                        entity
+                        for entity in fixed_price_entities
+                        if normalize_event_type(entity.normalized_value or entity.raw_value)
+                        == catalog_event_type
+                    ),
+                    None,
+                )
+        if fixed_price_entity is None:
+            result = await handle_explicit_catalog_request(
                 session,
-                "CATALOG_CAPTURE_STARTED",
+                knowledge_sessionmaker,
                 conversation,
-                reason="Catalog request requires event type",
-                request_id=orchestration_input.request_id,
-                extra={"previous_pending_action": previous_pending_action},
+                orchestration_input.customer,
+                orchestration_input.inbound_message,
+                lead.lead_id if lead is not None else None,
+                event.event_type if event is not None else None,
+                match.event_type if match is not None else classified_event_type,
+                orchestration_input.request_id,
             )
-        elif not catalog_result_requires_human(result):
-            set_pending_action(conversation, previous_pending_action)
+            persist_classification_context(conversation, classification)
+            conversation.failed_understanding_count = 0
+            conversation.pending_confirmation = None
+            if result.outcome == CatalogRequestOutcome.ASK_EVENT_TYPE:
+                set_pending_action(conversation, CATALOG_CAPTURE_ACTION)
+                audit_orchestrator_event(
+                    session,
+                    "CATALOG_CAPTURE_STARTED",
+                    conversation,
+                    reason="Catalog request requires event type",
+                    request_id=orchestration_input.request_id,
+                    extra={"previous_pending_action": previous_pending_action},
+                )
+            elif not catalog_result_requires_human(result):
+                set_pending_action(conversation, previous_pending_action)
 
-        target_state = previous_state
-        if not catalog_result_requires_human(result) and conversation.state != target_state.value:
-            await transition_conversation(
-                session,
-                conversation,
-                target_state,
-                actor=SYSTEM_ACTOR,
-                reason="Catalog information handled",
-            )
-        return
+            target_state = previous_state
+            if (
+                not catalog_result_requires_human(result)
+                and conversation.state != target_state.value
+            ):
+                await transition_conversation(
+                    session,
+                    conversation,
+                    target_state,
+                    actor=SYSTEM_ACTOR,
+                    reason="Catalog information handled",
+                )
+            return
     if fixed_price_entity is not None:
         match = resolve_fixed_price_information_match(orchestration_input.message_text)
         if (
-            match is not None
+            not is_catalog_request_category(category)
+            and match is not None
             and mentioned_event_type is not None
             and normalize_event_type(
                 fixed_price_entity.normalized_value or fixed_price_entity.raw_value

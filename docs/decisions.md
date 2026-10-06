@@ -245,3 +245,21 @@ válida a la pregunta de tipo de evento, sin provocar un handoff determinista.
 Ante indisponibilidad IA, fuera de las ramas críticas y ubicación, se repite la
 última pregunta solo si hay pending_action vigente y su última versión está
 APPROVED y tiene allowed_variables vacío. El fallo técnico no agota la captura.
+
+## 2026-10-06 — Catálogo explícito de precio fijo conserva contexto de reserva
+
+La conversación 205, sobre main `621eeead`, recibió el catálogo de pedidas de
+mano por la rama explícita sin crear lead/evento PROPOSAL. El siguiente
+«Me gustaría agendar para el 14» llegó a visitas por falta del tipo persistido.
+
+Emerson decide que una solicitud explícita con tipo de precio fijo resuelto use
+la misma rama de información de precio fijo: crear/reutilizar lead/evento,
+aplicar event_type desde el backend, texto aprobado más DOCUMENT PROACTIVE y
+FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO. PROPOSAL y ROMANTIC_DINNER comparten
+ese contrato y restauran el mismo pending/estado; el PDF se deduplica por lead y
+asset, incluso al repetir el catálogo. La resolución puede venir de una mención,
+entidad aceptada del clasificador o tipo ya persistido del lead activo. Una
+entidad pendiente de confirmación no se transforma en un tipo firme.
+
+Los tipos no fijos y COLLECT_CATALOG_EVENT_TYPE conservan la ruta de catálogo
+explícita. No se crean estados, pending_action, plantillas ni migraciones.
