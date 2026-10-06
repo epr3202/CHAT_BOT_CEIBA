@@ -595,17 +595,23 @@ su posición y descarta las coincidencias contenidas: `boda civil` resuelve a
 `CIVIL_WEDDING` y `propuesta de matrimonio` a `PROPOSAL`, sin sumar `WEDDING`.
 
 Después de descartar las coincidencias contenidas, solo se resuelve si queda un
-único tipo distinto. `aniversario de noviazgo` contiene `ANNIVERSARY` y `PROPOSAL`
-y queda sin resolver. Cada label completo sigue resolviendo a su propio tipo.
-Durante `COLLECT_CATALOG_EVENT_TYPE` el backend evalúa estas frases antes del LLM.
+único tipo distinto. Los labels `noviazgo`, `propuesta`, `otro`, `otro tipo de evento`,
+`grado` y `taller` solo se reconocen como respuesta durante
+`COLLECT_CATALOG_EVENT_TYPE`; fuera de esa captura se ignoran como menciones.
+Dentro de la captura, `aniversario de noviazgo` contiene `ANNIVERSARY` y `PROPOSAL`
+y queda sin resolver, y cada label completo sigue resolviendo a su propio tipo.
+Fuera de captura, esa frase solo menciona `ANNIVERSARY`. El backend evalúa estas
+frases antes del LLM durante la captura.
 Sin captura, una palabra `catalogo` o `catalogos` más un tipo único permite enviar
 el catálogo sin volver a preguntar. Una mención única de `PROPOSAL` también se
 resuelve antes del LLM por la ruta de información general de precio fijo.
 
-La información de precio fijo conserva la prioridad comercial de `PROPOSAL` en
-frases mixtas como `pedida de mano con cena romántica`; comparte esta misma tabla
-y el matcher de frases, sin regex independiente. Esta excepción no elimina la
-ambigüedad en la captura o solicitud determinista de catálogo.
+La información de precio fijo ignora los labels reservados a respuestas de captura
+y conserva la prioridad comercial de `PROPOSAL` solo sobre `ROMANTIC_DINNER`, en
+frases mixtas como `pedida de mano con cena romántica`. Si aparece otro tipo,
+queda sin resolver. Comparte esta misma tabla y el matcher de frases, sin regex
+independiente. Esta excepción no elimina la ambigüedad en la captura o solicitud
+determinista de catálogo.
 
 | Valor                 | Labels canónicos mínimos                         |
 | --------------------- | ------------------------------------------------ |

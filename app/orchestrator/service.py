@@ -627,7 +627,10 @@ def deterministic_booking_or_catalog_classification(
                 SELF_SERVICE_BOOKING_REASON if self_service else FIXED_PRICE_BOOKING_REASON
             ),
         )
-    mentioned_type = resolve_catalog_event_type_mention(message_text)
+    mentioned_type = resolve_catalog_event_type_mention(
+        message_text,
+        answering_event_type_question=context.get("pending_action") == CATALOG_CAPTURE_ACTION,
+    )
     if context.get("pending_action") == CATALOG_CAPTURE_ACTION and mentioned_type is not None:
         return IntentClassification(
             primary_intent="UNKNOWN",
@@ -838,7 +841,9 @@ async def resolve_catalog_event_type_capture(
     if conversation.pending_action != CATALOG_CAPTURE_ACTION:
         return False, False
 
-    match = resolve_catalog_event_type_match(orchestration_input.message_text)
+    match = resolve_catalog_event_type_match(
+        orchestration_input.message_text, answering_event_type_question=True
+    )
     event_type = (
         match.event_type if match is not None else classified_catalog_event_type(classification)
     )

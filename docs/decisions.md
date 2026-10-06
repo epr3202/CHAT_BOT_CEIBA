@@ -226,6 +226,14 @@ alias; el resolvedor de catálogo conserva `None` ante varios tipos. Se reutiliz
 `decision_source=DETERMINISTIC`, más una fuente que distingue captura, solicitud
 explícita e información de precio fijo. No se agregan estados ni plantillas.
 
+La revisión C1 de Claude del PR #41 limita `noviazgo`, `propuesta`, `otro`,
+`otro tipo de evento`, `grado` y `taller` a respuestas de la captura
+`COLLECT_CATALOG_EVENT_TYPE`. El matcher recibe esa condición explícitamente;
+fuera de captura ignora esos labels para evitar resolver menciones incidentales.
+La normalización de entidades estructuradas conserva su contrato. La prioridad
+de precio fijo se limita a PROPOSAL sobre ROMANTIC_DINNER; cualquier otro tipo
+coexistente deja esa ruta sin resolver.
+
 Ante indisponibilidad IA, fuera de las ramas críticas y ubicación, se repite la
 última pregunta solo si hay pending_action vigente y su última versión está
 APPROVED y tiene allowed_variables vacío. El fallo técnico no agota la captura.
