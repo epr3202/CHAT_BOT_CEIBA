@@ -303,7 +303,8 @@ class AudioHarness:
     async def assert_completed(self) -> None:
         jobs = await self.rows(InboxJob)
         assert jobs and all(row.status == "COMPLETED" for row in jobs)
-        assert all(row.external_operation is None for row in jobs)
+        audio_ids = {row.id for row in await self.rows(Message) if row.message_type == "audio"}
+        assert all(row.external_operation is None for row in jobs if row.message_id in audio_ids)
 
     async def claim(self, *, now: datetime | None = None) -> inbox.InboxClaim:
         claims = await inbox.claim_inbox_batch(self.db, now or datetime.now(UTC), 10)

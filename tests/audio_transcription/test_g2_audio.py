@@ -467,9 +467,18 @@ async def test_reversible_confirmations_accept_audio(audio_case: AudioHarness) -
     """[R] A booking date confirmation is intentionally outside the commitment guard."""
     await require_transcription_table(audio_case.db)
     audio_case.transcript = "sí"
+    plan = next(
+        row
+        for row in await audio_case.rows(Plan)
+        if row.active and row.event_type == "ROMANTIC_DINNER"
+    )
     values = {
         "pending_action": "SELECT_BOOKING_DATETIME",
-        "booking_draft": {"date": "2026-10-14", "date_confirmation": True},
+        "booking_draft": {
+            "plan_id": str(plan.plan_id),
+            "date": "2026-10-14",
+            "date_confirmation": True,
+        },
         "last_question_code": "RESP-EVENT-DATA-003",
     }
     first = await audio_case.seed(**values)
