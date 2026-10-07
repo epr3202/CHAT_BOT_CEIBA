@@ -12,6 +12,23 @@ from app.conversation.catalog_event_type import (
 
 FIXED_PRICE_BOOKING_REASON = "FIXED_PRICE_BOOKING_REQUEST"
 SELF_SERVICE_BOOKING_REASON = "SELF_SERVICE_BOOKING"
+FIXED_PRICE_INFORMATION_CODES = {
+    "PROPOSAL": "RESP-EVENTS-PROPOSAL-001",
+    "ROMANTIC_DINNER": "RESP-EVENTS-ROMANTIC-001",
+}
+# An informational interruption is not an answer to the catalog's plan invitation.
+_PLAN_INFORMATION_WORDS = frozenset(
+    {
+        "catalogo", "catalogos", "pdf", "brochure", "ubicacion", "mapa", "horario", "horarios",
+        "parqueadero", "capacidad", "piscina", "mascotas", "proveedores", "alimentos",
+        "bebidas", "licor", "descorche", "alojamiento", "pago", "pagos", "pagar",
+        "comprobante", "cancelar", "cancelacion", "devolucion", "descuento", "queja",
+        "emergencia", "ayuda", "informacion", "informarme",
+        "espacios", "identidad", "seguridad", "servicios", "visitas", "respuesta",
+        "precio", "precios", "valor", "cuesta", "tarjetas", "transferencia",
+        "hola", "gracias", "adios",
+    }
+)
 BOOKING_ACTIONS = frozenset(
     {
         "SELECT_BOOKING_PLAN",
@@ -90,6 +107,29 @@ def booking_guard_eligible(
 def is_explicit_visit_request(message_text: str) -> bool:
     normalized = normalize_catalog_event_type_label(message_text)
     return bool(_VISIT_PATTERN.search(normalized))
+
+
+def is_fixed_price_catalog_followup(event_type: str | None, last_question_code: str | None) -> bool:
+    return (
+        event_type in FIXED_PRICE_INFORMATION_CODES
+        and last_question_code == FIXED_PRICE_INFORMATION_CODES[event_type]
+    )
+
+
+def is_catalog_plan_choice(message_text: str, *, has_date: bool = False) -> bool:
+    """Keep unknown plan replies in selection while preserving explicit information requests."""
+    normalized = normalize_catalog_event_type_label(message_text)
+    words = set(re.findall(r"\w+", normalized))
+    information_question = re.match(
+        r"^(?:(?:y|pero)\s+)?(?:donde|como|cuanto|cuando|cual|que|por que)\b", normalized
+    )
+    explicit_choice = re.match(r"^(?:me interesa|quiero|el de)\b", normalized)
+    return (
+        bool(words)
+        and not words.intersection(_PLAN_INFORMATION_WORDS)
+        and not information_question
+        and (not has_date or bool(explicit_choice))
+    )
 
 
 def is_fixed_price_booking(message_text: str, event_type: str | None) -> bool:

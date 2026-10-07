@@ -17,7 +17,10 @@ from app.calendar.adapter import CalendarUnavailableError
 from app.config.settings import Settings
 from app.conversation.catalog_event_type import normalize_catalog_event_type_label
 from app.conversation.confirmation import AFFIRMATIONS, DENIALS, normalize_confirmation_text
-from app.conversation.fixed_price_booking import match_booking_plan
+from app.conversation.fixed_price_booking import (
+    is_fixed_price_catalog_followup,
+    match_booking_plan,
+)
 from app.conversation.knowledge import KnowledgeRenderError
 from app.conversation.service import transition_conversation
 from app.plan.models import Plan
@@ -246,10 +249,17 @@ async def handle_booking_start(
 ) -> None:
     from app.orchestrator import service as core
 
-    if await has_pending_request(session, turn.customer.id):
+    event = await core.active_event(session, await core.active_lead(session, turn.conversation))
+    catalog_followup = is_fixed_price_catalog_followup(
+        event.event_type if event is not None else None, turn.conversation.last_question_code
+    )
+    # A catalog reply may prepare a proposal; confirmation still checks all of
+    # the customer's pending requests before creating another reservation.
+    if not catalog_followup and await has_pending_request(session, turn.customer.id):
         await handoff(session, settings, sm, turn, "Ya existe una solicitud pendiente de pago")
         return
-    turn.conversation.booking_draft = {}
+    draft = dict(turn.conversation.booking_draft or {}) if catalog_followup else {}
+    turn.conversation.booking_draft = draft
     turn.conversation.pending_confirmation = None
     if turn.conversation.state == "NEW":
         await transition_conversation(
@@ -267,7 +277,6 @@ async def handle_booking_start(
             actor="SYSTEM",
             reason="Reserva autoservicio de precio fijo",
         )
-    draft = {}
     consume_date_time(
         draft, turn.message_text, core.current_bogota_datetime().date(), settings=settings
     )
@@ -284,6 +293,8 @@ async def handle_booking_start(
             )
         )
     )
+    if catalog_followup:
+        plans = [plan for plan in plans if plan.event_type == event.event_type]
     named = match_booking_plan(
         turn.message_text, [{"plan_id": str(plan.plan_id), "name": plan.name} for plan in plans]
     )
@@ -313,6 +324,8 @@ async def handle_booking_start(
         turn.conversation.booking_draft = draft
         await continue_slots(session, settings, sm, turn, plan)
         return
+    if catalog_followup:
+        turn.conversation.booking_draft = {**draft, "catalog_plan_selection": True}
     await ask_plan(session, settings, sm, turn)
 
 
@@ -515,8 +528,12 @@ async def handle_booking_step(
             None,
         )
         if plan is None:
-            await not_understood(session, settings, sm, turn, None)
+            if draft.get("catalog_plan_selection"):
+                await ask_plan(session, settings, sm, turn)
+            else:
+                await not_understood(session, settings, sm, turn, None)
             return
+        draft.pop("catalog_plan_selection", None)
         draft["plan_id"] = str(plan.plan_id)
     else:
         plan = next((p for p in plans if str(p.plan_id) == draft.get("plan_id")), None)

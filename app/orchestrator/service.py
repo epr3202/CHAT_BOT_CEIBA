@@ -74,8 +74,10 @@ from app.conversation.fixed_price_booking import (
     GENERIC_CAPTURE_ACTIONS,
     SELF_SERVICE_BOOKING_REASON,
     booking_guard_eligible,
+    is_catalog_plan_choice,
     is_explicit_visit_request,
     is_fixed_price_booking,
+    is_fixed_price_catalog_followup,
     match_booking_plan,
 )
 from app.conversation.knowledge import KnowledgeRenderError, get_latest_response, render_response
@@ -592,18 +594,44 @@ def deterministic_booking_or_catalog_classification(
     )
     if eligible and is_explicit_visit_request(message_text):
         return None
-    named_plan = match_booking_plan(message_text, facts.get("plans", [])) if self_service else None
+    catalog_followup = self_service and is_fixed_price_catalog_followup(
+        facts.get("event_type"), context.get("last_question_code")
+    )
+    plans = facts.get("plans", [])
+    if catalog_followup:
+        plans = [plan for plan in plans if plan["event_type"] == facts["event_type"]]
+    named_plan = match_booking_plan(message_text, plans) if self_service else None
     explicit_date = (
         resolve_visit_date_text(
             message_text,
             today=current_bogota_datetime().date(),
             require_absolute_confirmation=True,
         )
-        if self_service and facts.get("catalog_sent") == "yes"
+        if self_service and (facts.get("catalog_sent") == "yes" or catalog_followup)
         else None
+    )
+    match = resolve_catalog_event_type_match(
+        message_text,
+        answering_event_type_question=context.get("pending_action") == CATALOG_CAPTURE_ACTION,
+    )
+    ambiguous_plan = (
+        catalog_followup
+        and named_plan is None
+        and sum(match_booking_plan(message_text, [plan]) is not None for plan in plans) > 1
     )
     if eligible and (
         named_plan is not None
+        or (
+            catalog_followup
+            and match is None
+            and (
+                ambiguous_plan
+                or is_catalog_plan_choice(
+                    message_text,
+                    has_date=explicit_date is not None and explicit_date.resolved_date is not None,
+                )
+            )
+        )
         or is_fixed_price_booking(
             message_text,
             facts.get("event_type"),
@@ -630,10 +658,6 @@ def deterministic_booking_or_catalog_classification(
                 SELF_SERVICE_BOOKING_REASON if self_service else FIXED_PRICE_BOOKING_REASON
             ),
         )
-    match = resolve_catalog_event_type_match(
-        message_text,
-        answering_event_type_question=context.get("pending_action") == CATALOG_CAPTURE_ACTION,
-    )
     mentioned_type = match.event_type if match is not None else None
     if context.get("pending_action") == CATALOG_CAPTURE_ACTION and mentioned_type is not None:
         return IntentClassification(
@@ -2687,6 +2711,17 @@ async def handle_general_information(
             event,
             ordered=True,
         )
+        if previous_pending_action not in BOOKING_ACTIONS:
+            candidate = resolve_visit_date_text(
+                orchestration_input.message_text,
+                today=current_bogota_datetime().date(),
+                require_absolute_confirmation=True,
+            )
+            if candidate.resolved_date is not None:
+                conversation.booking_draft = {
+                    "date": candidate.resolved_date.isoformat(),
+                    "date_confirmation": candidate.needs_confirmation,
+                }
         if previous_pending_action in GENERIC_CAPTURE_ACTIONS:
             previous_pending_action = None
             previous_state = ConversationState.BOT_ACTIVE
