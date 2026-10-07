@@ -183,9 +183,11 @@ async def test_approved_templates_render_without_internal_enums_or_iso_dates(
         "missing_field": "la fecha del evento",
         "new_visit_date": "18 de agosto de 2026",
         "new_visit_time": "08:00",
+        "paid_amount": 100000,
         "pending_topic": "los servicios",
         "plan_name": plan,
         "plan_options": [plan],
+        "received_amount": 45596,
         "rejection_reason_customer_safe": CustomerRejectionReason(
             "El comprobante no permite validar la transferencia"
         ),
