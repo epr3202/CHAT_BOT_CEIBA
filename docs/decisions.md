@@ -292,3 +292,54 @@ la confirmación ya existente del borrador de reserva antes de pedir la hora.
 Las fechas completas inválidas, números aislados y cantidades no se reinterpretan
 como día sin mes. Los contratos anteriores de relativas y fechas completas se
 conservan; esta regla no crea plantillas, estados, pending_action ni migraciones.
+
+## 2026-10-06 — Selección de plan después del catálogo y fecha candidata
+
+La conversación 206, sobre main `f703533`, recibió «Hola Me gustaría agendar una
+pedida de mano para el 14» y después «Me interesa confesión bajo la luna». Los
+audits 6946–6954 registran el recorrido de T1 por BOT_ACTIVE,
+ANSWERING_INFORMATION y BOT_ACTIVE, con creación del lead/evento PROPOSAL y
+envío de información y PDF. No son un snapshot de pending_action ni de
+booking_draft: su ausencia tras T1 se reconstruye del código de esa ruta y las
+guardas que alcanzó T2. La ruta informativa no consumió «el 14» mediante el
+parser de fechas.
+
+T2 no ejecutó el LLM ni dejó ai_execution en esa conversación. El guard era
+elegible y `match_booking_plan` reconoce CONFESION_LUNA con los ocho planes de
+producción. El handoff no nació de una clasificación fallida: la comprobación
+inicial encontró una solicitud PAYMENT_PENDING del mismo cliente, creada el
+2 de octubre en la conversación 197. El audit 6955 registra
+RESERVATION_CONFIRMATION con «Ya existe una solicitud pendiente de pago»; el
+6956 deja la conversación WAITING_FOR_HUMAN.
+
+Emerson decide que, tras `RESP-EVENTS-PROPOSAL-001` o
+`RESP-EVENTS-ROMANTIC-001`, con autoservicio activo y las guardas conversacionales
+vigentes, un nombre único de plan activo del tipo del lead seleccione el plan
+sin LLM. Una respuesta ambigua o sin coincidencia usa la pregunta aprobada de
+selección de planes, también ante nuevas respuestas ambiguas o desconocidas en
+ese paso. La marca `booking_draft.catalog_plan_selection = true` se instala
+solo cuando se pide esa lista y se retira al seleccionar un plan; estas
+respuestas no agotan el contador ni producen handoff. Los demás pasos y las
+entradas genéricas conservan el escalamiento por dos fallos. Se preservan las
+precedencias de humano, visita, FAQ y catálogo y se comparte el matcher
+normalizado para las variantes de selección.
+
+Se autoriza una excepción acotada al bloqueo inicial por solicitudes pendientes
+para esta continuación: elegir un plan y completar un borrador no crea una
+reserva. El bloqueo global al confirmar sigue impidiendo crear otra solicitud
+si existe PAYMENT_PENDING/PAYMENT_REVIEW del cliente. Las demás entradas al
+autoservicio conservan el bloqueo inicial. Esta excepción actualiza expresamente
+el contrato de states.md §27.3; no elimina el control de duplicados.
+
+La fecha interpretable del turno informativo se conserva en el booking_draft
+existente con date/date_confirmation. Elegir plan conserva esa candidata y
+confirma la fecha absoluta antes de preguntar la hora cuando corresponde,
+incluido el día sin mes del PR #42. No se agregan estados, pending_action,
+plantillas ni migraciones.
+
+El mandato de esta intervención autoriza auditoría, G2 rojo, G3, push y, con CI
+verde, merge sin squash primero del fix y después del PR #43, con despliegue y
+verificación de cada merge, sin revisión intermedia de Claude. También autoriza
+el cambio exclusivo de BANK_BREB_KEY en producción antes de tocar main. Este
+registro documenta la autorización; los resultados y SHAs se reportan después
+de ejecutar y verificar cada paso.

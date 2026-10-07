@@ -1,0 +1,51 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_g2_literal_incident_selects_proposal_and_preserves_catalog_date[True] __
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x70601...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-1/test_g2_literal_incident_selec0')
+older_pending = True
+
+    @pytest.mark.parametrize("older_pending", [False, True])
+    async def test_g2_literal_incident_selects_proposal_and_preserves_catalog_date(
+        harness: Harness, tmp_path: Path, older_pending: bool
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        if older_pending:
+            await seed_older_pending_request(harness)
+    
+        await send(harness, INCIDENT_T1)
+        conversation = await current_conversation(harness)
+        assert harness.codes == ["RESP-EVENTS-PROPOSAL-001"]
+        assert conversation.state == "BOT_ACTIVE"
+        assert conversation.pending_action is None
+        assert conversation.pending_fields == []
+    
+        await send(harness, INCIDENT_T2)
+>       plan = await assert_selected_plan(harness, "CONFESION_LUNA")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x70601...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+plan_code = 'CONFESION_LUNA'
+
+    async def assert_selected_plan(harness: Harness, plan_code: str) -> Plan:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_HUMAN' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_HUMAN
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:108: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:15:30 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:15:30 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:15:30 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_HUMAN
+2026-10-06 20:15:30 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_literal_incident_selects_proposal_and_preserves_catalog_date[True]
+1 failed in 4.59s

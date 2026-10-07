@@ -2433,6 +2433,17 @@ de visitas, nombre, cotización o confirmación nunca se interpreta mediante est
 La decisión usa datos del backend y se revalida antes de persistir; no usa la confianza
 ni acciones pendientes propuestas por el clasificador.
 
+Con autoservicio activo, la continuación de información o catálogo de precio fijo
+también es elegible cuando `last_question_code` es `RESP-EVENTS-PROPOSAL-001` o
+`RESP-EVENTS-ROMANTIC-001`. Usa los planes activos del tipo del lead: una
+coincidencia única de nombre selecciona el plan sin LLM; una respuesta ambigua o
+sin coincidencia instala `SELECT_BOOKING_PLAN` y pregunta con
+`RESP-BOOKING-PLAN-001`. Con `booking_draft.catalog_plan_selection = true`, cada
+respuesta ambigua o sin coincidencia en ese paso repite la lista sin incrementar
+el contador ni producir handoff. Se instala la marca solo al pedir esa lista y
+se retira al seleccionar un plan. Las precedencias de asesor, visita explícita,
+FAQ y catálogo se mantienen. No se agregan estados ni acciones pendientes al catálogo.
+
 La derivación usa `RESERVATION_CONFIRMATION` y `handoff_response_code` para seleccionar
 `RESP-HANDOFF-001`/`RESP-HANDOFF-002`. La fecha pertenece a `Event`, nunca a `visit_draft`.
 Una fecha relativa o con día de semana contradictorio guarda solo la expresión detectada
@@ -2944,11 +2955,29 @@ Si el precio/duración cambió, se muestra una nueva confirmación. Ningún paso
 evento externo ni bloquea la franja.
 
 Humano explícito interrumpe por el flujo existente. Respuesta no interpretable:
-repite el paso; segundo fallo consecutivo usa failed_understanding y handoff.
+repite el paso; segundo fallo consecutivo usa failed_understanding y handoff,
+excepto la selección de plan iniciada tras catálogo descrita en §38.2. Esa
+selección repite RESP-BOOKING-PLAN-001 sin agotar el contador; los demás pasos y
+las entradas genéricas conservan el comportamiento de dos fallos.
 Otra solicitud del mismo cliente con PAYMENT_PENDING/PAYMENT_REVIEW existente
 escala para evitar duplicados, incluso si la solicitud es manual o de otra
 conversación. Se comprueba al inicio y antes de crear la solicitud tras confirmar.
 Desactivar el flag con borrador activo también escala.
+
+**Excepción acotada de continuación de catálogo (2026-10-06):** la respuesta a
+`RESP-EVENTS-PROPOSAL-001` o `RESP-EVENTS-ROMANTIC-001`, en las condiciones de
+§38.2, puede seleccionar un plan o pedir la lista y completar `booking_draft`
+aunque exista una solicitud anterior pendiente del cliente. Solo omite la
+comprobación inicial; la comprobación global antes de crear la solicitud tras
+confirmar sigue siendo obligatoria y escala ante un duplicado. Las otras entradas
+al flujo conservan ambas comprobaciones.
+
+La información o el catálogo de precio fijo puede guardar una fecha candidata
+en el `booking_draft` existente sin instalar pending_action ni cambiar estado.
+Al elegir plan se preservan `date` y `date_confirmation`; si la fecha necesita
+confirmación absoluta, `SELECT_BOOKING_DATETIME` y `RESP-EVENT-DATA-003` la
+confirman antes de `SELECT_BOOKING_TIME`. Se reutiliza la resolución del día sin
+mes; guardar una candidata no crea una solicitud ni bloquea una franja.
 
 La imagen/documento válido de una reserva candidata del cliente vincula la
 evidencia. Solo PAYMENT_PENDING pasa a PAYMENT_REVIEW. El primer comprobante crea

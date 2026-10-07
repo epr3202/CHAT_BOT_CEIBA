@@ -2723,6 +2723,38 @@ Flag activo y lead ROMANTIC_DINNER/PROPOSAL: intención determinista de reserva
 activos numerados → pedir fecha/hora que falte → confirmar fechas relativas o
 weekday contradictorio → ventana y D3 por llamada diferida fuera de transacción.
 
+### Continuación después de información o catálogo de precio fijo (2026-10-06)
+
+Con autoservicio activo, bot habilitado, sin acción pendiente y estado
+`BOT_ACTIVE` o `ANSWERING_INFORMATION`, la última pregunta
+`RESP-EVENTS-PROPOSAL-001` o `RESP-EVENTS-ROMANTIC-001` permite continuar con los
+planes activos del tipo de evento del lead. Una coincidencia única mediante
+`match_booking_plan` selecciona el plan sin LLM, tanto con «me interesa X»,
+«quiero X», «el de X» como con el nombre solo, con o sin tildes. Si hay dos
+coincidencias o ninguna, se pregunta con `RESP-BOOKING-PLAN-001` y la lista de
+planes existente. Cada respuesta ambigua o sin coincidencia durante esta
+selección vuelve a mostrar esa lista sin agotar el contador, producir handoff
+ni mostrar el menú genérico. El borrador conserva
+`catalog_plan_selection = true` mientras se pide elegir plan; la marca se retira
+al seleccionarlo. La solicitud
+explícita de asesor, las visitas, las FAQ y las solicitudes de catálogo conservan
+su precedencia.
+
+Si el turno que presenta información o catálogo incluye una fecha interpretable,
+se conserva como candidata en `booking_draft`, usando el parser de fechas
+existente y `date_confirmation`. Al elegir el plan se conserva la candidata:
+si requiere confirmar la fecha absoluta, se pregunta con `RESP-EVENT-DATA-003`
+antes de pedir la hora. «Para el 14» y «el 31» siguen la resolución del día sin
+mes al mes actual o a su siguiente ocurrencia válida. No se crea un estado ni
+una acción pendiente durante el turno informativo.
+
+Esta continuación permite elegir un plan y completar un borrador aunque el
+cliente conserve una solicitud anterior `PAYMENT_PENDING` o `PAYMENT_REVIEW`.
+Es una excepción acotada a la comprobación inicial de duplicados: antes de crear
+otra solicitud, la confirmación vuelve a comprobar las solicitudes del cliente,
+incluidas las manuales y las de otras conversaciones, y escala si encuentra una.
+Las demás entradas al autoservicio conservan la comprobación inicial.
+
 Bloqueada → UNAVAILABLE y otra fecha conservando plan. Libre → CONFIRM con precio
 y 50 %. No → otra fecha; sí → reconsulta → PAYMENT_PENDING sin bloqueo, auditoría
 SYSTEM, limpia draft/acción y muestra instrucciones solo con banco completo.
@@ -2731,8 +2763,10 @@ monto: parcial → PAYMENT_PENDING/PARTIAL; suficiente + libre → RESERVED, com
 Calendar y CONFIRMED; conflicto → dinero registrado, revisión conservada y handoff
 para reprogramar. Rechazo → PAYMENT_PENDING/REJECTED.
 
-Un humano explícito interrumpe el flujo. Dos respuestas no interpretables o una
-solicitud duplicada escalan. Todas las frases son KnowledgeEntry APPROVED; seed
+Un humano explícito interrumpe el flujo. Salvo la selección de plan iniciada tras
+catálogo descrita arriba, dos respuestas no interpretables escalan; una solicitud
+duplicada también escala al comprobar su creación. Todas las frases son
+KnowledgeEntry APPROVED; seed
 DRAFT requiere aprobación de Leandro por versión. Notificación no renderizable:
 NOTIFICATION_SKIPPED, sin deshacer la decisión del asesor. Flag apagado conserva
 el flujo anterior con handoff y fecha solicitada registrada en Event.

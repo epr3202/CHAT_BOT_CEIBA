@@ -1,0 +1,48 @@
+..............................F...                                       [100%]
+=================================== FAILURES ===================================
+_ test_g2_catalog_day_without_month_survives_until_plan_confirmation[today3-31-candidate3] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7ade0...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=1)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-2/test_g2_catalog_day_without_mo3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ade09045250>
+today = datetime.date(2026, 10, 31), day = 31
+candidate = datetime.date(2026, 12, 31)
+
+    @pytest.mark.parametrize(
+        "today,day,candidate",
+        [
+            (date(2026, 10, 6), 14, date(2026, 10, 14)),
+            (date(2026, 10, 6), 31, date(2026, 10, 31)),
+            (date(2026, 10, 31), 14, date(2026, 11, 14)),
+            (date(2026, 10, 31), 31, date(2026, 12, 31)),
+        ],
+    )
+    async def test_g2_catalog_day_without_month_survives_until_plan_confirmation(
+        harness: Harness,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        today: date,
+        day: int,
+        candidate: date,
+    ) -> None:
+        set_clock(monkeypatch, today)
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, f"Hola Me gustaría agendar una pedida de mano para el {day}")
+        conversation = await current_conversation(harness)
+        assert conversation.pending_action is None
+>       assert draft_of(conversation).get("date") == candidate.isoformat()
+E       AssertionError: assert '2026-10-31' == '2026-12-31'
+E         
+E         - 2026-12-31
+E         ?       ^
+E         + 2026-10-31
+E         ?       ^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:312: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:17:58 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:17:58 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_catalog_day_without_month_survives_until_plan_confirmation[today3-31-candidate3]
+1 failed, 33 passed in 121.25s (0:02:01)
