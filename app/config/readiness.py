@@ -38,3 +38,11 @@ async def validate_payment_settings(
         and not settings.bank_breb_key.strip()
     ):
         raise ValueError(f"BANK_BREB_KEY is required by the approved {code} template")
+    if settings.audio_transcription_enabled:
+        for audio_code in ("RESP-AUDIO-TOO-LONG-001", "RESP-AUDIO-WRITTEN-CONFIRM-001"):
+            audio_entry = await get_latest_response(sessionmaker, audio_code)
+            if audio_entry is None or audio_entry.status != "APPROVED":
+                raise ValueError(
+                    "AUDIO_TRANSCRIPTION_ENABLED requires the latest "
+                    f"{audio_code} version to be APPROVED"
+                )

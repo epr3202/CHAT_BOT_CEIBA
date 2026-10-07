@@ -351,6 +351,8 @@ async def enqueue_catalogs_for_event_type(
             )
             continue
         sent += 1
+        if "audio_response_codes" in session.info:
+            session.info["audio_response_codes"].append(CATALOG_CAPTION_RESPONSE_CODE)
         audit_catalog_event(
             session,
             "CATALOG_SEND_ENQUEUED",
@@ -428,6 +430,8 @@ async def enqueue_template_text(
             status="PENDING",
         )
         session.add(outbox)
+        if "audio_response_codes" in session.info:
+            session.info["audio_response_codes"].append(current_response_code)
         return outbox
 
     await create_template_unavailable_handoff(

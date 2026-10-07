@@ -75,6 +75,7 @@ async def download_inbound_media(
     *,
     settings: Settings,
     http_client: httpx.AsyncClient | None = None,
+    max_bytes: int | None = None,
 ) -> InboundMediaFile:
     """Download one inbound object from a freshly resolved Meta media URL."""
     owns_client = http_client is None
@@ -95,7 +96,8 @@ async def download_inbound_media(
             raise InboundMediaDownloadError("Inbound media metadata did not include a URL")
         declared_hash = metadata.get("sha256")
 
-        max_bytes = settings.inbound_media_max_mb * 1024 * 1024
+        if max_bytes is None:
+            max_bytes = settings.inbound_media_max_mb * 1024 * 1024
         declared_size = metadata.get("file_size")
         if isinstance(declared_size, int) and declared_size > max_bytes:
             raise InboundMediaTooLarge("Inbound media exceeds the configured size limit")

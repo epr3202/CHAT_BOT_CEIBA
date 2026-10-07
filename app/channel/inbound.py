@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -64,6 +64,7 @@ class PersistedInboundMessage:
     external_message_id: str
     message_type: str
     content: dict[str, Any]
+    input_origin: Literal["TEXT", "AUDIO_TRANSCRIPT"] = "TEXT"
 
 
 async def process_whatsapp_webhook(
@@ -220,6 +221,7 @@ class ClassifiedTurn:
     directed_event_type: str | None
     services_resolution_failed: bool
     confidence_entity_rescued: bool
+    input_origin: Literal["TEXT", "AUDIO_TRANSCRIPT"] = "TEXT"
 
 
 async def classify_and_orchestrate_phase_b_c(
@@ -240,6 +242,16 @@ async def classify_message(
     sessionmaker: async_sessionmaker[AsyncSession],
     request_id: uuid.UUID | None,
 ) -> ClassifiedTurn:
+    if persisted.input_origin == "AUDIO_TRANSCRIPT":
+        persisted = replace(
+            persisted,
+            context={
+                key: value
+                for key, value in persisted.context.items()
+                if key not in {"transcription_id", "audio_transcription_status"}
+            }
+            | {"input_origin": persisted.input_origin},
+        )
     if persisted.message_type == "text" and is_explicit_human_request(persisted.message_text):
         # This is a rule decision, not a model probability or a synthetic AI execution.
         return ClassifiedTurn(
@@ -259,6 +271,7 @@ async def classify_message(
             None,
             False,
             False,
+            persisted.input_origin,
         )
     settings = get_settings()
     # Confirmations and booking proposals precede generic service capture. The
@@ -383,6 +396,7 @@ async def classify_message(
         directed_event_type,
         services_resolution_failed,
         confidence_entity_rescued,
+        persisted.input_origin,
     )
 
 
@@ -413,10 +427,15 @@ async def route_non_text_in_session(
     settings: Settings,
     request_id: uuid.UUID | None,
 ) -> bool:
-    paused = persisted.message_type != "text" and (
+    paused = message.message_type != "text" and (
         conversation.state in {"WAITING_FOR_HUMAN", "HUMAN_ACTIVE", "CLOSED"}
         or not conversation.bot_enabled
     )
+    if persisted.input_origin == "AUDIO_TRANSCRIPT" and message.message_type == "audio":
+        if persisted.context.get("audio_transcription_status") == "SUCCESS" and not paused:
+            return False
+        # The original audio remains the identity for fresh passive reception.
+        persisted = replace(persisted, message_type="audio", message_text="")
     if (
         persisted.message_type in {"text", "interactive", "button"}
         and persisted.message_text.strip()
@@ -558,7 +577,11 @@ async def route_non_text_in_session(
     elif persisted.message_type == "video":
         response_code = "RESP-FILE-005"
     elif persisted.message_type == "audio":
-        response_code = "RESP-FILE-003"
+        response_code = (
+            "RESP-AUDIO-TOO-LONG-001"
+            if persisted.context.get("audio_transcription_status") == "TOO_LONG"
+            else "RESP-FILE-003"
+        )
     elif persisted.message_type in {
         "text",
         "interactive",

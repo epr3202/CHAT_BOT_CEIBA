@@ -374,6 +374,7 @@ def telemetry_context(context: dict[str, Any]) -> dict[str, Any]:
         else {}
     )
     return {
+        "input_origin": context.get("input_origin", "TEXT"),
         "last_intent": context.get("last_intent"),
         "pending_action": context.get("pending_action"),
         "last_question_code": context.get("last_question_code"),
