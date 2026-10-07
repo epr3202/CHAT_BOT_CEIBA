@@ -28,6 +28,7 @@ async def harness(  # noqa: F811
     # Existing window validates the whole duration. The literal 19:00 example
     # needs a configured close after 22:00 for the seeded three-hour plan.
     monkeypatch.setenv("BOOKING_HOURS_END", "23:00")
+    monkeypatch.setenv("BANK_BREB_KEY", "CEIBA-BREB-TEST")
     for name, value in {
         "NAME": "Banco Ficticio",
         "ACCOUNT_TYPE": "Ahorros",

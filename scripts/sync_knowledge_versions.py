@@ -58,7 +58,7 @@ def plan_knowledge_sync(
         return KnowledgeSyncPlan(
             code=seed.code,
             action="CREATE",
-            new_version=1,
+            new_version=seed.version,
             answer_preview=preview,
             changed_fields=(
                 "answer_template",
@@ -81,7 +81,7 @@ def plan_knowledge_sync(
     return KnowledgeSyncPlan(
         code=seed.code,
         action="BUMP",
-        new_version=next_knowledge_version(existing),
+        new_version=max(seed.version, next_knowledge_version(existing)),
         answer_preview=preview,
         changed_fields=changed_fields,
     )

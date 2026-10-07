@@ -154,6 +154,7 @@ async def test_approved_templates_render_without_internal_enums_or_iso_dates(
         BOOKING_ACCOUNT_TYPE="Ahorros",
         BOOKING_ACCOUNT_NUMBER="0000000062",
         BOOKING_ACCOUNT_HOLDER="Titular de prueba",
+        BANK_BREB_KEY="CEIBA-BREB-TEST",
         _env_file=None,
     )
     safe_values = {
@@ -165,6 +166,7 @@ async def test_approved_templates_render_without_internal_enums_or_iso_dates(
         "appointment_options": "08:00, 09:00 y 11:00",
         "balance_due_date": date(2026, 9, 12),
         "bank_name": bank_settings,
+        "breb_key": bank_settings,
         "booking_date": date(2026, 9, 13),
         "booking_time": "19:00",
         "child_guest_count": "5",

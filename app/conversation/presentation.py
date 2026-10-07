@@ -298,6 +298,7 @@ VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
     "account_type": lambda value: _present_bank(value, "booking_account_type"),
     "account_number": lambda value: _present_bank(value, "booking_account_number"),
     "account_holder": lambda value: _present_bank(value, "booking_account_holder"),
+    "breb_key": lambda value: _present_bank(value, "bank_breb_key"),
     "adult_guest_count": _present_count,
     "advisor_name": _normalized_text,
     "appointment_options": _present_appointment_options,

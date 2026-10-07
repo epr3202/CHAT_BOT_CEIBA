@@ -1,0 +1,30 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+______ test_approved_templates_render_without_internal_enums_or_iso_dates ______
+tests/unit/test_knowledge.py:205: in test_approved_templates_render_without_internal_enums_or_iso_dates
+    assert set(entry.allowed_variables) <= safe_values.keys(), entry.code
+E   AssertionError: RESP-BOOKING-PAYMENT-001
+E   assert {'account_holder', 'account_number', 'account_type', 'bank_name', 'breb_key', 'deposit_amount'} <= dict_keys(['account_holder', 'account_number', 'account_type', 'adult_guest_count', 'advisor_name', 'appointment_optio...solved_date', 'service_name', 'total_amount', 'total_guest_count', 'visit_attendee_count', 'visit_date', 'visit_time'])
+E    +  where {'account_holder', 'account_number', 'account_type', 'bank_name', 'breb_key', 'deposit_amount'} = set(['account_holder', 'account_number', 'account_type', 'bank_name', 'breb_key', 'deposit_amount'])
+E    +    where ['account_holder', 'account_number', 'account_type', 'bank_name', 'breb_key', 'deposit_amount'] = KnowledgeSeedEntry(code='RESP-BOOKING-PAYMENT-001', category='Reserva autoservicio de precio fijo', question_summary='...nt_holder', 'account_number', 'account_type', 'bank_name', 'breb_key', 'deposit_amount'], version=3, status='APPROVED').allowed_variables
+E    +  and   dict_keys(['account_holder', 'account_number', 'account_type', 'adult_guest_count', 'advisor_name', 'appointment_optio...solved_date', 'service_name', 'total_amount', 'total_guest_count', 'visit_attendee_count', 'visit_date', 'visit_time']) = <built-in method keys of dict object at 0x73b60a3e5580>()
+E    +    where <built-in method keys of dict object at 0x73b60a3e5580> = {'account_holder': Settings(database_url='postgresql+asyncpg://ceiba:ceiba@172.18.0.2:5432/ceiba_test_breb_legacy', db...v4', ai_confidence_safe=0.85, ai_confidence_probable=0.7, ai_confidence_uncertain=0.5), 'adult_guest_count': '40', ...}.keys
+----------------------------- Captured stdout call -----------------------------
+2026-10-05 23:32:19 [warning  ] requested_service_presentation_fallback legacy_value='el espacio'
+_____________________ test_b_r10_seed_literals_and_lineage _____________________
+tests/booking_conversation/test_contracts.py:299: in test_b_r10_seed_literals_and_lineage
+    assert entries[key].status == "APPROVED" and entries[key].answer_template == literal
+E   AssertionError: assert ('APPROVED' == 'APPROVED'
+E
+E       APPROVED and '¡Listo! Tu f... lo confirma.' == '¡Listo! Tu f... lo confirma.'
+E
+E     Skipping 185 identical leading characters in diff, use -v to show
+E     + t_holder}.
+E     + Llave Bre-B: {breb_key}
+E     - t_holder}. Cuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.
+E     ? -----------
+E     + Cuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.)
+=========================== short test summary info ============================
+FAILED tests/unit/test_knowledge.py::test_approved_templates_render_without_internal_enums_or_iso_dates
+FAILED tests/booking_conversation/test_contracts.py::test_b_r10_seed_literals_and_lineage
+2 failed in 3.09s

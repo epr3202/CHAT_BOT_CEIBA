@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     booking_account_type: str = Field(default="", alias="BOOKING_ACCOUNT_TYPE")
     booking_account_number: str = Field(default="", alias="BOOKING_ACCOUNT_NUMBER")
     booking_account_holder: str = Field(default="", alias="BOOKING_ACCOUNT_HOLDER")
+    bank_breb_key: str = Field(default="", alias="BANK_BREB_KEY")
     booking_exclusivity_keyword: str = Field(
         default="exclusividad", alias="BOOKING_EXCLUSIVITY_KEYWORD", min_length=1
     )

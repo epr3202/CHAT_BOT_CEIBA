@@ -343,3 +343,34 @@ verificación de cada merge, sin revisión intermedia de Claude. También autori
 el cambio exclusivo de BANK_BREB_KEY en producción antes de tocar main. Este
 registro documenta la autorización; los resultados y SHAs se reportan después
 de ejecutar y verificar cada paso.
+
+## 2026-10-05 — Llave Bre-B en las instrucciones de pago
+
+Emerson decide incorporar la llave Bre-B como método de pago. La configuración
+BANK_BREB_KEY procede exclusivamente de Settings. El arranque de API y worker
+falla con un error claro si la última versión de la plantilla de pago está
+APPROVED, usa breb_key y la configuración está vacía. La plantilla anterior sin
+esa variable conserva su compatibilidad durante la publicación.
+
+RESP-BOOKING-PAYMENT-001 v3 agrega únicamente la línea
+«Llave Bre-B: {breb_key}» junto a los datos bancarios existentes; el resto del
+texto permanece íntegro. Leandro debe aprobar esa línea antes de la publicación,
+que Claude coordina con Emerson junto a BANK_BREB_KEY en el entorno productivo.
+La revisión usa un PR draft y no autoriza su merge ni la publicación automática.
+
+Seed declara v3 para este código y el sincronizador respeta ese mínimo al crear
+o incrementar una versión, conservando las versiones anteriores INACTIVE.
+No cambia las versiones de otros códigos. La publicación usa seed + sync,
+sin migración; se conserva el bloqueo del CLI de sync en producción. El loader
+de deploy publica la versión explícita del seed.
+
+La validación del pago sigue siendo comprobante más revisión humana. No cambia
+el flujo de evidencias ni el recordatorio Meta recordatorio_saldo_reserva, que
+contiene datos bancarios propios y queda fuera del alcance de esta decisión.
+
+El presentador de breb_key acepta únicamente Settings y rechaza valores
+bancarios enviados por el cliente. El guard bancario existente también exige
+la llave antes de crear una solicitud de pago cuando la plantilla la usa.
+El handler pasa la variable solo para esa plantilla; no agrega variables
+extra a la versión anterior y mantiene KnowledgeRenderError si breb_key no
+está en allowed_variables.
