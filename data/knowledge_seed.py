@@ -32,7 +32,12 @@ CONDITIONAL_DRAFT_CODES = {
 }
 
 # Explicit publication versions leave unrelated response histories unchanged.
-KNOWLEDGE_SEED_VERSIONS = {"RESP-BOOKING-PAYMENT-001": 3}
+KNOWLEDGE_SEED_VERSIONS = {
+    "RESP-BOOKING-PAYMENT-001": 3,
+    "RESP-BOOKING-PARTIAL-001": 3,
+    "RESP-PAYMENT-004": 4,
+    "RESP-BOOKING-PENDING-001": 1,
+}
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,501 @@
+DATABASE_URL=postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba DB_POOL_SIZE=5 DB_MAX_OVERFLOW=5 META_APP_SECRET=test META_VERIFY_TOKEN=test META_ACCESS_TOKEN=test META_PHONE_NUMBER_ID=test META_GRAPH_API_VERSION=v20.0 WEBHOOK_MAX_BODY_BYTES=1048576 OUTBOX_POLL_INTERVAL_SECONDS=0.01 OUTBOX_BATCH_SIZE=10 OUTBOX_SENDING_TIMEOUT_SECONDS=120 OUTBOX_MAX_ATTEMPTS=5 OUTBOX_MAX_BACKOFF_SECONDS=300 OPENROUTER_API_KEY=test OPENROUTER_BASE_URL=https://openrouter.ai/api/v1 OPENROUTER_TIMEOUT_SECONDS=15 OPENROUTER_MAX_RETRIES=1 AI_CONFIDENCE_SAFE=0.85 AI_CONFIDENCE_PROBABLE=0.70 AI_CONFIDENCE_UNCERTAIN=0.50 ENVIRONMENT=testing LOG_LEVEL=INFO QUALITY_STAGE=suite TEST_DATABASE_URL=postgresql+asyncpg://ceiba:ceiba@172.18.0.2:5432/ceiba_plan_test /media/emerson/Datos_HDD/Proyectos/desarollo/chat_bot_ceiba/.venv/bin/python -m pytest -q tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py
+FFFFFF......F..FFFFF                                                     [100%]
+=================================== FAILURES ===================================
+_ test_g2_payment_copy_has_explicit_approved_publication_versions[RESP-BOOKING-PARTIAL-001-3] _
+
+response_code = 'RESP-BOOKING-PARTIAL-001', version = 3
+
+    @pytest.mark.parametrize(
+        "response_code,version",
+        [(code("PARTIAL"), 3), (UNLINKED_CODE, 4), (PENDING_CODE, 1)],
+    )
+    def test_g2_payment_copy_has_explicit_approved_publication_versions(
+        response_code: str, version: int
+    ) -> None:
+        entries = {entry.code: entry for entry in iter_seed_entries()}
+        assert response_code in entries, f"Falta la plantilla aprobada {response_code}"
+        assert entries[response_code].status == "APPROVED"
+>       assert entries[response_code].version == version
+E       AssertionError: assert 1 == 3
+E        +  where 1 = KnowledgeSeedEntry(code='RESP-BOOKING-PARTIAL-001', category='Reserva autoservicio de precio fijo', question_summary='... envíame el comprobante y confirmamos tu reserva.', allowed_variables=['missing_amount'], version=1, status='APPROVED').version
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:184: AssertionError
+_ test_g2_payment_copy_has_explicit_approved_publication_versions[RESP-PAYMENT-004-4] _
+
+response_code = 'RESP-PAYMENT-004', version = 4
+
+    @pytest.mark.parametrize(
+        "response_code,version",
+        [(code("PARTIAL"), 3), (UNLINKED_CODE, 4), (PENDING_CODE, 1)],
+    )
+    def test_g2_payment_copy_has_explicit_approved_publication_versions(
+        response_code: str, version: int
+    ) -> None:
+        entries = {entry.code: entry for entry in iter_seed_entries()}
+        assert response_code in entries, f"Falta la plantilla aprobada {response_code}"
+        assert entries[response_code].status == "APPROVED"
+>       assert entries[response_code].version == version
+E       AssertionError: assert 1 == 4
+E        +  where 1 = KnowledgeSeedEntry(code='RESP-PAYMENT-004', category='Pago informado', question_summary='Pago confirmado', answer_temp...uipo seguirá acompañándote con los siguientes pasos de tu evento.', allowed_variables=[], version=1, status='APPROVED').version
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:184: AssertionError
+_ test_g2_payment_copy_has_explicit_approved_publication_versions[RESP-BOOKING-PENDING-001-1] _
+
+response_code = 'RESP-BOOKING-PENDING-001', version = 1
+
+    @pytest.mark.parametrize(
+        "response_code,version",
+        [(code("PARTIAL"), 3), (UNLINKED_CODE, 4), (PENDING_CODE, 1)],
+    )
+    def test_g2_payment_copy_has_explicit_approved_publication_versions(
+        response_code: str, version: int
+    ) -> None:
+        entries = {entry.code: entry for entry in iter_seed_entries()}
+>       assert response_code in entries, f"Falta la plantilla aprobada {response_code}"
+E       AssertionError: Falta la plantilla aprobada RESP-BOOKING-PENDING-001
+E       assert 'RESP-BOOKING-PENDING-001' in {'RESP-GEN-001': KnowledgeSeedEntry(code='RESP-GEN-001', category='Principios de uso', question_summary='Fuente autori...REVISAR] Entrada sin texto aprobado enviable: Respuesta breve.', allowed_variables=[], version=1, status='DRAFT'), ...}
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:182: AssertionError
+_ test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions[45596-0] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+api = <httpx.AsyncClient object at 0x75580cee3980>, amount = 45596
+already_paid = 0
+
+    @pytest.mark.parametrize("amount,already_paid", [(45596, 0), (124999, 0), (74999, 50000)])
+    async def test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions(
+        harness: Harness, api: AsyncClient, amount: int, already_paid: int
+    ) -> None:
+        evidence = await review_fixture(harness)
+        async with harness.db.begin() as session:
+            reservation = await session.get(Reservation, evidence.reservation_id)
+            assert reservation is not None
+            reservation.amount_paid_cop = already_paid
+        result = await accept(api, evidence, amount, request_id="g2.payment.partial")
+        assert result["result"] == "PARTIAL"
+        assert result["customer_notification"] == "ENQUEUED"
+        reservations = await harness.rows(Reservation)
+        assert len(reservations) == 1
+        assert reservations[0].status == "PAYMENT_PENDING"
+        assert reservations[0].amount_paid_cop == amount + already_paid
+        assert harness.calendar.created_event_ids == []
+        rows = await outboxes(harness)
+        assert len(rows) == 1, "El aviso parcial debe incluir sus instrucciones en un solo mensaje"
+        body = rows[0].payload["text"]["body"]
+        for value in (
+            amount,
+            amount + already_paid,
+            DEPOSIT_AMOUNT,
+            DEPOSIT_AMOUNT - amount - already_paid,
+        ):
+>           assert cop(value) in body
+E           AssertionError: assert '$45.596' in 'Registramos tu abono. Para asegurar la fecha faltan $79.404; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.'
+E            +  where '$45.596' = cop(45596)
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:213: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:33:20.904414Z [info     ] HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK" [httpx]
+2026-10-07T04:33:21.206961Z [info     ] HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK" [httpx]
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK"
+_ test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions[124999-0] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+api = <httpx.AsyncClient object at 0x75580cee2630>, amount = 124999
+already_paid = 0
+
+    @pytest.mark.parametrize("amount,already_paid", [(45596, 0), (124999, 0), (74999, 50000)])
+    async def test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions(
+        harness: Harness, api: AsyncClient, amount: int, already_paid: int
+    ) -> None:
+        evidence = await review_fixture(harness)
+        async with harness.db.begin() as session:
+            reservation = await session.get(Reservation, evidence.reservation_id)
+            assert reservation is not None
+            reservation.amount_paid_cop = already_paid
+        result = await accept(api, evidence, amount, request_id="g2.payment.partial")
+        assert result["result"] == "PARTIAL"
+        assert result["customer_notification"] == "ENQUEUED"
+        reservations = await harness.rows(Reservation)
+        assert len(reservations) == 1
+        assert reservations[0].status == "PAYMENT_PENDING"
+        assert reservations[0].amount_paid_cop == amount + already_paid
+        assert harness.calendar.created_event_ids == []
+        rows = await outboxes(harness)
+        assert len(rows) == 1, "El aviso parcial debe incluir sus instrucciones en un solo mensaje"
+        body = rows[0].payload["text"]["body"]
+        for value in (
+            amount,
+            amount + already_paid,
+            DEPOSIT_AMOUNT,
+            DEPOSIT_AMOUNT - amount - already_paid,
+        ):
+>           assert cop(value) in body
+E           AssertionError: assert '$124.999' in 'Registramos tu abono. Para asegurar la fecha faltan $1; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.'
+E            +  where '$124.999' = cop(124999)
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:213: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:33:25.297182Z [info     ] HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK" [httpx]
+2026-10-07T04:33:25.476191Z [info     ] HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK" [httpx]
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK"
+_ test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions[74999-50000] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+api = <httpx.AsyncClient object at 0x75580c394aa0>, amount = 74999
+already_paid = 50000
+
+    @pytest.mark.parametrize("amount,already_paid", [(45596, 0), (124999, 0), (74999, 50000)])
+    async def test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions(
+        harness: Harness, api: AsyncClient, amount: int, already_paid: int
+    ) -> None:
+        evidence = await review_fixture(harness)
+        async with harness.db.begin() as session:
+            reservation = await session.get(Reservation, evidence.reservation_id)
+            assert reservation is not None
+            reservation.amount_paid_cop = already_paid
+        result = await accept(api, evidence, amount, request_id="g2.payment.partial")
+        assert result["result"] == "PARTIAL"
+        assert result["customer_notification"] == "ENQUEUED"
+        reservations = await harness.rows(Reservation)
+        assert len(reservations) == 1
+        assert reservations[0].status == "PAYMENT_PENDING"
+        assert reservations[0].amount_paid_cop == amount + already_paid
+        assert harness.calendar.created_event_ids == []
+        rows = await outboxes(harness)
+        assert len(rows) == 1, "El aviso parcial debe incluir sus instrucciones en un solo mensaje"
+        body = rows[0].payload["text"]["body"]
+        for value in (
+            amount,
+            amount + already_paid,
+            DEPOSIT_AMOUNT,
+            DEPOSIT_AMOUNT - amount - already_paid,
+        ):
+>           assert cop(value) in body
+E           AssertionError: assert '$74.999' in 'Registramos tu abono. Para asegurar la fecha faltan $1; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.'
+E            +  where '$74.999' = cop(74999)
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:213: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:33:28.593343Z [info     ] HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK" [httpx]
+2026-10-07T04:33:28.845307Z [info     ] HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK" [httpx]
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK"
+___ test_g2_unlinked_human_payment_acknowledges_amount_without_holding_date ____
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+api = <httpx.AsyncClient object at 0x75580743c7d0>
+
+    async def test_g2_unlinked_human_payment_acknowledges_amount_without_holding_date(
+        harness: Harness, api: AsyncClient
+    ) -> None:
+        evidence = await unlinked_evidence(harness)
+        result = await accept(api, evidence, RECEIPT_AMOUNT, request_id="g2.payment.unlinked")
+        assert result["result"] == "NO_RESERVATION"
+        assert result["customer_notification"] == "ENQUEUED"
+        assert await harness.rows(Reservation) == []
+        assert harness.calendar.created_event_ids == []
+        rows = await outboxes(harness)
+        assert len(rows) == 1
+        body = rows[0].payload["text"]["body"]
+>       assert cop(RECEIPT_AMOUNT) in body
+E       AssertionError: assert '$45.596' in '¡Perfecto! Tu pago fue confirmado y la fecha quedó oficialmente separada. A partir de aquí, nuestro equipo seguirá acompañándote con los siguientes pasos de tu evento.'
+E        +  where '$45.596' = cop(45596)
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:294: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:34:01.365548Z [info     ] HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK" [httpx]
+2026-10-07T04:34:01.488082Z [info     ] HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK" [httpx]
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK"
+_ test_g2_existing_pending_request_keeps_global_guard_and_explains_payment_handoff[False] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...context_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'G2_INCIDENT_189'}, turn=3)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x755807530b00>
+outside = False
+
+    @pytest.mark.parametrize("outside", [False, True])
+    async def test_g2_existing_pending_request_keeps_global_guard_and_explains_payment_handoff(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch, outside: bool
+    ) -> None:
+        set_human_clock(monkeypatch, outside=outside)
+        await to_confirmation(harness)
+        conversation = await harness.conversation()
+        plan = await selected_plan(harness)
+        async with harness.db.begin() as session:
+            event = await session.scalar(
+                select(Event).where(Event.lead_id == conversation.active_lead_id)
+            )
+            assert event is not None
+            prior = Reservation(
+                lead_id=conversation.active_lead_id,
+                event_id=event.event_id,
+                plan_id=plan.plan_id,
+                customer_id=conversation.customer_id,
+                conversation_id=None,
+                starts_at=START + timedelta(days=1),
+                ends_at=START + timedelta(days=1, hours=3),
+                price_cop=plan.price_cop,
+                amount_paid_cop=0,
+                status="PAYMENT_PENDING",
+                calendar_status="NONE",
+            )
+            session.add(prior)
+            await session.flush()
+            prior_id = prior.reservation_id
+        await harness.send("sí")
+        await harness.assert_completed()
+        assert (await harness.conversation()).state == "WAITING_FOR_HUMAN"
+        assert [row.reservation_id for row in await harness.rows(Reservation)] == [prior_id]
+>       assert harness.codes == [PENDING_CODE]
+E       AssertionError: assert ['RESP-HANDOFF-001'] == ['RESP-BOOKING-PENDING-001']
+E         
+E         At index 0 diff: 'RESP-HANDOFF-001' != 'RESP-BOOKING-PENDING-001'
+E         Use -v to get more diff
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:380: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:34:12.315341Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.1
+2026-10-07T04:34:12.376911Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-07T04:34:12.383354Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-07T04:34:12.400281Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.2
+2026-10-07T04:34:12.412962Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:12.434312Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=CONFIRM_BOOKING request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:12.439953Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-07T04:34:12.471122Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.3
+2026-10-07T04:34:12.489378Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=CONFIRM pending_action=CONFIRM_BOOKING request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:12.548177Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=CONFIRM pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=COLLECTING_EVENT_DATA transition=COLLECTING_EVENT_DATA->WAITING_FOR_HUMAN
+2026-10-07T04:34:12.555853Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+------------------------------ Captured log call -------------------------------
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.1', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:12.315341Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'HUMAN_REQUEST', 'state_before': 'BOT_ACTIVE', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': 'BOT_ACTIVE->COLLECTING_EVENT_DATA', 'decision_source': 'DETERMINISTIC', 'pending_action': 'SELECT_BOOKING_PLAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:12.376911Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 1, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:12.383354Z'}
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.2', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:12.400281Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'UNKNOWN', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'SELECT_BOOKING_PLAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:12.412962Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'UNKNOWN', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'CONFIRM_BOOKING', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:12.434312Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 2, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:12.439953Z'}
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.3', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:12.471122Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'CONFIRM', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'CONFIRM_BOOKING', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:12.489378Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'CONFIRM', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'WAITING_FOR_HUMAN', 'transition': 'COLLECTING_EVENT_DATA->WAITING_FOR_HUMAN', 'decision_source': 'DETERMINISTIC', 'pending_action': 'WAIT_FOR_HUMAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:12.548177Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 3, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:12.555853Z'}
+_ test_g2_existing_pending_request_keeps_global_guard_and_explains_payment_handoff[True] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...context_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'G2_INCIDENT_189'}, turn=3)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x75580c0457f0>
+outside = True
+
+    @pytest.mark.parametrize("outside", [False, True])
+    async def test_g2_existing_pending_request_keeps_global_guard_and_explains_payment_handoff(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch, outside: bool
+    ) -> None:
+        set_human_clock(monkeypatch, outside=outside)
+        await to_confirmation(harness)
+        conversation = await harness.conversation()
+        plan = await selected_plan(harness)
+        async with harness.db.begin() as session:
+            event = await session.scalar(
+                select(Event).where(Event.lead_id == conversation.active_lead_id)
+            )
+            assert event is not None
+            prior = Reservation(
+                lead_id=conversation.active_lead_id,
+                event_id=event.event_id,
+                plan_id=plan.plan_id,
+                customer_id=conversation.customer_id,
+                conversation_id=None,
+                starts_at=START + timedelta(days=1),
+                ends_at=START + timedelta(days=1, hours=3),
+                price_cop=plan.price_cop,
+                amount_paid_cop=0,
+                status="PAYMENT_PENDING",
+                calendar_status="NONE",
+            )
+            session.add(prior)
+            await session.flush()
+            prior_id = prior.reservation_id
+        await harness.send("sí")
+        await harness.assert_completed()
+        assert (await harness.conversation()).state == "WAITING_FOR_HUMAN"
+        assert [row.reservation_id for row in await harness.rows(Reservation)] == [prior_id]
+>       assert harness.codes == [PENDING_CODE]
+E       AssertionError: assert ['RESP-HANDOFF-002'] == ['RESP-BOOKING-PENDING-001']
+E         
+E         At index 0 diff: 'RESP-HANDOFF-002' != 'RESP-BOOKING-PENDING-001'
+E         Use -v to get more diff
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:380: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:34:14.777492Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.1
+2026-10-07T04:34:14.856157Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-07T04:34:14.868977Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-07T04:34:14.927475Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.2
+2026-10-07T04:34:14.977558Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:15.059058Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=CONFIRM_BOOKING request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:15.076118Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-07T04:34:15.161412Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.3
+2026-10-07T04:34:15.202539Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=CONFIRM pending_action=CONFIRM_BOOKING request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:15.320668Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=CONFIRM pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=COLLECTING_EVENT_DATA transition=COLLECTING_EVENT_DATA->WAITING_FOR_HUMAN
+2026-10-07T04:34:15.341921Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+------------------------------ Captured log call -------------------------------
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.1', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:14.777492Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'HUMAN_REQUEST', 'state_before': 'BOT_ACTIVE', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': 'BOT_ACTIVE->COLLECTING_EVENT_DATA', 'decision_source': 'DETERMINISTIC', 'pending_action': 'SELECT_BOOKING_PLAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:14.856157Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 1, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:14.868977Z'}
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.2', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:14.927475Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'UNKNOWN', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'SELECT_BOOKING_PLAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:14.977558Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'UNKNOWN', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'CONFIRM_BOOKING', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:15.059058Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 2, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:15.076118Z'}
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.3', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:15.161412Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'CONFIRM', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'CONFIRM_BOOKING', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:15.202539Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'CONFIRM', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'WAITING_FOR_HUMAN', 'transition': 'COLLECTING_EVENT_DATA->WAITING_FOR_HUMAN', 'decision_source': 'DETERMINISTIC', 'pending_action': 'WAIT_FOR_HUMAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:15.320668Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 3, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:15.341921Z'}
+______ test_g2_booking_payment_missing_placeholder_logs_error_and_audits _______
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...context_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'G2_INCIDENT_189'}, turn=3)
+
+    async def test_g2_booking_payment_missing_placeholder_logs_error_and_audits(
+        harness: Harness,
+    ) -> None:
+        await to_confirmation(harness)
+        await corrupt_template(harness, code("PAYMENT"))
+        request_id = f"g2.189.{harness.turn + 1}"
+        with capture_logs() as logs:
+            await harness.send("sí")
+            await harness.assert_completed()
+>       await assert_render_failure_observed(harness, logs, code("PAYMENT"), request_id)
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:400: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...context_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'G2_INCIDENT_189'}, turn=3)
+logs = [{'legacy_request_id': 'g2.189.3', 'event': 'legacy_webhook_request_id_ignored', 'log_level': 'warning'}, {'conversati...': 'COLLECTING_EVENT_DATA', ...}, {'job_id': 3, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', ...}]
+response_code = 'RESP-BOOKING-PAYMENT-001', request_id = 'g2.189.3'
+
+    async def assert_render_failure_observed(
+        harness: Harness,
+        logs: list[dict[str, Any]],
+        response_code: str,
+        request_id: str,
+    ) -> None:
+        conversation = await harness.conversation()
+        errors = [
+            log
+            for log in logs
+            if log.get("log_level") == "error" and log.get("response_code") == response_code
+        ]
+>       assert errors, "Falta log ERROR de la plantilla aprobada que no pudo renderizarse"
+E       AssertionError: Falta log ERROR de la plantilla aprobada que no pudo renderizarse
+E       assert []
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:149: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:34:18.954347Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.1
+2026-10-07T04:34:19.050559Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-07T04:34:19.059794Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-07T04:34:19.086673Z [warning  ] legacy_webhook_request_id_ignored [app.channel.inbound] legacy_request_id=g2.189.2
+2026-10-07T04:34:19.108339Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:19.146334Z [info     ] orchestrator_decision          [app.orchestrator.service] conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=CONFIRM_BOOKING request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-07T04:34:19.154811Z [info     ] inbox_completed                [app.channel.inbox] conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+------------------------------ Captured log call -------------------------------
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.1', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:18.954347Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'HUMAN_REQUEST', 'state_before': 'BOT_ACTIVE', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': 'BOT_ACTIVE->COLLECTING_EVENT_DATA', 'decision_source': 'DETERMINISTIC', 'pending_action': 'SELECT_BOOKING_PLAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:19.050559Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 1, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:19.059794Z'}
+WARNING  app.channel.inbound:inbound.py:1124 {'legacy_request_id': 'g2.189.2', 'event': 'legacy_webhook_request_id_ignored', 'level': 'warning', 'logger': 'app.channel.inbound', 'timestamp': '2026-10-07T04:34:19.086673Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'UNKNOWN', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'SELECT_BOOKING_PLAN', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:19.108339Z'}
+INFO     app.orchestrator.service:service.py:219 {'conversation_id': 1, 'request_id': None, 'intent': 'UNKNOWN', 'state_before': 'COLLECTING_EVENT_DATA', 'state_after': 'COLLECTING_EVENT_DATA', 'transition': None, 'decision_source': 'DETERMINISTIC', 'pending_action': 'CONFIRM_BOOKING', 'event': 'orchestrator_decision', 'level': 'info', 'logger': 'app.orchestrator.service', 'timestamp': '2026-10-07T04:34:19.146334Z'}
+INFO     app.channel.inbox:inbox.py:312 {'job_id': 2, 'conversation_id': 1, 'request_id': None, 'outcome': 'COMPLETED', 'reason': 'ORCHESTRATED', 'event': 'inbox_completed', 'level': 'info', 'logger': 'app.channel.inbox', 'timestamp': '2026-10-07T04:34:19.154811Z'}
+____ test_g2_admin_payment_missing_placeholder_logs_error_and_audits[False] ____
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+api = <httpx.AsyncClient object at 0x75580743dcd0>, linked = False
+
+    @pytest.mark.parametrize("linked", [False, True])
+    async def test_g2_admin_payment_missing_placeholder_logs_error_and_audits(
+        harness: Harness, api: AsyncClient, linked: bool
+    ) -> None:
+        evidence = await review_fixture(harness) if linked else await unlinked_evidence(harness)
+        response_code = code("CONFIRMED") if linked else UNLINKED_CODE
+        await corrupt_template(harness, response_code)
+        request_id = f"g2.payment.render.{linked}"
+        with capture_logs() as logs:
+            result = await accept(api, evidence, DEPOSIT_AMOUNT, request_id=request_id)
+>       assert result["customer_notification"] == "DEFERRED"
+E       AssertionError: assert 'ENQUEUED' == 'DEFERRED'
+E         
+E         - DEFERRED
+E         + ENQUEUED
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:413: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:34:22.097397Z [info     ] HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK" [httpx]
+2026-10-07T04:34:22.254502Z [info     ] HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK" [httpx]
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK"
+____ test_g2_admin_payment_missing_placeholder_logs_error_and_audits[True] _____
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+api = <httpx.AsyncClient object at 0x755806fca930>, linked = True
+
+    @pytest.mark.parametrize("linked", [False, True])
+    async def test_g2_admin_payment_missing_placeholder_logs_error_and_audits(
+        harness: Harness, api: AsyncClient, linked: bool
+    ) -> None:
+        evidence = await review_fixture(harness) if linked else await unlinked_evidence(harness)
+        response_code = code("CONFIRMED") if linked else UNLINKED_CODE
+        await corrupt_template(harness, response_code)
+        request_id = f"g2.payment.render.{linked}"
+        with capture_logs() as logs:
+            result = await accept(api, evidence, DEPOSIT_AMOUNT, request_id=request_id)
+        assert result["customer_notification"] == "DEFERRED"
+>       await assert_render_failure_observed(harness, logs, response_code, request_id)
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:414: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x75580...ntext_reference': {'pending_action': None, 'last_question_code': None}, 'reasoning_code': 'EXPLICIT_GREETING'}, turn=0)
+logs = [], response_code = 'RESP-BOOKING-CONFIRMED-001'
+request_id = 'g2.payment.render.True'
+
+    async def assert_render_failure_observed(
+        harness: Harness,
+        logs: list[dict[str, Any]],
+        response_code: str,
+        request_id: str,
+    ) -> None:
+        conversation = await harness.conversation()
+        errors = [
+            log
+            for log in logs
+            if log.get("log_level") == "error" and log.get("response_code") == response_code
+        ]
+>       assert errors, "Falta log ERROR de la plantilla aprobada que no pudo renderizarse"
+E       AssertionError: Falta log ERROR de la plantilla aprobada que no pudo renderizarse
+E       assert []
+
+tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py:149: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T04:34:27.528102Z [info     ] HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK" [httpx]
+2026-10-07T04:34:27.841862Z [info     ] HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK" [httpx]
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/login "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/admin/payment-evidence/1/accept "HTTP/1.1 200 OK"
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_payment_copy_has_explicit_approved_publication_versions[RESP-BOOKING-PARTIAL-001-3]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_payment_copy_has_explicit_approved_publication_versions[RESP-PAYMENT-004-4]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_payment_copy_has_explicit_approved_publication_versions[RESP-BOOKING-PENDING-001-1]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions[45596-0]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions[124999-0]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_partial_receipt_reports_received_required_missing_and_payment_instructions[74999-50000]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_unlinked_human_payment_acknowledges_amount_without_holding_date
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_existing_pending_request_keeps_global_guard_and_explains_payment_handoff[False]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_existing_pending_request_keeps_global_guard_and_explains_payment_handoff[True]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_booking_payment_missing_placeholder_logs_error_and_audits
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_admin_payment_missing_placeholder_logs_error_and_audits[False]
+FAILED tests/booking_conversation/test_payment_messaging_2026_10_07_g2.py::test_g2_admin_payment_missing_placeholder_logs_error_and_audits[True]
+12 failed, 8 passed in 80.10s (0:01:20)
+make: *** [/tmp/GmaX0i06:2: payment-messaging-g2-red] Error 1

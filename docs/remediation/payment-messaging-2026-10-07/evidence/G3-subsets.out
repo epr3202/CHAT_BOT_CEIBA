@@ -1,0 +1,26 @@
+..................................................................F
+=================================== FAILURES ===================================
+_____________________ test_b_r10_seed_literals_and_lineage _____________________
+
+    def test_b_r10_seed_literals_and_lineage() -> None:
+        entries = {e.code: e for e in iter_seed_entries()}
+        for name, literal in TEMPLATES.items():
+            key = code(name)
+            assert key not in CONDITIONAL_DRAFT_CODES and key in entries
+>           assert entries[key].status == "APPROVED" and entries[key].answer_template == literal
+E           AssertionError: assert ('APPROVED' == 'APPROVED'
+E             
+E               APPROVED and 'Recibimos {r...po lo revise.' == 'Registramos ...s tu reserva.'
+E             
+E             - Registramos tu abono. Para asegurar la fecha faltan {missing_amount}; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.
+E             + Recibimos {received_amount}; llevas abonados {paid_amount}. El abono del 50 % para asegurar la fecha es {deposit_amount}; faltan {missing_amount}. La fecha aún no queda separada.
+E             + Para completar el abono, puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}.
+E             + Llave Bre-B: {breb_key}
+E             + Cuando lo hagas, envíame aquí la foto del comprobante para que nuestro equipo lo revise.)
+
+tests/booking_conversation/test_contracts.py:299: AssertionError
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_contracts.py::test_b_r10_seed_literals_and_lineage
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 66 passed in 208.04s (0:03:28)
+make: *** [/tmp/GmX6qUiX:2: payment-messaging-g3-subsets] Error 1

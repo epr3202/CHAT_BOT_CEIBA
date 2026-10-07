@@ -28,7 +28,15 @@ TEMPLATES = {
     "PAYMENT": "¡Listo! Tu fecha está disponible hoy y queda asegurada al recibir el abono de {deposit_amount}. Puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}.\nLlave Bre-B: {breb_key}\nCuando lo hagas, envíame aquí la foto del comprobante y nuestro equipo lo confirma.",
     "EVIDENCE": "¡Gracias! Recibimos tu comprobante. Nuestro equipo lo revisará y te confirmo por aquí en cuanto quede validado.",
     "CONFIRMED": "¡Tu reserva está confirmada! {plan_name}, el {booking_date} a las {booking_time}. Saldo pendiente: {missing_amount}, a más tardar el {balance_due_date}. ¡Nos vemos en La Ceiba!",
-    "PARTIAL": "Registramos tu abono. Para asegurar la fecha faltan {missing_amount}; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.",
+    "PARTIAL": (
+        "Recibimos {received_amount}; llevas abonados {paid_amount}. El abono del 50 % "
+        "para asegurar la fecha es {deposit_amount}; faltan {missing_amount}. "
+        "La fecha aún no queda separada.\n"
+        "Para completar el abono, puedes transferir a {bank_name}, {account_type} "
+        "No. {account_number}, a nombre de {account_holder}.\n"
+        "Llave Bre-B: {breb_key}\n"
+        "Cuando lo hagas, envíame aquí la foto del comprobante para que nuestro equipo lo revise."
+    ),
     "REJECTED": "No pudimos validar el comprobante que enviaste. ¿Puedes revisarlo y enviarlo de nuevo? Si tienes dudas, con gusto te comunico con un asesor.",
 }
 

@@ -2755,6 +2755,11 @@ otra solicitud, la confirmación vuelve a comprobar las solicitudes del cliente,
 incluidas las manuales y las de otras conversaciones, y escala si encuentra una.
 Las demás entradas al autoservicio conservan la comprobación inicial.
 
+El handoff por este duplicado usa RESP-BOOKING-PENDING-001 v1: explica que ya
+existe una reserva pendiente de pago o en revisión e informa el horario del
+asesor. Mantiene RESERVATION_CONFIRMATION, la pausa y la autorización de entrega
+del caso. Resetear solo la conversación no cancela la solicitud anterior.
+
 Bloqueada → UNAVAILABLE y otra fecha conservando plan. Libre → CONFIRM con precio
 y 50 %. No → otra fecha; sí → reconsulta → PAYMENT_PENDING sin bloqueo, auditoría
 SYSTEM, limpia draft/acción y muestra instrucciones solo con banco completo.
@@ -2763,6 +2768,21 @@ monto: parcial → PAYMENT_PENDING/PARTIAL; suficiente + libre → RESERVED, com
 Calendar y CONFIRMED; conflicto → dinero registrado, revisión conservada y handoff
 para reprogramar. Rechazo → PAYMENT_PENDING/REJECTED.
 
+Las instrucciones RESP-BOOKING-PAYMENT-001 v3 de una solicitud nueva se envían
+dentro o fuera del horario humano. El aviso de asesor corresponde a un handoff
+que lo requiera y no sustituye instrucciones de una solicitud nueva. En esta
+remediación H2, el mensaje de duplicado incluye ese aviso y no se agrega un
+handoff por horario a clientes que pueden completar el autoservicio.
+
+Un abono parcial usa RESP-BOOKING-PARTIAL-001 v3: monto humano recibido,
+acumulado, anticipo requerido calculado por deposit_amount y faltante. La fecha
+aún no queda separada. Incluye las instrucciones bancarias vigentes y Bre-B
+desde Settings; no afirma que la fecha sigue disponible. Si quedan comprobantes
+por revisar conserva PAYMENT_REVIEW; si no, regresa a PAYMENT_PENDING.
+Un comprobante aceptado sin reserva vinculada usa RESP-PAYMENT-004 v4 y solo
+reconoce el monto validado: no inventa precio/anticipo, no asocia una reserva por
+inferencia ni afirma fecha separada. Monto cero/ausente se rechaza en el endpoint.
+
 Un humano explícito interrumpe el flujo. Salvo la selección de plan iniciada tras
 catálogo descrita arriba, dos respuestas no interpretables escalan; una solicitud
 duplicada también escala al comprobar su creación. Todas las frases son
@@ -2770,3 +2790,9 @@ KnowledgeEntry APPROVED; seed
 DRAFT requiere aprobación de Leandro por versión. Notificación no renderizable:
 NOTIFICATION_SKIPPED, sin deshacer la decisión del asesor. Flag apagado conserva
 el flujo anterior con handoff y fecha solicitada registrada en Event.
+
+Todo fallo de render registra ERROR estructurado y TEMPLATE_RENDER_FAILED con
+código, conversación, razón y request_id antes de propagar el fallo estricto.
+Las notificaciones sensibles de pago no degradan al fallback genérico; conservan
+NOTIFICATION_SKIPPED y devuelven DEFERRED sin mensaje incompleto. En el flujo de
+reserva, TEMPLATE_UNAVAILABLE pausa con la plantilla de handoff existente.

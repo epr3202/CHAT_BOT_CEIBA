@@ -61,6 +61,7 @@ from app.channel.media import detect_pdf_mime_type, sha256_file
 from app.channel.models import Message, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings, get_settings
+from app.conversation.knowledge import KnowledgeRenderError, variables_in_template
 from app.conversation.models import Conversation, KnowledgeEntry
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
@@ -1305,7 +1306,7 @@ async def notify_payment_after_commit(
     kind: str,
     request_id: str,
 ) -> str:
-    from app.reservation.notifications import notify_booking_payment
+    from app.reservation.notifications import notify_booking_payment, skipped
 
     sm = request.app.state.db_sessionmaker
     async with sm() as session, session.begin():
@@ -1339,19 +1340,32 @@ async def notify_payment_after_commit(
             .order_by(KnowledgeEntry.version.desc())
             .limit(1)
         )
-        if latest is None or latest.status != "APPROVED":
-            return "DEFERRED"
         conversation = await session.get(Conversation, evidence.conversation_id)
         customer = await session.get(Customer, evidence.customer_id)
         message = await session.get(Message, evidence.message_id)
-        variables = (
+        candidates = (
             {"rejection_reason_customer_safe": CustomerRejectionReason(evidence.customer_reason)}
             if kind == "REJECTED"
-            else {}
+            else {"received_amount": evidence.amount_cop}
         )
-        await enqueue_template(
-            session, sm, conversation, customer, message, code, variables, payment_decision=evidence
-        )
+        required_variables = variables_in_template(latest.answer_template) if latest else set()
+        variables = {key: value for key, value in candidates.items() if key in required_variables}
+        try:
+            await enqueue_template(
+                session,
+                sm,
+                conversation,
+                customer,
+                message,
+                code,
+                variables,
+                payment_decision=evidence,
+                strict=True,
+                request_id=request_id,
+            )
+        except KnowledgeRenderError as exc:
+            skipped(session, evidence, kind, exc.reason.value, request_id)
+            return "DEFERRED"
         return "ENQUEUED"
 
 
