@@ -113,13 +113,17 @@ No se probarán todavía como funcionalidades completas:
 * firma digital;
 * campañas masivas;
 * Instagram activo;
-* transcripción automática de audios;
+* transcripción automática de audios fuera del canario W2-c;
 * análisis avanzado de imágenes;
 * gestión integral del evento;
 * portal de proveedores;
 * CRM empresarial completo.
 
 Estos elementos deberán contar con suites propias cuando sean implementados.
+
+W2-c incorpora una suite adversarial propia en `tests/audio_transcription/` para
+transcripción bajo flag, canario por allowlist y confirmaciones escritas. No amplía
+la interpretación de imágenes, documentos, video ni evidencias de pago.
 
 ---
 

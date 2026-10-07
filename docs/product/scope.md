@@ -201,7 +201,9 @@ Durante el alcance inicial:
 * el bot podrá pedir al cliente que escriba la información;
 * podrán escalarse a un asesor.
 
-La transcripción automática de audios queda fuera del MVP.
+La transcripción automática de audios está incluida como W2-c bajo flag, canario por
+allowlist; solo se habilita tras aprobar las plantillas requeridas. No crea estados nuevos
+ni autoriza a la IA a confirmar acciones de dominio.
 
 ### Videos
 
@@ -1841,8 +1843,8 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 ## Prioridad media
 
 * Instagram;
-* W2-c: transcripción de audio; decidir su prioridad con el conteo de auditorías
-  `NON_TEXT_MESSAGE_RECEIVED` cuyo `message_type` sea `audio`;
+* W2-c: transcripción de audio incluida bajo flag apagado por defecto, canario por
+  allowlist y habilitación tras aprobar las plantillas; contrato en `flows.md`;
 * admitir audio y video como evidencia de pago; W2-b solo admite imagen y documento;
 * análisis básico de imágenes;
 * enlaces de pago;

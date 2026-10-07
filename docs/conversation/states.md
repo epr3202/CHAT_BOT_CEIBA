@@ -2475,6 +2475,32 @@ Cuando había captura de evento suspendida, se conserva su reanudación al cerra
 
 Pendiente: recuperación de turnos con efecto externo mediante external_result (slice previo a B2).
 
+## 38.4 W2-c — Audio y barrera de confirmación escrita H7
+
+W2-c no agrega estados ni acciones pendientes. Una transcripción `SUCCESS` entra
+como texto efectivo con `input_origin="AUDIO_TRANSCRIPT"`, conservando el mensaje
+audio original. La elegibilidad, los fallbacks y la persistencia se definen en el
+«Contrato W2-c» de `flows.md`.
+
+Antes de clasificar, un audio con `CONFIRM_BOOKING`, `CONFIRM_APPOINTMENT`,
+`CONFIRM_RESCHEDULE`, `CONFIRM_VISIT_CANCELLATION` o `CONFIRM_QUOTE_REQUEST`
+responde `RESP-AUDIO-WRITTEN-CONFIRM-001`. No ejecuta la acción ni modifica estado,
+`pending_action`, `pending_confirmation`, `booking_draft`, `visit_draft`, contadores
+o `last_question_code`; este último se restaura después de encolar. Se registra
+`AUDIO_CONFIRMATION_REQUIRES_TEXT`. El «sí» escrito posterior mantiene exactamente
+el efecto que tendría sin el audio intermedio.
+
+Fuera de esas cinco acciones, el audio conserva paridad con texto, incluidas
+`SELECT_BOOKING_DATETIME` con `date_confirmation=true`, `CLASSIFICATION_CONFIRMATION`
+y `FULL_NAME_CONFIRMATION`. Nunca sirve como evidencia de pago ni da autoridad de
+confirmación a la IA.
+
+A7 conserva silencio y evita descargar o transcribir en `WAITING_FOR_HUMAN`,
+`HUMAN_ACTIVE`, `CLOSED` y con el bot deshabilitado. Una pausa tomada durante el ASR
+suprime la respuesta al releer el estado al aplicar, conserva la fila ya persistida
+y no repite el ASR. El ASR fallido solo produce el fallback versionado en conversación
+activa; no crea handoff ni lleva el inbox a `REVIEW`.
+
 # 39. Bloqueos e invariantes críticos
 
 ## INV-ST-001 — Bot pausado

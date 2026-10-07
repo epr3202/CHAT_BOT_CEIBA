@@ -2084,6 +2084,22 @@ Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2
 
 ---
 
+## RESP-AUDIO-TOO-LONG-001 — Audio demasiado largo
+
+Estado: **DRAFT** — pendiente de aprobación de Leandro.
+
+> Ese audio quedó un poco largo y no alcanzo a procesarlo. ¿Me lo envías en menos de un minuto o me lo escribes por aquí?
+
+---
+
+## RESP-AUDIO-WRITTEN-CONFIRM-001 — Confirmación por escrito
+
+Estado: **DRAFT** — pendiente de aprobación de Leandro.
+
+> Para dejar esto confirmado necesito que me lo escribas: respóndeme "sí" por texto, por favor.
+
+---
+
 # 54. Seguridad y privacidad
 
 ## RESP-SECURITY-001 — Tarjeta
