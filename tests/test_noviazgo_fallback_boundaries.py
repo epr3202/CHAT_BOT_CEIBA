@@ -160,9 +160,12 @@ async def test_mixed_fixed_price_resolution_reports_deterministic_source(harness
     decisions = [row for row in logs if row["event"] == "orchestrator_decision"]
     assert decisions[-1]["decision_source"] == "DETERMINISTIC"
     # A following technical fallback must retain its own provenance.
-    harness.outputs["indefinido"] = RAW_3449
+    # Unknown catalog choices now stay in plan selection (R2); an explicit FAQ
+    # still reaches the classifier and exercises this technical fallback.
+    fallback_text = "quiero información de los espacios"
+    harness.outputs[fallback_text] = RAW_3449
     with capture_logs() as next_logs:
-        await harness.turn("indefinido")
+        await harness.turn(fallback_text)
     assert [row for row in next_logs if row["event"] == "orchestrator_decision"][-1][
         "decision_source"
     ] == "FALLBACK"

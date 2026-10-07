@@ -1,0 +1,65 @@
+........................................................................ [ 23%]
+.............F.......................................................... [ 46%]
+........................................................................ [ 70%]
+........................................................................ [ 93%]
+....................                                                     [100%]
+=================================== FAILURES ===================================
+________ test_mixed_fixed_price_resolution_reports_deterministic_source ________
+
+harness = Harness(sessions=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0...ence": 0.8'}, calls=[('classify', 'Pedida de mano con cena romántica')], extractor_output='{"event_type": "PROPOSAL"}')
+
+    async def test_mixed_fixed_price_resolution_reports_deterministic_source(harness: Harness) -> None:
+        with capture_logs() as logs:
+            await harness.turn("Pedida de mano con cena romántica")
+        snapshot = await harness.snapshot()
+        assert harness.calls == [("classify", "Pedida de mano con cena romántica")]
+        assert snapshot["outbox"][-1].catalog_asset_id == harness.proposal_id
+        assert any(
+            row.action == "CATALOG_EVENT_TYPE_RESOLVED"
+            and row.new_value["source"] == "FIXED_PRICE_MENTION"
+            and row.new_value["decision_source"] == "DETERMINISTIC"
+            for row in snapshot["audits"]
+        )
+        decisions = [row for row in logs if row["event"] == "orchestrator_decision"]
+        assert decisions[-1]["decision_source"] == "DETERMINISTIC"
+        # A following technical fallback must retain its own provenance.
+        harness.outputs["indefinido"] = RAW_3449
+        with capture_logs() as next_logs:
+            await harness.turn("indefinido")
+>       assert [row for row in next_logs if row["event"] == "orchestrator_decision"][-1][
+            "decision_source"
+        ] == "FALLBACK"
+E       AssertionError: assert 'DETERMINISTIC' == 'FALLBACK'
+E         
+E         - FALLBACK
+E         + DETERMINISTIC
+
+tests/test_noviazgo_fallback_boundaries.py:166: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-07T01:40:51.431232Z [info     ] HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK" [httpx]
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+=============================== warnings summary ===============================
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_015_admin_rejects_pdf_over_configured_size
+  /media/emerson/Datos_HDD/Proyectos/desarollo/chat_bot_ceiba/app/admin/routes.py:1541: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    file_size = validate_catalog_admin_file(request, file_path)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_022_admin_catalog_event_types_validate_send_mode_at_edge
+  /media/emerson/Datos_HDD/Proyectos/desarollo/chat_bot_ceiba/app/admin/routes.py:1543: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_catalog_event_type_mappings(event_type_mappings)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.txt-not a pdf-text/plain]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[catalogo.pdf-not a pdf-application/pdf]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_024_admin_upload_rejects_non_pdf_and_traversal_filename[../escape.pdf-%PDF-1.4\nvalid-application/pdf]
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_025_admin_upload_rejects_configured_oversize
+  /media/emerson/Datos_HDD/Proyectos/desarollo/chat_bot_ceiba/app/admin/routes.py:1613: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    stored_path, file_hash, file_size, created_new_file = await store_catalog_upload(request, file)
+
+tests/test_slice2a_catalogs_adversarial.py::test_tc_cat_026_admin_upload_validation_leaves_no_orphan_file
+  /media/emerson/Datos_HDD/Proyectos/desarollo/chat_bot_ceiba/app/admin/routes.py:1610: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_catalog_event_type_mappings([mapping])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_noviazgo_fallback_boundaries.py::test_mixed_fixed_price_resolution_reports_deterministic_source
+1 failed, 307 passed, 7 warnings in 448.62s (0:07:28)

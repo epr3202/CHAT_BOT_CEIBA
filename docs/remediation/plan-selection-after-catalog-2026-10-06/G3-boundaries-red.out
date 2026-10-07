@@ -1,0 +1,180 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+____________ test_g3_repeated_unknown_catalog_choices_never_handoff ____________
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=4)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-3/test_g3_repeated_unknown_catal0')
+
+    async def test_g3_repeated_unknown_catalog_choices_never_handoff(
+        harness: Harness, tmp_path: Path
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, PROPOSAL_CATALOG)
+        for message in (
+            "me interesa un plan desconocido",
+            "plan inexistente",
+            "me interesa Confesión bajo la Luna o Noche Inolvidable",
+        ):
+            await send(harness, message)
+>           await assert_plan_options(harness, "PROPOSAL")
+
+tests/booking_conversation/test_plan_selection_after_catalog_edges.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=4)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_HUMAN' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_HUMAN
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:18:24 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:18:24 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:18:25 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-06 20:18:25 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:18:25 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-06 20:18:25 [info     ] inbox_completed                conversation_id=1 job_id=3 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:18:25 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=UNKNOWN pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=COLLECTING_EVENT_DATA transition=COLLECTING_EVENT_DATA->WAITING_FOR_HUMAN
+2026-10-06 20:18:25 [info     ] inbox_completed                conversation_id=1 job_id=4 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate[me interesa un plan desconocido para el 14] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-3/test_g3_unknown_or_ambiguous_p0')
+message = 'me interesa un plan desconocido para el 14'
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "me interesa un plan desconocido para el 14",
+            "me interesa Confesión bajo la Luna o Noche Inolvidable para el 14",
+            "Confesión bajo la Luna o Noche Inolvidable para el 14",
+        ],
+    )
+    async def test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate(
+        harness: Harness, tmp_path: Path, message: str
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, PROPOSAL_CATALOG)
+        await send(harness, message)
+>       await assert_plan_options(harness, "PROPOSAL")
+
+tests/booking_conversation/test_plan_selection_after_catalog_edges.py:184: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:18:29 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:18:29 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:18:29 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=CONFIRM_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:18:29 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate[me interesa Confesi\xf3n bajo la Luna o Noche Inolvidable para el 14] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-3/test_g3_unknown_or_ambiguous_p1')
+message = 'me interesa Confesión bajo la Luna o Noche Inolvidable para el 14'
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "me interesa un plan desconocido para el 14",
+            "me interesa Confesión bajo la Luna o Noche Inolvidable para el 14",
+            "Confesión bajo la Luna o Noche Inolvidable para el 14",
+        ],
+    )
+    async def test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate(
+        harness: Harness, tmp_path: Path, message: str
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, PROPOSAL_CATALOG)
+        await send(harness, message)
+>       await assert_plan_options(harness, "PROPOSAL")
+
+tests/booking_conversation/test_plan_selection_after_catalog_edges.py:184: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:18:32 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:18:32 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:18:33 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=CONFIRM_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:18:33 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate[Confesi\xf3n bajo la Luna o Noche Inolvidable para el 14] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-3/test_g3_unknown_or_ambiguous_p2')
+message = 'Confesión bajo la Luna o Noche Inolvidable para el 14'
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "me interesa un plan desconocido para el 14",
+            "me interesa Confesión bajo la Luna o Noche Inolvidable para el 14",
+            "Confesión bajo la Luna o Noche Inolvidable para el 14",
+        ],
+    )
+    async def test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate(
+        harness: Harness, tmp_path: Path, message: str
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, PROPOSAL_CATALOG)
+        await send(harness, message)
+>       await assert_plan_options(harness, "PROPOSAL")
+
+tests/booking_conversation/test_plan_selection_after_catalog_edges.py:184: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7da86...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:18:35 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:18:35 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:18:35 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=CONFIRM_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:18:35 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_edges.py::test_g3_repeated_unknown_catalog_choices_never_handoff
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_edges.py::test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate[me interesa un plan desconocido para el 14]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_edges.py::test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate[me interesa Confesi\xf3n bajo la Luna o Noche Inolvidable para el 14]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_edges.py::test_g3_unknown_or_ambiguous_plan_with_date_keeps_selection_and_candidate[Confesi\xf3n bajo la Luna o Noche Inolvidable para el 14]
+4 failed, 25 deselected in 13.07s

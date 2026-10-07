@@ -1,0 +1,123 @@
+..........................................................F...FF         [100%]
+=================================== FAILURES ===================================
+_ test_g3_catalog_with_date_replay_and_repeat_preserve_single_pdf_and_context __
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x719c5...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-4/test_g3_catalog_with_date_repl0')
+
+    async def test_g3_catalog_with_date_replay_and_repeat_preserve_single_pdf_and_context(
+        harness: Harness, tmp_path: Path
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        payload = await send(harness, INCIDENT_T1)
+        initial = await harness.conversation()
+        initial_draft = deepcopy(draft_of(initial))
+        lead_id = initial.active_lead_id
+        assert initial_draft["date"] == "2026-10-14"
+        assert initial_draft["date_confirmation"] is True
+        outbox_ids = [row.id for row in await harness.rows(Outbox)]
+        message_ids = [row.id for row in await harness.rows(Message)]
+    
+        await process_whatsapp_webhook(payload, harness.db)
+        await harness.assert_completed()
+        assert [row.id for row in await harness.rows(Outbox)] == outbox_ids
+        assert [row.id for row in await harness.rows(Message)] == message_ids
+        assert draft_of(await harness.conversation()) == initial_draft
+    
+        await send(harness, INCIDENT_T1)
+        conversation = await harness.conversation()
+        assert conversation.active_lead_id == lead_id
+>       assert conversation.state == "BOT_ACTIVE"
+E       AssertionError: assert 'COLLECTING_EVENT_DATA' == 'BOT_ACTIVE'
+E         
+E         - BOT_ACTIVE
+E         + COLLECTING_EVENT_DATA
+
+tests/booking_conversation/test_plan_selection_after_catalog_edges.py:213: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:22:25 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:22:25 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:22:25 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-06 20:22:25 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g3_paused_catalog_conversation_stays_silent_on_plan_name[WAITING_FOR_HUMAN] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x719c5...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-4/test_g3_paused_catalog_convers0')
+state = 'WAITING_FOR_HUMAN'
+
+    @pytest.mark.parametrize("state", ["WAITING_FOR_HUMAN", "HUMAN_ACTIVE"])
+    async def test_g3_paused_catalog_conversation_stays_silent_on_plan_name(
+        harness: Harness, tmp_path: Path, state: str
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, INCIDENT_T1)
+        before = await harness.conversation()
+        draft = deepcopy(draft_of(before))
+        outbox_ids = [row.id for row in await harness.rows(Outbox)]
+        async with harness.db.begin() as session:
+            conversation = await session.get(Conversation, before.id)
+            assert conversation is not None
+            conversation.state = state
+        await send(harness, INCIDENT_T2)
+        conversation = await harness.conversation()
+        assert conversation.state == state
+        assert draft_of(conversation) == draft
+        assert [row.id for row in await harness.rows(Outbox)] == outbox_ids
+        assert harness.codes == []
+>       assert harness.classifier_calls == []
+E       assert [{'model': 'g...son_object'}}] == []
+E         
+E         Left contains one more item: {'model': 'google/gemini-2.5-flash-lite', 'messages': [{'role': 'system', 'content': 'Eres una capa de interpretación ...": 0}\n\nMensaje:\nMe interesa confesión bajo la luna'}], 'temperature': 0, 'response_format': {'type': 'json_object'}}
+E         Use -v to get more diff
+
+tests/booking_conversation/test_plan_selection_after_catalog_edges.py:304: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:22:39 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:22:39 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:22:40 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=None request_id=None state_after=WAITING_FOR_HUMAN state_before=WAITING_FOR_HUMAN transition=None
+2026-10-06 20:22:40 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=SILENT_WAITING_FOR_HUMAN request_id=None
+_ test_g3_paused_catalog_conversation_stays_silent_on_plan_name[HUMAN_ACTIVE] __
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x719c5...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-4/test_g3_paused_catalog_convers1')
+state = 'HUMAN_ACTIVE'
+
+    @pytest.mark.parametrize("state", ["WAITING_FOR_HUMAN", "HUMAN_ACTIVE"])
+    async def test_g3_paused_catalog_conversation_stays_silent_on_plan_name(
+        harness: Harness, tmp_path: Path, state: str
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, INCIDENT_T1)
+        before = await harness.conversation()
+        draft = deepcopy(draft_of(before))
+        outbox_ids = [row.id for row in await harness.rows(Outbox)]
+        async with harness.db.begin() as session:
+            conversation = await session.get(Conversation, before.id)
+            assert conversation is not None
+            conversation.state = state
+        await send(harness, INCIDENT_T2)
+        conversation = await harness.conversation()
+        assert conversation.state == state
+        assert draft_of(conversation) == draft
+        assert [row.id for row in await harness.rows(Outbox)] == outbox_ids
+        assert harness.codes == []
+>       assert harness.classifier_calls == []
+E       assert [{'model': 'g...son_object'}}] == []
+E         
+E         Left contains one more item: {'model': 'google/gemini-2.5-flash-lite', 'messages': [{'role': 'system', 'content': 'Eres una capa de interpretación ...": 0}\n\nMensaje:\nMe interesa confesión bajo la luna'}], 'temperature': 0, 'response_format': {'type': 'json_object'}}
+E         Use -v to get more diff
+
+tests/booking_conversation/test_plan_selection_after_catalog_edges.py:304: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:22:42 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:22:42 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:22:42 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=None request_id=None state_after=HUMAN_ACTIVE state_before=HUMAN_ACTIVE transition=None
+2026-10-06 20:22:42 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=SILENT_HUMAN_ACTIVE request_id=None
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_edges.py::test_g3_catalog_with_date_replay_and_repeat_preserve_single_pdf_and_context
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_edges.py::test_g3_paused_catalog_conversation_stays_silent_on_plan_name[WAITING_FOR_HUMAN]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_edges.py::test_g3_paused_catalog_conversation_stays_silent_on_plan_name[HUMAN_ACTIVE]
+3 failed, 61 passed in 233.15s (0:03:53)

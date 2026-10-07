@@ -1,0 +1,618 @@
+FF................FFFFFFFFFFFFF..F                                       [100%]
+=================================== FAILURES ===================================
+_ test_g2_literal_incident_selects_proposal_and_preserves_catalog_date[False] __
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=1)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_literal_incident_selec0')
+older_pending = False
+
+    @pytest.mark.parametrize("older_pending", [False, True])
+    async def test_g2_literal_incident_selects_proposal_and_preserves_catalog_date(
+        harness: Harness, tmp_path: Path, older_pending: bool
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        if older_pending:
+            await seed_older_pending_request(harness)
+    
+        await send(harness, INCIDENT_T1)
+        conversation = await current_conversation(harness)
+        assert harness.codes == ["RESP-EVENTS-PROPOSAL-001"]
+        assert conversation.state == "BOT_ACTIVE"
+        assert conversation.pending_action is None
+        assert conversation.pending_fields == []
+>       assert draft_of(conversation).get("date") == "2026-10-14"
+               ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = <app.conversation.models.Conversation object at 0x7eb83a3cfd40>
+
+    def draft_of(conversation: Any) -> dict:
+        draft = getattr(conversation, "booking_draft", None)
+>       assert isinstance(draft, dict), "Falta booking_draft persistido"
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Falta booking_draft persistido
+
+tests/booking_conversation/helpers.py:148: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:13:39 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:13:39 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+__ test_g2_literal_incident_selects_proposal_and_preserves_catalog_date[True] __
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=1)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_literal_incident_selec1')
+older_pending = True
+
+    @pytest.mark.parametrize("older_pending", [False, True])
+    async def test_g2_literal_incident_selects_proposal_and_preserves_catalog_date(
+        harness: Harness, tmp_path: Path, older_pending: bool
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        if older_pending:
+            await seed_older_pending_request(harness)
+    
+        await send(harness, INCIDENT_T1)
+        conversation = await current_conversation(harness)
+        assert harness.codes == ["RESP-EVENTS-PROPOSAL-001"]
+        assert conversation.state == "BOT_ACTIVE"
+        assert conversation.pending_action is None
+        assert conversation.pending_fields == []
+>       assert draft_of(conversation).get("date") == "2026-10-14"
+               ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = <app.conversation.models.Conversation object at 0x7eb839e79c40>
+
+    def draft_of(conversation: Any) -> dict:
+        draft = getattr(conversation, "booking_draft", None)
+>       assert isinstance(draft, dict), "Falta booking_draft persistido"
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Falta booking_draft persistido
+
+tests/booking_conversation/helpers.py:148: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:13:41 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:13:41 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[me interesa Confesi\xf3n bajo la Luna o Noche Inolvidable] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_ambiguous_or_unknown_p0')
+message = 'me interesa Confesión bajo la Luna o Noche Inolvidable'
+
+>   ???
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:26 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:26 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:26 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:26 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[me interesa un plan desconocido] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_ambiguous_or_unknown_p1')
+message = 'me interesa un plan desconocido'
+
+>   ???
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:27 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:27 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:27 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:27 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[quiero un plan que no existe] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_ambiguous_or_unknown_p2')
+message = 'quiero un plan que no existe'
+
+>   ???
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:29 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:29 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:29 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:29 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[el de otro nombre] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_ambiguous_or_unknown_p3')
+message = 'el de otro nombre'
+
+>   ???
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:31 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:31 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:31 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:31 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[plan inexistente] __
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_ambiguous_or_unknown_p4')
+message = 'plan inexistente'
+
+>   ???
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:33 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:33 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:33 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:33 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[estrellas perdidas] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_ambiguous_or_unknown_p5')
+message = 'estrellas perdidas'
+
+>   ???
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:35 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:35 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:35 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:35 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+______________ test_g2_homonymous_active_plans_require_selection _______________
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_homonymous_active_plan0')
+
+>   ???
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:265: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:39 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:39 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:39 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:39 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_______ test_g2_plan_selection_stays_with_active_lead_event_type[False] ________
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_plan_selection_stays_w0')
+inactive = False
+
+        harness: Harness, tmp_path: Path, inactive: bool
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        if inactive:
+            async with harness.db.begin() as session:
+                plan = await session.scalar(select(Plan).where(Plan.code == "CONFESION_LUNA"))
+                assert plan is not None
+                plan.active = False
+        await send(harness, PROPOSAL_CATALOG)
+        await send(harness, INCIDENT_T2 if inactive else "me interesa cinema y amor")
+        await assert_plan_options(harness, "PROPOSAL")
+        conversation = await current_conversation(harness)
+>       event = next(
+            event
+            for event in await harness.rows(Event)
+            if event.lead_id == conversation.active_lead_id
+        )
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:281: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+        assert conversation.state == "COLLECTING_EVENT_DATA"
+>       assert conversation.pending_action == "SELECT_BOOKING_PLAN"
+E       AssertionError: assert 'SELECT_BOOKING_DATETIME' == 'SELECT_BOOKING_PLAN'
+E         
+E         - SELECT_BOOKING_PLAN
+E         ?                ^^ ^
+E         + SELECT_BOOKING_DATETIME
+E         ?                ^ ^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:125: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:43 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:43 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:43 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-06 20:14:43 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+________ test_g2_plan_selection_stays_with_active_lead_event_type[True] ________
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_plan_selection_stays_w1')
+inactive = True
+
+        harness: Harness, tmp_path: Path, inactive: bool
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        if inactive:
+            async with harness.db.begin() as session:
+                plan = await session.scalar(select(Plan).where(Plan.code == "CONFESION_LUNA"))
+                assert plan is not None
+                plan.active = False
+        await send(harness, PROPOSAL_CATALOG)
+        await send(harness, INCIDENT_T2 if inactive else "me interesa cinema y amor")
+        await assert_plan_options(harness, "PROPOSAL")
+        conversation = await current_conversation(harness)
+>       event = next(
+            event
+            for event in await harness.rows(Event)
+            if event.lead_id == conversation.active_lead_id
+        )
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:281: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+event_type = 'PROPOSAL'
+
+    async def assert_plan_options(harness: Harness, event_type: str) -> None:
+        conversation = await current_conversation(harness)
+>       assert conversation.state == "COLLECTING_EVENT_DATA"
+E       AssertionError: assert 'WAITING_FOR_APPOINTMENT_DATE' == 'COLLECTING_EVENT_DATA'
+E         
+E         - COLLECTING_EVENT_DATA
+E         + WAITING_FOR_APPOINTMENT_DATE
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:124: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:47 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:47 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:14:47 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM intent=SCHEDULE_VISIT pending_action=SELECT_VISIT_DATE request_id=None state_after=WAITING_FOR_APPOINTMENT_DATE state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_APPOINTMENT_DATE
+2026-10-06 20:14:47 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_catalog_day_without_month_survives_until_plan_confirmation[today0-14-candidate0] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=1)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_catalog_day_without_mo0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb838b45e80>
+today = datetime.date(2026, 10, 6), day = 14
+candidate = datetime.date(2026, 10, 14)
+
+        [
+            (date(2026, 10, 6), 14, date(2026, 10, 14)),
+            (date(2026, 10, 6), 31, date(2026, 10, 31)),
+            (date(2026, 10, 31), 14, date(2026, 11, 14)),
+            (date(2026, 10, 31), 31, date(2026, 12, 31)),
+        ],
+    )
+    async def test_g2_catalog_day_without_month_survives_until_plan_confirmation(
+        harness: Harness,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        today: date,
+        day: int,
+        candidate: date,
+    ) -> None:
+        set_clock(monkeypatch, today)
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, f"Hola Me gustaría agendar una pedida de mano para el {day}")
+        conversation = await current_conversation(harness)
+        assert conversation.pending_action is None
+        assert draft_of(conversation).get("date") == candidate.isoformat()
+        assert draft_of(conversation).get("date_confirmation") is True
+>       await send(harness, INCIDENT_T2)
+               ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:314: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = <app.conversation.models.Conversation object at 0x7eb838cf3170>
+
+    def draft_of(conversation: Any) -> dict:
+        draft = getattr(conversation, "booking_draft", None)
+>       assert isinstance(draft, dict), "Falta booking_draft persistido"
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Falta booking_draft persistido
+
+tests/booking_conversation/helpers.py:148: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:50 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:50 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_catalog_day_without_month_survives_until_plan_confirmation[today1-31-candidate1] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=1)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_catalog_day_without_mo1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb838bf7710>
+today = datetime.date(2026, 10, 6), day = 31
+candidate = datetime.date(2026, 10, 31)
+
+        [
+            (date(2026, 10, 6), 14, date(2026, 10, 14)),
+            (date(2026, 10, 6), 31, date(2026, 10, 31)),
+            (date(2026, 10, 31), 14, date(2026, 11, 14)),
+            (date(2026, 10, 31), 31, date(2026, 12, 31)),
+        ],
+    )
+    async def test_g2_catalog_day_without_month_survives_until_plan_confirmation(
+        harness: Harness,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        today: date,
+        day: int,
+        candidate: date,
+    ) -> None:
+        set_clock(monkeypatch, today)
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, f"Hola Me gustaría agendar una pedida de mano para el {day}")
+        conversation = await current_conversation(harness)
+        assert conversation.pending_action is None
+        assert draft_of(conversation).get("date") == candidate.isoformat()
+        assert draft_of(conversation).get("date_confirmation") is True
+>       await send(harness, INCIDENT_T2)
+               ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:314: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = <app.conversation.models.Conversation object at 0x7eb838f0ccb0>
+
+    def draft_of(conversation: Any) -> dict:
+        draft = getattr(conversation, "booking_draft", None)
+>       assert isinstance(draft, dict), "Falta booking_draft persistido"
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Falta booking_draft persistido
+
+tests/booking_conversation/helpers.py:148: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:52 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:52 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_catalog_day_without_month_survives_until_plan_confirmation[today2-14-candidate2] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=1)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_catalog_day_without_mo2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb838cd1520>
+today = datetime.date(2026, 10, 31), day = 14
+candidate = datetime.date(2026, 11, 14)
+
+        [
+            (date(2026, 10, 6), 14, date(2026, 10, 14)),
+            (date(2026, 10, 6), 31, date(2026, 10, 31)),
+            (date(2026, 10, 31), 14, date(2026, 11, 14)),
+            (date(2026, 10, 31), 31, date(2026, 12, 31)),
+        ],
+    )
+    async def test_g2_catalog_day_without_month_survives_until_plan_confirmation(
+        harness: Harness,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        today: date,
+        day: int,
+        candidate: date,
+    ) -> None:
+        set_clock(monkeypatch, today)
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, f"Hola Me gustaría agendar una pedida de mano para el {day}")
+        conversation = await current_conversation(harness)
+        assert conversation.pending_action is None
+        assert draft_of(conversation).get("date") == candidate.isoformat()
+        assert draft_of(conversation).get("date_confirmation") is True
+>       await send(harness, INCIDENT_T2)
+               ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:314: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = <app.conversation.models.Conversation object at 0x7eb8395cef00>
+
+    def draft_of(conversation: Any) -> dict:
+        draft = getattr(conversation, "booking_draft", None)
+>       assert isinstance(draft, dict), "Falta booking_draft persistido"
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Falta booking_draft persistido
+
+tests/booking_conversation/helpers.py:148: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:56 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:56 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_g2_catalog_day_without_month_survives_until_plan_confirmation[today3-31-candidate3] _
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=1)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_catalog_day_without_mo3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb838bf7110>
+today = datetime.date(2026, 10, 31), day = 31
+candidate = datetime.date(2026, 12, 31)
+
+        [
+            (date(2026, 10, 6), 14, date(2026, 10, 14)),
+            (date(2026, 10, 6), 31, date(2026, 10, 31)),
+            (date(2026, 10, 31), 14, date(2026, 11, 14)),
+            (date(2026, 10, 31), 31, date(2026, 12, 31)),
+        ],
+    )
+    async def test_g2_catalog_day_without_month_survives_until_plan_confirmation(
+        harness: Harness,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        today: date,
+        day: int,
+        candidate: date,
+    ) -> None:
+        set_clock(monkeypatch, today)
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        await send(harness, f"Hola Me gustaría agendar una pedida de mano para el {day}")
+        conversation = await current_conversation(harness)
+        assert conversation.pending_action is None
+        assert draft_of(conversation).get("date") == candidate.isoformat()
+        assert draft_of(conversation).get("date_confirmation") is True
+>       await send(harness, INCIDENT_T2)
+               ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:314: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = <app.conversation.models.Conversation object at 0x7eb8391fd0a0>
+
+    def draft_of(conversation: Any) -> dict:
+        draft = getattr(conversation, "booking_draft", None)
+>       assert isinstance(draft, dict), "Falta booking_draft persistido"
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Falta booking_draft persistido
+
+tests/booking_conversation/helpers.py:148: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:14:59 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:14:59 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+__________ test_g2_older_pending_request_still_blocks_final_creation ___________
+
+harness = Harness(db=async_sessionmaker(class_='AsyncSession', bind=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7eb83...dation_errors": [], "needs_confirmation": true}], "needs_confirmation": false, "information_category": null}'}, turn=2)
+tmp_path = PosixPath('/tmp/pytest-of-emerson/pytest-0/test_g2_older_pending_request_0')
+
+    ) -> None:
+        await harness.seed(event_type=None, with_lead=False)
+        await seed_assets(harness, tmp_path)
+        prior_id = await seed_older_pending_request(harness)
+        await send(harness, INCIDENT_T1)
+        await send(harness, INCIDENT_T2)
+        await assert_selected_plan(harness, "CONFESION_LUNA")
+        await send(harness, "sí")
+>       await send(harness, "7 pm")
+
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:362: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/booking_conversation/test_plan_selection_after_catalog_g2.py:108: in assert_selected_plan
+    assert conversation.state == "COLLECTING_EVENT_DATA"
+            ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = <app.conversation.models.Conversation object at 0x7eb838b23bc0>
+
+    def draft_of(conversation: Any) -> dict:
+        draft = getattr(conversation, "booking_draft", None)
+>       assert isinstance(draft, dict), "Falta booking_draft persistido"
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Falta booking_draft persistido
+
+tests/booking_conversation/helpers.py:148: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-06 20:15:10 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=GENERAL_INFORMATION pending_action=None request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-06 20:15:10 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-06 20:15:10 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC intent=HUMAN_REQUEST pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_HUMAN
+2026-10-06 20:15:11 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+=========================== short test summary info ============================
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_literal_incident_selects_proposal_and_preserves_catalog_date[False]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_literal_incident_selects_proposal_and_preserves_catalog_date[True]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[me interesa Confesi\xf3n bajo la Luna o Noche Inolvidable]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[me interesa un plan desconocido]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[quiero un plan que no existe]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[el de otro nombre]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[plan inexistente]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_ambiguous_or_unknown_plan_asks_existing_plan_list[estrellas perdidas]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_homonymous_active_plans_require_selection
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_plan_selection_stays_with_active_lead_event_type[False]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_plan_selection_stays_with_active_lead_event_type[True]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_catalog_day_without_month_survives_until_plan_confirmation[today0-14-candidate0]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_catalog_day_without_month_survives_until_plan_confirmation[today1-31-candidate1]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_catalog_day_without_month_survives_until_plan_confirmation[today2-14-candidate2]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_catalog_day_without_month_survives_until_plan_confirmation[today3-31-candidate3]
+FAILED tests/booking_conversation/test_plan_selection_after_catalog_g2.py::test_g2_older_pending_request_still_blocks_final_creation
+16 failed, 18 passed in 93.64s (0:01:33)

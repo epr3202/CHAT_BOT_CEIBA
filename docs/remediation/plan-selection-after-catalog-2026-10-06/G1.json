@@ -1,0 +1,238 @@
+[
+  {
+    "id": 6883,
+    "conversation_id": 206,
+    "direction": "INBOUND",
+    "text": {
+      "body": "Hola Me gustaría agendar una pedida de mano para el 14"
+    },
+    "created_at": "2026-10-06T12:03:24.516516+00:00"
+  },
+  {
+    "id": 6884,
+    "conversation_id": 206,
+    "direction": "OUTBOUND",
+    "text": {
+      "body": "¡Qué momento tan especial! Nos encanta ser parte de una pedida de mano. Te comparto el catálogo con nuestras experiencias para ese \"sí\": cada una está pensada para que la sorpresa sea inolvidable. Míralo con calma y cuéntame cuál te enamora y qué fecha tienes en mente; la disponibilidad depende de la agenda, así que entre más pronto la revisemos, mejor. Estoy aquí para ayudarte a armarlo. 💍"
+    },
+    "created_at": "2026-10-06T12:03:25.597429+00:00"
+  },
+  {
+    "id": 6885,
+    "conversation_id": 206,
+    "direction": "OUTBOUND",
+    "text": null,
+    "created_at": "2026-10-06T12:03:27.550944+00:00"
+  },
+  {
+    "id": 6886,
+    "conversation_id": 206,
+    "direction": "INBOUND",
+    "text": {
+      "body": "Me interesa confesión bajo la luna"
+    },
+    "created_at": "2026-10-06T12:04:30.795875+00:00"
+  },
+  {
+    "id": 6887,
+    "conversation_id": 206,
+    "direction": "OUTBOUND",
+    "text": {
+      "body": "Perfecto, tu solicitud ya quedó registrada. Un asesor continuará contigo dentro de nuestro horario de atención, de martes a sábado entre las 8:00 a. m. y las 4:00 p. m."
+    },
+    "created_at": "2026-10-06T12:04:31.86105+00:00"
+  },
+  {
+    "id": 206,
+    "state": "WAITING_FOR_HUMAN",
+    "pending_action": "WAIT_FOR_HUMAN",
+    "last_question_code": "RESP-HANDOFF-002",
+    "booking_draft": null,
+    "bot_enabled": true
+  },
+  {
+    "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a",
+    "conversation_id": 197,
+    "lead_id": "5a8fd2dd-bfe1-42a6-b713-80bfb2573a8d",
+    "event_id": "bee568c9-fd4a-4919-8bdf-4382cb4bcd2d",
+    "status": "PAYMENT_PENDING",
+    "plan_id": "f4143791-fb04-4493-a854-a6d6c32f39bf",
+    "created_at": "2026-10-02T20:09:28.943665+00:00",
+    "updated_at": "2026-10-02T20:12:25.428925+00:00"
+  },
+  {
+    "reservation_id": "de2cbd2a-2586-4925-9d4f-fa67b2aff0b2",
+    "conversation_id": 196,
+    "lead_id": "1634ebc2-8871-4130-a151-7c2505cd0808",
+    "event_id": "8686bbfc-4b5d-4c5b-a9b3-ac29ae1deb34",
+    "status": "RESERVED",
+    "plan_id": "6e35f427-1aba-4a55-bfa3-fb1ec8208613",
+    "created_at": "2026-10-02T19:50:55.826304+00:00",
+    "updated_at": "2026-10-02T20:02:41.08512+00:00"
+  },
+  {
+    "reservation_id": "2843c664-e99c-4045-88c8-db0e5a581ba0",
+    "conversation_id": 195,
+    "lead_id": "36904ca7-791d-4eac-bf8b-db1d3d54d22d",
+    "event_id": "534c8ff2-477f-42ce-b018-c9bba41a9c3a",
+    "status": "CANCELLED",
+    "plan_id": "f4143791-fb04-4493-a854-a6d6c32f39bf",
+    "created_at": "2026-10-02T13:13:36.642406+00:00",
+    "updated_at": "2026-10-02T13:24:06.59008+00:00"
+  },
+  {
+    "id": 6946,
+    "action": "CONVERSATION_STATE_TRANSITION",
+    "old_value": {
+      "conversation_id": 206,
+      "state": "NEW"
+    },
+    "new_value": {
+      "conversation_id": 206,
+      "state": "BOT_ACTIVE"
+    },
+    "reason": "Initial valid WhatsApp message stored",
+    "request_id": null,
+    "created_at": "2026-10-06T12:03:24.516516+00:00"
+  },
+  {
+    "id": 6947,
+    "action": "CONVERSATION_STATE_TRANSITION",
+    "old_value": {
+      "conversation_id": 206,
+      "state": "BOT_ACTIVE"
+    },
+    "new_value": {
+      "conversation_id": 206,
+      "state": "ANSWERING_INFORMATION"
+    },
+    "reason": "General information detected",
+    "request_id": null,
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6948,
+    "action": "CATALOG_EVENT_TYPE_RESOLVED",
+    "old_value": null,
+    "new_value": {
+      "conversation_id": 206,
+      "event_type": "PROPOSAL",
+      "matched_label": "pedida de mano",
+      "decision_source": "DETERMINISTIC",
+      "source": "FIXED_PRICE_MENTION"
+    },
+    "reason": "Fixed-price information event type resolved from text",
+    "request_id": "6d4486a4-a98a-4b77-827f-b8f8b1a8342a",
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6949,
+    "action": "LEAD_CREATED",
+    "old_value": null,
+    "new_value": {
+      "lead_id": "cb4d263c-7bf9-47fe-8883-c6e932bc0d3d",
+      "conversation_id": 206
+    },
+    "reason": "Commercial capture started",
+    "request_id": "6d4486a4-a98a-4b77-827f-b8f8b1a8342a",
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6950,
+    "action": "EVENT_CREATED",
+    "old_value": null,
+    "new_value": {
+      "event_id": "6651ef3e-76cf-4935-afea-48bd3f6c81a4",
+      "lead_id": "cb4d263c-7bf9-47fe-8883-c6e932bc0d3d"
+    },
+    "reason": "Commercial capture started",
+    "request_id": "6d4486a4-a98a-4b77-827f-b8f8b1a8342a",
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6951,
+    "action": "EVENT_TYPE_CAPTURED",
+    "old_value": {
+      "event_type": null,
+      "event_type_other": null
+    },
+    "new_value": {
+      "event_id": "6651ef3e-76cf-4935-afea-48bd3f6c81a4",
+      "event_type": "PROPOSAL"
+    },
+    "reason": "Event type captured during quote data collection",
+    "request_id": "6d4486a4-a98a-4b77-827f-b8f8b1a8342a",
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6952,
+    "action": "CATALOG_SEND_ENQUEUED",
+    "old_value": null,
+    "new_value": {
+      "catalog_asset_id": "025fea52-de2b-463c-ace0-a220211e284a",
+      "trigger": "PROACTIVE",
+      "outbox_id": 3421
+    },
+    "reason": "Catalog document outbox enqueued",
+    "request_id": "6d4486a4-a98a-4b77-827f-b8f8b1a8342a",
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6953,
+    "action": "FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO",
+    "old_value": null,
+    "new_value": {
+      "conversation_id": 206,
+      "event_type": "PROPOSAL",
+      "lead_id": "cb4d263c-7bf9-47fe-8883-c6e932bc0d3d",
+      "sent_count": 1
+    },
+    "reason": "Fixed-price event information triggers proactive catalog selection",
+    "request_id": "6d4486a4-a98a-4b77-827f-b8f8b1a8342a",
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6954,
+    "action": "CONVERSATION_STATE_TRANSITION",
+    "old_value": {
+      "conversation_id": 206,
+      "state": "ANSWERING_INFORMATION"
+    },
+    "new_value": {
+      "conversation_id": 206,
+      "state": "BOT_ACTIVE"
+    },
+    "reason": "General information answered",
+    "request_id": null,
+    "created_at": "2026-10-06T12:03:24.546238+00:00"
+  },
+  {
+    "id": 6955,
+    "action": "HANDOFF_CREATED",
+    "old_value": null,
+    "new_value": {
+      "conversation_id": 206,
+      "reason": "RESERVATION_CONFIRMATION",
+      "detail": "Ya existe una solicitud pendiente de pago",
+      "priority": "NORMAL"
+    },
+    "reason": "RESERVATION_CONFIRMATION",
+    "request_id": "3a7f26cb-ec7a-4b89-8de3-a691239acdc3",
+    "created_at": "2026-10-06T12:04:30.824347+00:00"
+  },
+  {
+    "id": 6956,
+    "action": "CONVERSATION_STATE_TRANSITION",
+    "old_value": {
+      "conversation_id": 206,
+      "state": "BOT_ACTIVE"
+    },
+    "new_value": {
+      "conversation_id": 206,
+      "state": "WAITING_FOR_HUMAN"
+    },
+    "reason": "RESERVATION_CONFIRMATION",
+    "request_id": null,
+    "created_at": "2026-10-06T12:04:30.824347+00:00"
+  }
+]
