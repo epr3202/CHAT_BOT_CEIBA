@@ -1628,16 +1628,21 @@ El bot no tiene datos oficiales configurados.
 
 ---
 
-## RESP-PAYMENT-004 — Pago confirmado
+## RESP-PAYMENT-004 — Pago validado sin reserva vinculada
 
-Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v3.
-
+Estado: **APPROVED**, versión v4; publicación autorizada por Emerson en el
+mandato nocturno del 2026-10-07. Conserva v3 como historial INACTIVE.
 
 ### Condición
 
-Solo después de confirmación humana registrada.
+Solo después de aceptación humana registrada, con monto positivo, cuando el
+comprobante no está vinculado a una reserva. No afirma un anticipo suficiente
+ni modifica reservas. La confirmación de una reserva vinculada usa
+RESP-BOOKING-CONFIRMED-001 tras completar el anticipo y validar disponibilidad.
 
-> ¡Perfecto! Tu pago fue confirmado y la fecha quedó oficialmente separada. A partir de aquí, nuestro equipo seguirá acompañándote con los siguientes pasos de tu evento.
+allowed_variables: `received_amount`.
+
+> Validamos tu pago de {received_amount}. Este comprobante no separa una fecha ni confirma una reserva. Un asesor revisará contigo a qué solicitud corresponde.
 
 ---
 
@@ -2889,11 +2894,11 @@ Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2
 
 ## RESP-BOOKING-PAYMENT-001 — Payment de reserva
 
-Estado del seed para revisión: **APPROVED**, versión v3. La versión productiva
-v2 fue aprobada por Leandro el 2026-10-02; la línea Bre-B de v3 queda pendiente
-de su aprobación antes de publicar. Claude coordina la publicación y
-`BANK_BREB_KEY` de producción con Emerson. Seed/sync inactivan las versiones
-anteriores al publicar v3, sin modificar su texto histórico.
+Estado: **APPROVED**, versión v3, publicada mediante PR #43 el 2026-10-07
+por autorización explícita de Emerson. C4 confirmó una sola versión APPROVED.
+Seed/sync inactivan las versiones anteriores, sin modificar su texto histórico.
+Los datos bancarios y Bre-B proceden exclusivamente de Settings; aquí no se
+publican sus valores. El texto enviable de v3 permanece íntegro.
 
 allowed_variables: `account_holder`, `account_number`, `account_type`,
 `bank_name`, `breb_key`, `deposit_amount`.
@@ -2926,11 +2931,31 @@ Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2
 
 ## RESP-BOOKING-PARTIAL-001 — Partial de reserva
 
-Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2.
+Estado: **APPROVED**, versión v3; publicación autorizada por Emerson en el
+mandato nocturno del 2026-10-07. Conserva v2 como historial INACTIVE.
 
+allowed_variables: `received_amount`, `paid_amount`, `deposit_amount`,
+`missing_amount`, `bank_name`, `account_type`, `account_number`, `account_holder`,
+`breb_key`. Los importes provienen de la aceptación humana, el acumulado y
+deposit_amount; los datos bancarios provienen exclusivamente de Settings.
 
+> Recibimos {received_amount}; llevas abonados {paid_amount}. El abono del 50 % para asegurar la fecha es {deposit_amount}; faltan {missing_amount}. La fecha aún no queda separada.
+> Para completar el abono, puedes transferir a {bank_name}, {account_type} No. {account_number}, a nombre de {account_holder}.
+> Llave Bre-B: {breb_key}
+> Cuando lo hagas, envíame aquí la foto del comprobante para que nuestro equipo lo revise.
 
-> Registramos tu abono. Para asegurar la fecha faltan {missing_amount}; cuando completes el 50 % envíame el comprobante y confirmamos tu reserva.
+---
+
+## RESP-BOOKING-PENDING-001 — Solicitud anterior pendiente de pago
+
+Estado: **APPROVED**, versión v1; publicación autorizada por Emerson en el
+mandato nocturno del 2026-10-07.
+
+Solo para el handoff RESERVATION_CONFIRMATION por una solicitud anterior del
+cliente en PAYMENT_PENDING o PAYMENT_REVIEW. Conserva el guard global y la
+pausa. La entrega requiere el caso de handoff correspondiente.
+
+> Ya tienes una reserva pendiente de pago o en revisión. Para evitar duplicarla, un asesor continuará contigo dentro de nuestro horario de atención, de martes a sábado entre las 8:00 a. m. y las 4:00 p. m.
 
 ---
 

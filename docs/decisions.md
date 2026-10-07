@@ -374,3 +374,47 @@ la llave antes de crear una solicitud de pago cuando la plantilla la usa.
 El handler pasa la variable solo para esa plantilla; no agrega variables
 extra a la versión anterior y mantiene KnowledgeRenderError si breb_key no
 está en allowed_variables.
+
+## 2026-10-07 — Pago validado, anticipo suficiente y solicitud previa
+
+Emerson autoriza auditoría de producción en lectura, G2 rojo, G3, un push,
+CI, merge sin squash y deploy, sin revisión intermedia. Prohíbe modificar
+el .env, imprimir credenciales, resetear producción o ejecutar E2E/WhatsApp.
+La evidencia y las consultas están en
+[G1](remediation/payment-messaging-2026-10-07/G1.md).
+El PR #43 quedó publicado por merge dc50b3962ae66e42b4c74d07f4978e211ac4faaf;
+C4 confirmó PAYMENT v3 como única versión APPROVED. Esta autorización explícita
+de Emerson completa la publicación que la decisión anterior dejaba pendiente.
+
+El endpoint de aceptación ya exige amount_cop entero positivo. El dominio
+ya acumula pagos vinculados, compara contra deposit_amount y solo separa
+fecha al completar el anticipo y comprobar disponibilidad. No cambia ese
+contrato, el esquema, los estados ni la autoridad humana de validación.
+Para NO_RESERVATION falta un precio autoritativo; no se asocia el comprobante
+a una reserva por inferencia ni se calcula un anticipo ficticio.
+
+RESP-PAYMENT-004 v4 reconoce el monto humano validado sin afirmar reserva ni
+fecha separada. RESP-BOOKING-PARTIAL-001 v3 informa monto recibido, acumulado,
+anticipo y faltante, declara que la fecha aún no está separada y reutiliza
+las instrucciones bancarias y el presentador Bre-B de la versión desplegada.
+RESP-BOOKING-PENDING-001 v1 explica el duplicado global y el horario del asesor.
+La autorización de publicación de estas versiones procede del mandato nocturno
+de Emerson; no se atribuye una aprobación nueva a Leandro.
+
+H2 quedó confirmada por audit 7002: la solicitud anterior seguía pendiente.
+Se conserva el guard global y la pausa; solo cambia su mensaje. Las reservas
+nuevas siguen enviando PAYMENT v3 dentro/fuera de horario. El aviso de asesor
+corresponde al handoff por solicitud previa; no se agrega a una reserva nueva
+que no requiere asesor. Se acota así el caso G2 de aviso fuera de horario.
+
+D3 queda descartado: la base registra fecha, respuesta Si y hora en turnos
+separados. Se conserva la confirmación real y no se cambia ese contrato.
+Los fallos de plantillas sensibles deben registrar ERROR y audit_event,
+sin degradación silenciosa. Las nuevas versiones se publican por seed/sync
+existente, sin migraciones de esquema ni scripts manuales contra producción.
+
+El reset de conversación no cancela reservas. La limpieza futura de Emerson
+requiere rechazar el comprobante de prueba 8 y cancelar la solicitud de prueba
+f3fb9b04-1f40-4172-b9e2-b157b1ecf41a con los endpoints administrativos auditados,
+y después resetear la conversación. El rechazo puede emitir una notificación;
+estas acciones se entregan para ejecución humana y no se ejecutan en esta tarea.

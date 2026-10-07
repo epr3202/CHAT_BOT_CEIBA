@@ -1864,6 +1864,13 @@ históricos permanecen intactos. Un abono inferior al anticipo regresa de
 El rechazo aplica la misma condición sin incrementar el dinero. La evidencia
 revisada no se puede aceptar de nuevo.
 
+La aceptación sin reserva vinculada devuelve NO_RESERVATION, no altera ninguna
+reserva y notifica RESP-PAYMENT-004 v4 con el monto humano validado, sin afirmar
+fecha separada. Un parcial vinculado notifica RESP-BOOKING-PARTIAL-001 v3 con
+monto recibido, acumulado, anticipo requerido, faltante e instrucciones bancarias
+y Bre-B; conserva PAYMENT_PENDING o PAYMENT_REVIEW según los comprobantes
+restantes. No cambia esta matriz ni agrega estados o pending_action.
+
 Cuando el acumulado alcanza el 50 %, se adquiere Calendar fuera de la transacción
 y se revalida D3 contra reservas frescas bajo un bloqueo transaccional común.
 Un conflicto conserva `PAYMENT_REVIEW` y registra el dinero recibido para que un
@@ -2963,6 +2970,14 @@ Otra solicitud del mismo cliente con PAYMENT_PENDING/PAYMENT_REVIEW existente
 escala para evitar duplicados, incluso si la solicitud es manual o de otra
 conversación. Se comprueba al inicio y antes de crear la solicitud tras confirmar.
 Desactivar el flag con borrador activo también escala.
+
+El duplicado usa RESP-BOOKING-PENDING-001 v1, explicando la solicitud pendiente
+de pago/revisión y el horario del asesor, con autorización de entrega del handoff.
+Una solicitud nueva envía RESP-BOOKING-PAYMENT-001 v3 dentro o fuera de horario;
+el horario humano no sustituye esas instrucciones. No se agrega un handoff a
+una solicitud nueva que no requiere asesor. Un error de render registra ERROR
+y TEMPLATE_RENDER_FAILED con código, conversación y request_id; el handoff o
+NOTIFICATION_SKIPPED conserva el diagnóstico sin revertir una decisión humana.
 
 **Excepción acotada de continuación de catálogo (2026-10-06):** la respuesta a
 `RESP-EVENTS-PROPOSAL-001` o `RESP-EVENTS-ROMANTIC-001`, en las condiciones de

@@ -1,0 +1,340 @@
+Pager usage is off.
+BEGIN
+SET
+                                           Table "public.message"
+       Column        |           Type           | Collation | Nullable |               Default               
+---------------------+--------------------------+-----------+----------+-------------------------------------
+ id                  | integer                  |           | not null | nextval('message_id_seq'::regclass)
+ external_message_id | character varying(255)   |           | not null | 
+ conversation_id     | integer                  |           | not null | 
+ customer_id         | integer                  |           | not null | 
+ channel             | character varying(32)    |           | not null | 
+ direction           | character varying(16)    |           | not null | 
+ message_type        | character varying(64)    |           | not null | 
+ content             | json                     |           | not null | 
+ provider_timestamp  | timestamp with time zone |           |          | 
+ created_at          | timestamp with time zone |           | not null | now()
+Indexes:
+    "message_pkey" PRIMARY KEY, btree (id)
+    "ix_message_conversation_id" btree (conversation_id)
+    "ix_message_customer_id" btree (customer_id)
+    "message_external_message_id_key" UNIQUE CONSTRAINT, btree (external_message_id)
+Check constraints:
+    "ck_message_channel" CHECK (channel::text = 'WHATSAPP'::text)
+Foreign-key constraints:
+    "message_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    "message_customer_id_fkey" FOREIGN KEY (customer_id) REFERENCES customer(id)
+Referenced by:
+    TABLE "inbox_job" CONSTRAINT "inbox_job_message_id_fkey" FOREIGN KEY (message_id) REFERENCES message(id)
+    TABLE "message_provider_status" CONSTRAINT "message_provider_status_message_id_fkey" FOREIGN KEY (message_id) REFERENCES message(id)
+    TABLE "outbox" CONSTRAINT "outbox_message_id_fkey" FOREIGN KEY (message_id) REFERENCES message(id)
+    TABLE "payment_evidence" CONSTRAINT "payment_evidence_message_id_fkey" FOREIGN KEY (message_id) REFERENCES message(id)
+
+                                             Table "public.outbox"
+         Column         |           Type           | Collation | Nullable |              Default               
+------------------------+--------------------------+-----------+----------+------------------------------------
+ id                     | integer                  |           | not null | nextval('outbox_id_seq'::regclass)
+ conversation_id        | integer                  |           | not null | 
+ message_id             | integer                  |           | not null | 
+ channel                | character varying(32)    |           | not null | 
+ recipient_phone_number | character varying(32)    |           | not null | 
+ payload                | json                     |           | not null | 
+ status                 | character varying(32)    |           | not null | 
+ created_at             | timestamp with time zone |           | not null | now()
+ attempts               | integer                  |           | not null | 
+ last_error             | character varying(1000)  |           |          | 
+ sent_at                | timestamp with time zone |           |          | 
+ next_attempt_at        | timestamp with time zone |           |          | 
+ claimed_at             | timestamp with time zone |           |          | 
+ message_kind           | character varying(32)    |           | not null | 
+ catalog_asset_id       | uuid                     |           |          | 
+ claim_token            | uuid                     |           |          | 
+ delivery_context       | jsonb                    |           |          | 
+ send_admission         | jsonb                    |           |          | 
+ delivery_reason        | character varying(128)   |           |          | 
+ delivery_decided_at    | timestamp with time zone |           |          | 
+Indexes:
+    "outbox_pkey" PRIMARY KEY, btree (id)
+    "ix_outbox_conversation_id" btree (conversation_id)
+    "ix_outbox_message_id" btree (message_id)
+    "ix_outbox_status_next_attempt_at" btree (status, next_attempt_at)
+Check constraints:
+    "ck_outbox_channel" CHECK (channel::text = 'WHATSAPP'::text)
+    "ck_outbox_document_has_catalog_asset" CHECK (message_kind::text <> 'DOCUMENT'::text OR catalog_asset_id IS NOT NULL)
+    "ck_outbox_message_kind" CHECK (message_kind::text = ANY (ARRAY['TEXT'::character varying, 'DOCUMENT'::character varying]::text[]))
+Foreign-key constraints:
+    "fk_outbox_catalog_asset_id_catalog_asset" FOREIGN KEY (catalog_asset_id) REFERENCES catalog_asset(catalog_asset_id)
+    "outbox_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversation(id)
+    "outbox_message_id_fkey" FOREIGN KEY (message_id) REFERENCES message(id)
+Referenced by:
+    TABLE "catalog_send" CONSTRAINT "catalog_send_outbound_message_id_fkey" FOREIGN KEY (outbound_message_id) REFERENCES outbox(id)
+
+Conversaciones del cliente de la conversación forense 206
+ id  |       state       | pending_action | last_question_code |            active_lead_id            |          created_at           |        last_message_at        | booking_draft 
+-----+-------------------+----------------+--------------------+--------------------------------------+-------------------------------+-------------------------------+---------------
+   1 | CLOSED            |                |                    |                                      | 2026-08-13 04:19:16.056655+00 | 2026-08-17 21:21:02.507957+00 | 
+  12 | CLOSED            |                |                    |                                      | 2026-08-17 21:43:56.074746+00 | 2026-08-17 21:46:27.849309+00 | 
+  13 | CLOSED            |                |                    |                                      | 2026-08-17 21:47:18.536017+00 | 2026-08-17 21:47:18.536017+00 | 
+  14 | CLOSED            |                |                    |                                      | 2026-08-17 23:03:29.749258+00 | 2026-08-17 23:05:49.864205+00 | 
+  15 | CLOSED            |                |                    |                                      | 2026-08-18 00:00:17.649003+00 | 2026-08-19 15:21:48.456248+00 | 
+ 127 | CLOSED            |                |                    |                                      | 2026-08-19 15:26:45.307731+00 | 2026-08-19 15:47:52.001375+00 | 
+ 129 | CLOSED            |                |                    |                                      | 2026-08-19 15:48:43.843616+00 | 2026-08-19 15:48:59.253718+00 | 
+ 130 | CLOSED            |                |                    |                                      | 2026-08-19 15:50:22.430183+00 | 2026-08-19 15:51:29.558436+00 | 
+ 131 | CLOSED            |                |                    |                                      | 2026-08-19 15:57:28.089008+00 | 2026-08-19 15:58:25.085414+00 | 
+ 132 | CLOSED            |                |                    |                                      | 2026-08-19 16:05:00.826952+00 | 2026-08-19 16:05:00.826952+00 | 
+ 133 | CLOSED            |                |                    |                                      | 2026-08-19 16:06:53.878733+00 | 2026-08-19 19:51:59.077714+00 | 
+ 134 | CLOSED            |                |                    |                                      | 2026-08-19 20:25:13.210263+00 | 2026-08-19 20:26:09.036636+00 | 
+ 135 | CLOSED            |                |                    |                                      | 2026-08-19 20:53:06.567099+00 | 2026-08-19 20:55:41.704346+00 | 
+ 136 | CLOSED            |                |                    |                                      | 2026-08-19 21:22:23.539102+00 | 2026-08-20 00:00:26.218955+00 | 
+ 137 | CLOSED            |                |                    |                                      | 2026-08-20 00:57:57.909962+00 | 2026-08-20 00:57:57.909962+00 | 
+ 138 | CLOSED            |                |                    |                                      | 2026-08-20 01:24:23.8883+00   | 2026-08-20 12:37:56.63509+00  | 
+ 139 | CLOSED            |                |                    |                                      | 2026-08-20 14:32:38.964095+00 | 2026-08-20 14:32:57.279048+00 | 
+ 140 | CLOSED            |                |                    |                                      | 2026-08-20 16:18:41.863346+00 | 2026-08-21 14:03:27.105355+00 | 
+ 141 | CLOSED            |                |                    |                                      | 2026-08-21 14:04:40.541288+00 | 2026-08-21 14:35:30.779829+00 | 
+ 142 | CLOSED            |                |                    |                                      | 2026-08-21 14:35:52.55756+00  | 2026-08-21 20:38:52.187389+00 | 
+ 146 | CLOSED            |                |                    |                                      | 2026-08-24 15:08:42.31065+00  | 2026-08-24 15:10:13.090417+00 | 
+ 147 | CLOSED            |                |                    |                                      | 2026-08-24 15:10:25.41003+00  | 2026-08-24 15:15:25.727841+00 | 
+ 148 | CLOSED            |                |                    |                                      | 2026-08-24 15:17:56.855496+00 | 2026-08-24 15:19:19.255546+00 | 
+ 149 | CLOSED            |                |                    |                                      | 2026-08-24 15:19:37.604492+00 | 2026-08-24 15:21:08.381836+00 | 
+ 150 | CLOSED            |                |                    |                                      | 2026-08-24 16:58:02.137412+00 | 2026-08-24 16:58:16.474276+00 | 
+ 151 | CLOSED            |                |                    |                                      | 2026-08-24 16:59:12.084271+00 | 2026-08-24 16:59:17.08544+00  | 
+ 152 | CLOSED            |                |                    |                                      | 2026-08-24 20:03:43.961367+00 | 2026-08-24 20:05:09.707532+00 | 
+ 153 | CLOSED            |                |                    |                                      | 2026-08-24 21:19:59.186669+00 | 2026-08-24 21:20:32.370458+00 | 
+ 154 | CLOSED            |                |                    |                                      | 2026-08-24 21:23:41.076528+00 | 2026-08-25 16:17:23.704613+00 | 
+ 155 | CLOSED            |                |                    |                                      | 2026-08-25 20:00:17.007978+00 | 2026-08-31 23:04:29.566808+00 | 
+ 182 | CLOSED            |                |                    |                                      | 2026-09-27 02:53:34.071412+00 | 2026-09-27 02:53:49.786913+00 | 
+ 183 | CLOSED            |                |                    |                                      | 2026-09-27 02:54:17.735806+00 | 2026-09-27 02:58:32.626918+00 | 
+ 184 | CLOSED            |                |                    |                                      | 2026-09-27 12:24:24.275399+00 | 2026-09-27 12:24:44.160854+00 | 
+ 185 | CLOSED            |                |                    |                                      | 2026-09-27 12:30:02.325811+00 | 2026-09-27 15:08:01.619099+00 | 
+ 189 | CLOSED            |                |                    |                                      | 2026-09-29 23:55:42.996067+00 | 2026-09-29 23:59:44.737019+00 | 
+ 190 | CLOSED            |                |                    |                                      | 2026-09-30 03:37:32.115567+00 | 2026-09-30 03:38:07.263081+00 | 
+ 192 | CLOSED            |                |                    |                                      | 2026-10-01 22:41:56.691641+00 | 2026-10-01 22:44:24.948471+00 | 
+ 193 | CLOSED            |                |                    |                                      | 2026-10-01 22:45:07.608786+00 | 2026-10-01 22:46:12.225661+00 | 
+ 194 | CLOSED            |                |                    |                                      | 2026-10-02 12:27:32.13448+00  | 2026-10-02 12:29:13.626786+00 | 
+ 195 | CLOSED            |                |                    |                                      | 2026-10-02 13:11:45.890576+00 | 2026-10-02 13:13:35.85308+00  | 
+ 196 | CLOSED            |                |                    |                                      | 2026-10-02 19:47:54.021026+00 | 2026-10-02 19:50:55.121169+00 | 
+ 197 | CLOSED            |                |                    |                                      | 2026-10-02 20:08:14.229311+00 | 2026-10-02 20:09:28.088713+00 | 
+ 205 | CLOSED            |                |                    |                                      | 2026-10-06 03:07:21.408059+00 | 2026-10-06 12:02:21.10435+00  | 
+ 206 | CLOSED            |                |                    |                                      | 2026-10-06 12:03:24.516516+00 | 2026-10-06 12:04:30.795875+00 | 
+ 208 | CLOSED            |                |                    |                                      | 2026-10-07 02:51:52.452381+00 | 2026-10-07 02:52:43.640017+00 | 
+ 209 | WAITING_FOR_HUMAN | WAIT_FOR_HUMAN | RESP-HANDOFF-002   | 1d9a9946-8ed2-4f71-9f80-95aed59828f4 | 2026-10-07 02:59:07.391418+00 | 2026-10-07 02:59:48.868152+00 | 
+(46 rows)
+
+Reservas actuales del cliente
+            reservation_id            | conversation_id |               lead_id                |               plan_id                |     status     | price_cop | amount_paid_cop | payment_kind |       starts_at        |        ends_at         | calendar_status |          created_at           |          updated_at           
+--------------------------------------+-----------------+--------------------------------------+--------------------------------------+----------------+-----------+-----------------+--------------+------------------------+------------------------+-----------------+-------------------------------+-------------------------------
+ 2843c664-e99c-4045-88c8-db0e5a581ba0 |             195 | 36904ca7-791d-4eac-bf8b-db1d3d54d22d | f4143791-fb04-4493-a854-a6d6c32f39bf | CANCELLED      |    250000 |          125000 | DEPOSIT      | 2026-10-08 00:00:00+00 | 2026-10-08 03:00:00+00 | NONE            | 2026-10-02 13:13:36.642406+00 | 2026-10-02 13:24:06.59008+00
+ de2cbd2a-2586-4925-9d4f-fa67b2aff0b2 |             196 | 1634ebc2-8871-4130-a151-7c2505cd0808 | 6e35f427-1aba-4a55-bfa3-fb1ec8208613 | RESERVED       |    400000 |          200000 | DEPOSIT      | 2026-10-16 00:00:00+00 | 2026-10-16 03:00:00+00 | CONFIRMED       | 2026-10-02 19:50:55.826304+00 | 2026-10-02 20:02:41.08512+00
+ f3fb9b04-1f40-4172-b9e2-b157b1ecf41a |             197 | 5a8fd2dd-bfe1-42a6-b713-80bfb2573a8d | f4143791-fb04-4493-a854-a6d6c32f39bf | PAYMENT_REVIEW |    250000 |           45596 |              | 2026-10-15 00:00:00+00 | 2026-10-15 03:00:00+00 | NONE            | 2026-10-02 20:09:28.943665+00 | 2026-10-07 02:53:06.330865+00
+(3 rows)
+
+Comprobantes: decisión humana y vínculo
+ id | conversation_id | message_id |            reservation_id            |               lead_id                | review_status  | amount_cop | reviewed_by_agent_id |          reviewed_at          | download_status  |          created_at           |          updated_at           
+----+-----------------+------------+--------------------------------------+--------------------------------------+----------------+------------+----------------------+-------------------------------+------------------+-------------------------------+-------------------------------
+  1 |             155 |       6300 |                                      |                                      | REJECTED       |            |                    1 | 2026-10-01 23:00:40.538624+00 | FAILED_PERMANENT | 2026-08-25 20:00:27.154139+00 | 2026-10-01 23:00:40.537247+00
+  2 |             155 |       6302 |                                      |                                      | ACCEPTED       |            |                    1 | 2026-08-26 15:24:11.528379+00 | DOWNLOADED       | 2026-08-26 12:20:32.152629+00 | 2026-08-26 15:24:11.525695+00
+  3 |             195 |       6788 | 2843c664-e99c-4045-88c8-db0e5a581ba0 | 36904ca7-791d-4eac-bf8b-db1d3d54d22d | ACCEPTED       |     125000 |                    1 | 2026-10-02 13:16:25.246119+00 | DOWNLOADED       | 2026-10-02 13:14:11.407468+00 | 2026-10-02 13:16:25.239773+00
+  4 |             196 |       6808 | de2cbd2a-2586-4925-9d4f-fa67b2aff0b2 | 1634ebc2-8871-4130-a151-7c2505cd0808 | ACCEPTED       |     100000 |                    1 | 2026-10-02 19:52:36.009496+00 | DOWNLOADED       | 2026-10-02 19:51:18.072358+00 | 2026-10-02 19:52:36.00431+00
+  5 |             196 |       6811 | de2cbd2a-2586-4925-9d4f-fa67b2aff0b2 | 1634ebc2-8871-4130-a151-7c2505cd0808 | ACCEPTED       |     100000 |                    1 | 2026-10-02 20:02:40.234565+00 | DOWNLOADED       | 2026-10-02 19:52:52.08228+00  | 2026-10-02 20:02:40.230657+00
+  6 |             196 |       6812 |                                      | 1634ebc2-8871-4130-a151-7c2505cd0808 | ACCEPTED       |      45596 |                    1 | 2026-10-07 02:54:24.552941+00 | DOWNLOADED       | 2026-10-02 19:53:37.459874+00 | 2026-10-07 02:54:24.548096+00
+  7 |             197 |       6826 | f3fb9b04-1f40-4172-b9e2-b157b1ecf41a | 5a8fd2dd-bfe1-42a6-b713-80bfb2573a8d | ACCEPTED       |      45596 |                    1 | 2026-10-02 20:12:25.437235+00 | DOWNLOADED       | 2026-10-02 20:10:26.347171+00 | 2026-10-02 20:12:25.428925+00
+  8 |             208 |       6906 | f3fb9b04-1f40-4172-b9e2-b157b1ecf41a | 1e0844c6-4b2d-4098-9c35-384a1fceca3f | PENDING_REVIEW |            |                      |                               | DOWNLOADED       | 2026-10-07 02:53:06.330865+00 | 2026-10-07 02:53:11.680011+00
+(8 rows)
+
+Propuestas IA del comprobante: sin datos extraídos
+              review_id               | evidence_id |  status   | suggestion | suggested_amount_cop | ai_execution_id | attempt_number |          created_at           
+--------------------------------------+-------------+-----------+------------+----------------------+-----------------+----------------+-------------------------------
+ 8fddb923-7f2f-4e31-b365-a2b0822cde1c |           6 | COMPLETED | REVIEW     |                45596 |            3424 |              1 | 2026-10-02 20:07:12.632214+00
+ a54c7df7-587b-4d8b-9413-b1d1f50e9449 |           7 | COMPLETED | REVIEW     |                45596 |            3428 |              1 | 2026-10-02 20:10:28.010974+00
+ 7d63c336-5520-463d-ae77-86946490ff87 |           8 | COMPLETED | REJECT     |                45596 |            3463 |              1 | 2026-10-07 02:53:09.283825+00
+(3 rows)
+
+Knowledge: versiones y estado, sin valores bancarios
+           code           | version |  status  |                                        allowed_variables                                        
+--------------------------+---------+----------+-------------------------------------------------------------------------------------------------
+ RESP-BOOKING-PARTIAL-001 |       1 | INACTIVE | ["missing_amount"]
+ RESP-BOOKING-PARTIAL-001 |       2 | APPROVED | ["missing_amount"]
+ RESP-BOOKING-PAYMENT-001 |       1 | INACTIVE | ["account_holder", "account_number", "account_type", "bank_name", "deposit_amount"]
+ RESP-BOOKING-PAYMENT-001 |       2 | INACTIVE | ["account_holder", "account_number", "account_type", "bank_name", "deposit_amount"]
+ RESP-BOOKING-PAYMENT-001 |       3 | APPROVED | ["account_holder", "account_number", "account_type", "bank_name", "breb_key", "deposit_amount"]
+ RESP-EVENT-DATA-003      |       1 | INACTIVE | ["resolved_date"]
+ RESP-EVENT-DATA-003      |       2 | APPROVED | ["resolved_date"]
+ RESP-HANDOFF-001         |       1 | INACTIVE | []
+ RESP-HANDOFF-001         |       2 | APPROVED | []
+ RESP-HANDOFF-002         |       1 | INACTIVE | []
+ RESP-HANDOFF-002         |       2 | APPROVED | []
+ RESP-PAYMENT-001         |       1 | INACTIVE | []
+ RESP-PAYMENT-001         |       2 | APPROVED | []
+ RESP-PAYMENT-004         |       1 | INACTIVE | []
+ RESP-PAYMENT-004         |       2 | INACTIVE | []
+ RESP-PAYMENT-004         |       3 | APPROVED | []
+(16 rows)
+
+Mensajes del cliente posteriores al 6 de octubre: texto de entrada conocido únicamente
+  id  | conversation_id | direction |          created_at           |                       known_text                       
+------+-----------------+-----------+-------------------------------+--------------------------------------------------------
+ 6872 |             205 | INBOUND   | 2026-10-06 03:07:21.408059+00 | [texto omitido]
+ 6873 |             205 | OUTBOUND  | 2026-10-06 03:07:24.741978+00 | [texto omitido]
+ 6874 |             205 | INBOUND   | 2026-10-06 03:08:45.431849+00 | [texto omitido]
+ 6875 |             205 | OUTBOUND  | 2026-10-06 03:08:48.290759+00 | [texto omitido]
+ 6876 |             205 | OUTBOUND  | 2026-10-06 03:08:48.858518+00 | [texto omitido]
+ 6877 |             205 | INBOUND   | 2026-10-06 12:01:56.928905+00 | [texto omitido]
+ 6878 |             205 | OUTBOUND  | 2026-10-06 12:02:00.421929+00 | [texto omitido]
+ 6879 |             205 | INBOUND   | 2026-10-06 12:02:09.320585+00 | [texto omitido]
+ 6880 |             205 | OUTBOUND  | 2026-10-06 12:02:12.404408+00 | [texto omitido]
+ 6881 |             205 | INBOUND   | 2026-10-06 12:02:21.10435+00  | Si
+ 6882 |             205 | OUTBOUND  | 2026-10-06 12:02:24.256076+00 | [texto omitido]
+ 6883 |             206 | INBOUND   | 2026-10-06 12:03:24.516516+00 | Hola Me gustaría agendar una pedida de mano para el 14
+ 6884 |             206 | OUTBOUND  | 2026-10-06 12:03:25.597429+00 | [texto omitido]
+ 6885 |             206 | OUTBOUND  | 2026-10-06 12:03:27.550944+00 | [texto omitido]
+ 6886 |             206 | INBOUND   | 2026-10-06 12:04:30.795875+00 | Me interesa confesión bajo la luna
+ 6887 |             206 | OUTBOUND  | 2026-10-06 12:04:31.86105+00  | [texto omitido]
+ 6895 |             208 | INBOUND   | 2026-10-07 02:51:52.452381+00 | Hola Me gustaría agendar una pedida de mano para el 14
+ 6896 |             208 | OUTBOUND  | 2026-10-07 02:51:54.545695+00 | [texto omitido]
+ 6897 |             208 | OUTBOUND  | 2026-10-07 02:51:56.234225+00 | [texto omitido]
+ 6898 |             208 | INBOUND   | 2026-10-07 02:52:10.495802+00 | Me interesa confesión bajo la luna
+ 6899 |             208 | OUTBOUND  | 2026-10-07 02:52:12.060775+00 | [texto omitido]
+ 6900 |             208 | INBOUND   | 2026-10-07 02:52:19.241624+00 | Si
+ 6901 |             208 | OUTBOUND  | 2026-10-07 02:52:20.89516+00  | [texto omitido]
+ 6902 |             208 | INBOUND   | 2026-10-07 02:52:34.542229+00 | 8
+ 6903 |             208 | OUTBOUND  | 2026-10-07 02:52:36.724478+00 | [texto omitido]
+ 6904 |             208 | INBOUND   | 2026-10-07 02:52:43.640017+00 | Emerson
+ 6905 |             208 | OUTBOUND  | 2026-10-07 02:52:45.498362+00 | [texto omitido]
+ 6906 |             208 | INBOUND   | 2026-10-07 02:53:06.311073+00 | [texto omitido]
+ 6907 |             208 | OUTBOUND  | 2026-10-07 02:53:07.387503+00 | [texto omitido]
+ 6908 |             196 | OUTBOUND  | 2026-10-07 02:54:25.732648+00 | [texto omitido]
+ 6909 |             209 | INBOUND   | 2026-10-07 02:59:07.391418+00 | Hola Me gustaría agendar una pedida de mano para el 14
+ 6910 |             209 | OUTBOUND  | 2026-10-07 02:59:09.171633+00 | [texto omitido]
+ 6911 |             209 | OUTBOUND  | 2026-10-07 02:59:10.86224+00  | [texto omitido]
+ 6912 |             209 | INBOUND   | 2026-10-07 02:59:19.538257+00 | Me interesa confesión bajo la luna
+ 6913 |             209 | OUTBOUND  | 2026-10-07 02:59:20.718655+00 | [texto omitido]
+ 6914 |             209 | INBOUND   | 2026-10-07 02:59:24.1707+00   | Si
+ 6915 |             209 | OUTBOUND  | 2026-10-07 02:59:25.324533+00 | [texto omitido]
+ 6916 |             209 | INBOUND   | 2026-10-07 02:59:30.178949+00 | 8
+ 6917 |             209 | OUTBOUND  | 2026-10-07 02:59:32.05846+00  | [texto omitido]
+ 6918 |             209 | INBOUND   | 2026-10-07 02:59:37.145581+00 | Emerson
+ 6919 |             209 | OUTBOUND  | 2026-10-07 02:59:38.648489+00 | [texto omitido]
+ 6920 |             209 | INBOUND   | 2026-10-07 02:59:48.868152+00 | Si
+ 6921 |             209 | OUTBOUND  | 2026-10-07 02:59:50.558673+00 | [texto omitido]
+(43 rows)
+
+Auditoría seleccionada: montos, vínculo, transiciones y handoff
+  id  |          created_at           |    actor    |                   action                   |      entity      |              request_id              |                                      old_filtered                                       |                                                     new_filtered                                                      |                  reason                  
+------+-------------------------------+-------------+--------------------------------------------+------------------+--------------------------------------+-----------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------+------------------------------------------
+ 6794 | 2026-10-02 19:47:54.021026+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "NEW", "conversation_id": 196}                                                | {"state": "BOT_ACTIVE", "conversation_id": 196}                                                                       | Initial valid WhatsApp message stored
+ 6795 | 2026-10-02 19:48:15.894851+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 196}                                         | {"state": "ANSWERING_INFORMATION", "conversation_id": 196}                                                            | General information detected
+ 6796 | 2026-10-02 19:48:15.894851+00 | SYSTEM      | LEAD_CREATED                               | lead             | c23d9231-3aa6-4258-9012-33e1e3e69a5b |                                                                                         | {"conversation_id": 196}                                                                                              | 
+ 6800 | 2026-10-02 19:48:15.894851+00 | SYSTEM      | FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO | conversation     | c23d9231-3aa6-4258-9012-33e1e3e69a5b |                                                                                         | {"conversation_id": 196}                                                                                              | 
+ 6801 | 2026-10-02 19:48:15.894851+00 | SYSTEM      | ROMANTIC_CATALOG_SENT_FROM_GENERAL_INFO    | conversation     | c23d9231-3aa6-4258-9012-33e1e3e69a5b |                                                                                         | {"conversation_id": 196}                                                                                              | 
+ 6802 | 2026-10-02 19:48:15.894851+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "ANSWERING_INFORMATION", "conversation_id": 196}                              | {"state": "BOT_ACTIVE", "conversation_id": 196}                                                                       | General information answered
+ 6803 | 2026-10-02 19:48:39.663052+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 196}                                         | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 196}                                                            | Reserva autoservicio de precio fijo
+ 6808 | 2026-10-02 19:50:55.826304+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 196}                              | {"state": "BOT_ACTIVE", "conversation_id": 196}                                                                       | Solicitud pendiente de pago; sin bloqueo
+ 6810 | 2026-10-02 19:51:18.072358+00 | SYSTEM      | HANDOFF_CREATED                            | handoff          | 0e22c51a-718a-4e5d-ba4b-683b72f23402 |                                                                                         | {"detail": null, "reason": "PAYMENT_REVIEW", "conversation_id": 196}                                                  | PAYMENT_REVIEW
+ 6811 | 2026-10-02 19:51:18.072358+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 196}                                         | {"state": "WAITING_FOR_HUMAN", "conversation_id": 196}                                                                | PAYMENT_REVIEW
+ 6814 | 2026-10-02 19:51:18.072358+00 | SYSTEM      | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | 0e22c51a-718a-4e5d-ba4b-683b72f23402 |                                                                                         | {"evidence_id": 4, "review_status": "PENDING_REVIEW", "conversation_id": 196}                                         | 
+ 6825 | 2026-10-02 19:52:52.08228+00  | SYSTEM      | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | df7cca26-a112-4ce7-b016-71e438d77ea2 |                                                                                         | {"evidence_id": 5, "review_status": "PENDING_REVIEW", "conversation_id": 196}                                         | 
+ 6826 | 2026-10-02 19:52:52.08228+00  | SYSTEM      | NON_TEXT_MESSAGE_PAUSED                    | message          | df7cca26-a112-4ce7-b016-71e438d77ea2 |                                                                                         | {"conversation_id": 196}                                                                                              | 
+ 6831 | 2026-10-02 19:53:37.459874+00 | SYSTEM      | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | 9461bbe8-2959-42c1-bded-cebded5a6982 |                                                                                         | {"evidence_id": 6, "review_status": "PENDING_REVIEW", "conversation_id": 196}                                         | 
+ 6832 | 2026-10-02 19:53:37.459874+00 | SYSTEM      | NON_TEXT_MESSAGE_PAUSED                    | message          | 9461bbe8-2959-42c1-bded-cebded5a6982 |                                                                                         | {"conversation_id": 196}                                                                                              | 
+ 6833 | 2026-10-02 19:53:38.188737+00 | INTEGRATION | PAYMENT_EVIDENCE_DOWNLOADED                | payment_evidence |                                      |                                                                                         | {"evidence_id": 6}                                                                                                    | 
+ 6839 | 2026-10-02 20:07:12.632214+00 | SYSTEM      | PAYMENT_EVIDENCE_PREREVIEWED               | payment_evidence | 0923927e-39d4-4c44-95f6-2d02598f279e |                                                                                         | {"status": "COMPLETED", "evidence_id": 6}                                                                             | 
+ 6841 | 2026-10-02 20:08:14.229311+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "NEW", "conversation_id": 197}                                                | {"state": "BOT_ACTIVE", "conversation_id": 197}                                                                       | Initial valid WhatsApp message stored
+ 6847 | 2026-10-02 20:09:02.384305+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 197}                                         | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 197}                                                            | Reserva autoservicio de precio fijo
+ 6848 | 2026-10-02 20:09:02.384305+00 | SYSTEM      | LEAD_CREATED                               | lead             | d01c4058-9de4-47de-8966-9c08ff1b6a8d |                                                                                         | {"conversation_id": 197}                                                                                              | 
+ 6853 | 2026-10-02 20:09:28.943665+00 | SYSTEM      | RESERVATION_CREATED                        | reservation      | 298735de-0e92-463c-b5f4-a43198eccf40 |                                                                                         | {"reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"}                                                            | 
+ 6854 | 2026-10-02 20:09:28.943665+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 197}                              | {"state": "BOT_ACTIVE", "conversation_id": 197}                                                                       | Solicitud pendiente de pago; sin bloqueo
+ 6856 | 2026-10-02 20:10:26.347171+00 | SYSTEM      | HANDOFF_CREATED                            | handoff          | b60eb02c-012e-46bc-b064-e04027ca10bd |                                                                                         | {"detail": null, "reason": "PAYMENT_REVIEW", "conversation_id": 197}                                                  | PAYMENT_REVIEW
+ 6857 | 2026-10-02 20:10:26.347171+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 197}                                         | {"state": "WAITING_FOR_HUMAN", "conversation_id": 197}                                                                | PAYMENT_REVIEW
+ 6858 | 2026-10-02 20:10:26.347171+00 | SYSTEM      | RESERVATION_STATUS_CHANGED                 | reservation      | b60eb02c-012e-46bc-b064-e04027ca10bd | {"status": "PAYMENT_PENDING", "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"} | {"status": "PAYMENT_REVIEW", "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"}                                | Comprobante recibido
+ 6860 | 2026-10-02 20:10:26.347171+00 | SYSTEM      | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | b60eb02c-012e-46bc-b064-e04027ca10bd |                                                                                         | {"evidence_id": 7, "review_status": "PENDING_REVIEW", "conversation_id": 197}                                         | 
+ 6862 | 2026-10-02 20:10:27.230283+00 | INTEGRATION | PAYMENT_EVIDENCE_DOWNLOADED                | payment_evidence |                                      |                                                                                         | {"evidence_id": 7}                                                                                                    | 
+ 6863 | 2026-10-02 20:10:28.010974+00 | SYSTEM      | PAYMENT_EVIDENCE_PREREVIEWED               | payment_evidence | c52c9d20-13ca-4dc2-ac2c-0dc4927bc16c |                                                                                         | {"status": "COMPLETED", "evidence_id": 7}                                                                             | 
+ 6865 | 2026-10-02 20:12:25.428925+00 | Leandro     | PAYMENT_EVIDENCE_ACCEPTED                  | payment_evidence | 47de2f6f-6d6f-4b3e-b7bd-3554aed66a50 | {"evidence_id": 7, "review_status": "PENDING_REVIEW"}                                   | {"amount_cop": 45596, "evidence_id": 7, "review_status": "ACCEPTED"}                                                  | aceptado con propuesta de IA
+ 6866 | 2026-10-02 20:12:25.428925+00 | Leandro     | RESERVATION_STATUS_CHANGED                 | reservation      | 47de2f6f-6d6f-4b3e-b7bd-3554aed66a50 | {"status": "PAYMENT_REVIEW", "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"}  | {"status": "PAYMENT_PENDING", "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"}                               | Abono parcial registrado
+ 6867 | 2026-10-02 20:12:25.428925+00 | Leandro     | RESERVATION_PAYMENT_PARTIAL                | reservation      | 47de2f6f-6d6f-4b3e-b7bd-3554aed66a50 | {"reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a", "amount_paid_cop": 0}        | {"missing_cop": 79404, "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a", "amount_paid_cop": 45596}            | Aceptación humana de comprobante
+ 6868 | 2026-10-02 20:12:25.454928+00 | Leandro     | PAYMENT_EVIDENCE_REVIEWED                  | payment_evidence | 47de2f6f-6d6f-4b3e-b7bd-3554aed66a50 | {"evidence_id": 7, "review_status": "PENDING_REVIEW"}                                   | {"result": "PARTIAL", "evidence_id": 7}                                                                               | 
+ 6965 | 2026-10-07 02:51:52.452381+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "NEW", "conversation_id": 208}                                                | {"state": "BOT_ACTIVE", "conversation_id": 208}                                                                       | Initial valid WhatsApp message stored
+ 6966 | 2026-10-07 02:51:52.579807+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 208}                                         | {"state": "ANSWERING_INFORMATION", "conversation_id": 208}                                                            | General information detected
+ 6967 | 2026-10-07 02:51:52.579807+00 | SYSTEM      | CATALOG_EVENT_TYPE_RESOLVED                | conversation     | d6a08604-a2e8-404e-a5c6-ad3b8bdbbfc9 |                                                                                         | {"conversation_id": 208}                                                                                              | 
+ 6968 | 2026-10-07 02:51:52.579807+00 | SYSTEM      | LEAD_CREATED                               | lead             | d6a08604-a2e8-404e-a5c6-ad3b8bdbbfc9 |                                                                                         | {"conversation_id": 208}                                                                                              | 
+ 6972 | 2026-10-07 02:51:52.579807+00 | SYSTEM      | FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO | conversation     | d6a08604-a2e8-404e-a5c6-ad3b8bdbbfc9 |                                                                                         | {"conversation_id": 208}                                                                                              | 
+ 6973 | 2026-10-07 02:51:52.579807+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "ANSWERING_INFORMATION", "conversation_id": 208}                              | {"state": "BOT_ACTIVE", "conversation_id": 208}                                                                       | General information answered
+ 6974 | 2026-10-07 02:52:10.522384+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 208}                                         | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 208}                                                            | Reserva autoservicio de precio fijo
+ 6978 | 2026-10-07 02:53:06.330865+00 | SYSTEM      | HANDOFF_CREATED                            | handoff          | 6a9b2691-bbfa-45c6-aac8-3da20e4b2636 |                                                                                         | {"detail": null, "reason": "PAYMENT_REVIEW", "conversation_id": 208}                                                  | PAYMENT_REVIEW
+ 6979 | 2026-10-07 02:53:06.330865+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 208}                              | {"state": "WAITING_FOR_HUMAN", "conversation_id": 208}                                                                | PAYMENT_REVIEW
+ 6980 | 2026-10-07 02:53:06.330865+00 | SYSTEM      | RESERVATION_STATUS_CHANGED                 | reservation      | 6a9b2691-bbfa-45c6-aac8-3da20e4b2636 | {"status": "PAYMENT_PENDING", "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"} | {"status": "PAYMENT_REVIEW", "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"}                                | Comprobante recibido
+ 6981 | 2026-10-07 02:53:06.330865+00 | SYSTEM      | PAYMENT_EVIDENCE_LINKED                    | payment_evidence | 6a9b2691-bbfa-45c6-aac8-3da20e4b2636 | {"evidence_id": 8, "reservation_id": null}                                              | {"evidence_id": 8, "reservation_id": "f3fb9b04-1f40-4172-b9e2-b157b1ecf41a"}                                          | 
+ 6982 | 2026-10-07 02:53:06.330865+00 | SYSTEM      | PAYMENT_EVIDENCE_CREATED                   | payment_evidence | 6a9b2691-bbfa-45c6-aac8-3da20e4b2636 |                                                                                         | {"evidence_id": 8, "review_status": "PENDING_REVIEW", "conversation_id": 208}                                         | 
+ 6983 | 2026-10-07 02:53:07.236711+00 | INTEGRATION | PAYMENT_EVIDENCE_DOWNLOADED                | payment_evidence |                                      |                                                                                         | {"evidence_id": 8}                                                                                                    | 
+ 6984 | 2026-10-07 02:53:09.283825+00 | SYSTEM      | PAYMENT_EVIDENCE_PREREVIEWED               | payment_evidence | c533f39b-302d-4c13-a2ba-428a786d381c |                                                                                         | {"status": "COMPLETED", "evidence_id": 8}                                                                             | 
+ 6987 | 2026-10-07 02:54:24.548096+00 | Leandro     | PAYMENT_EVIDENCE_ACCEPTED                  | payment_evidence | c0ab42fa-e05c-4295-b540-b6e909e26f64 | {"evidence_id": 6, "review_status": "PENDING_REVIEW"}                                   | {"amount_cop": 45596, "evidence_id": 6, "review_status": "ACCEPTED"}                                                  | aceptado con propuesta de IA
+ 6988 | 2026-10-07 02:54:24.66182+00  | Leandro     | PAYMENT_EVIDENCE_REVIEWED                  | payment_evidence | c0ab42fa-e05c-4295-b540-b6e909e26f64 | {"evidence_id": 6, "review_status": "PENDING_REVIEW"}                                   | {"result": "NO_RESERVATION", "evidence_id": 6}                                                                        | 
+ 6990 | 2026-10-07 02:59:07.391418+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "NEW", "conversation_id": 209}                                                | {"state": "BOT_ACTIVE", "conversation_id": 209}                                                                       | Initial valid WhatsApp message stored
+ 6991 | 2026-10-07 02:59:07.437921+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 209}                                         | {"state": "ANSWERING_INFORMATION", "conversation_id": 209}                                                            | General information detected
+ 6992 | 2026-10-07 02:59:07.437921+00 | SYSTEM      | CATALOG_EVENT_TYPE_RESOLVED                | conversation     | 122c5d45-96c2-4711-b775-763013349972 |                                                                                         | {"conversation_id": 209}                                                                                              | 
+ 6993 | 2026-10-07 02:59:07.437921+00 | SYSTEM      | LEAD_CREATED                               | lead             | 122c5d45-96c2-4711-b775-763013349972 |                                                                                         | {"conversation_id": 209}                                                                                              | 
+ 6997 | 2026-10-07 02:59:07.437921+00 | SYSTEM      | FIXED_PRICE_CATALOG_SENT_FROM_GENERAL_INFO | conversation     | 122c5d45-96c2-4711-b775-763013349972 |                                                                                         | {"conversation_id": 209}                                                                                              | 
+ 6998 | 2026-10-07 02:59:07.437921+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "ANSWERING_INFORMATION", "conversation_id": 209}                              | {"state": "BOT_ACTIVE", "conversation_id": 209}                                                                       | General information answered
+ 6999 | 2026-10-07 02:59:19.571631+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "BOT_ACTIVE", "conversation_id": 209}                                         | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 209}                                                            | Reserva autoservicio de precio fijo
+ 7002 | 2026-10-07 02:59:49.538236+00 | SYSTEM      | HANDOFF_CREATED                            | handoff          | 67663c57-765e-4e30-a436-67de2c238e36 |                                                                                         | {"detail": "Ya existe una solicitud pendiente de pago", "reason": "RESERVATION_CONFIRMATION", "conversation_id": 209} | RESERVATION_CONFIRMATION
+ 7003 | 2026-10-07 02:59:49.538236+00 | SYSTEM      | CONVERSATION_STATE_TRANSITION              | conversation     |                                      | {"state": "COLLECTING_EVENT_DATA", "conversation_id": 209}                              | {"state": "WAITING_FOR_HUMAN", "conversation_id": 209}                                                                | RESERVATION_CONFIRMATION
+(57 rows)
+
+IA en los flujos 208/209: no extracción bancaria cruda
+  id  | conversation_id |        task        |          created_at           |              request_id              | success | validation_status | primary_intent | requested_action | handoff_reason 
+------+-----------------+--------------------+-------------------------------+--------------------------------------+---------+-------------------+----------------+------------------+----------------
+ 3463 |             208 | RECEIPT_EXTRACTION | 2026-10-07 02:53:11.680011+00 | c533f39b-302d-4c13-a2ba-428a786d381c | t       | VALID             |                |                  | 
+(1 row)
+
+Fechas y hora reales, y confirmación incorrecta: mensajes concretos sin datos bancarios
+  id  | conversation_id |          created_at           |                                                                                  body                                                                                   
+------+-----------------+-------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 6899 |             208 | 2026-10-07 02:52:12.060775+00 | Solo para asegurarme de tenerlo bien, ¿te refieres al 14 de octubre de 2026?
+ 6901 |             208 | 2026-10-07 02:52:20.89516+00  | ¿A qué hora te gustaría? Atendemos entre las 12 del día y las 9 de la noche.
+ 6908 |             196 | 2026-10-07 02:54:25.732648+00 | ¡Perfecto! Tu pago fue confirmado y la fecha quedó oficialmente separada. A partir de aquí, nuestro equipo seguirá acompañándote con los siguientes pasos de tu evento.
+ 6913 |             209 | 2026-10-07 02:59:20.718655+00 | Solo para asegurarme de tenerlo bien, ¿te refieres al 14 de octubre de 2026?
+ 6915 |             209 | 2026-10-07 02:59:25.324533+00 | ¿A qué hora te gustaría? Atendemos entre las 12 del día y las 9 de la noche.
+(5 rows)
+
+Outbox con código inferido, nunca cuerpo/caption
+  id  | outbound_message_id | conversation_id | trigger_message_id |          created_at           | status |            sent_at            |                                                                        inferred_templates                                                                        
+------+---------------------+-----------------+--------------------+-------------------------------+--------+-------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 3374 |                     |             196 |               6791 | 2026-10-02 19:47:55.085849+00 | SENT   | 2026-10-02 19:47:56.132335+00 | [{"code": "RESP-GREETING-001", "version": 2, "status_now": "APPROVED"}]
+ 3375 |                     |             196 |               6793 | 2026-10-02 19:48:15.894851+00 | SENT   | 2026-10-02 19:48:16.034668+00 | [{"code": "RESP-EVENTS-ROMANTIC-001", "version": 3, "status_now": "APPROVED"}]
+ 3376 |                     |             196 |               6793 | 2026-10-02 19:48:15.894851+00 | SENT   | 2026-10-02 19:48:17.724854+00 | [{"code": "RESP-CATALOG-001", "version": 2, "status_now": "APPROVED"}]
+ 3377 |                     |             196 |               6796 | 2026-10-02 19:48:39.663052+00 | SENT   | 2026-10-02 19:48:40.66111+00  | [{"code": "RESP-BOOKING-PLAN-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-PLAN-001", "version": 2, "status_now": "APPROVED"}]
+ 3378 |                     |             196 |               6798 | 2026-10-02 19:48:58.433019+00 | SENT   | 2026-10-02 19:48:59.341484+00 | [{"code": "RESP-CUSTOMER-001", "version": 2, "status_now": "APPROVED"}]
+ 3379 |                     |             196 |               6800 | 2026-10-02 19:49:08.685328+00 | SENT   | 2026-10-02 19:49:09.141025+00 | [{"code": "RESP-BOOKING-CONFIRM-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-CONFIRM-001", "version": 2, "status_now": "APPROVED"}]
+ 3380 |                     |             196 |               6802 | 2026-10-02 19:49:30.558383+00 | SENT   | 2026-10-02 19:49:31.119244+00 | [{"code": "RESP-FILE-001", "version": 2, "status_now": "APPROVED"}]
+ 3381 |                     |             196 |               6804 | 2026-10-02 19:50:43.862736+00 | SENT   | 2026-10-02 19:50:44.719512+00 | [{"code": "RESP-BOOKING-CONFIRM-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-CONFIRM-001", "version": 2, "status_now": "APPROVED"}]
+ 3382 |                     |             196 |               6806 | 2026-10-02 19:50:55.826304+00 | SENT   | 2026-10-02 19:50:56.578617+00 | [{"code": "RESP-BOOKING-PAYMENT-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-PAYMENT-001", "version": 2, "status_now": "INACTIVE"}]
+ 3383 |                     |             196 |               6808 | 2026-10-02 19:51:18.072358+00 | SENT   | 2026-10-02 19:51:18.327066+00 | [{"code": "RESP-BOOKING-EVIDENCE-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-EVIDENCE-001", "version": 2, "status_now": "APPROVED"}]
+ 3384 |                     |             196 |               6808 | 2026-10-02 19:52:36.018011+00 | SENT   | 2026-10-02 19:52:36.521977+00 | [{"code": "RESP-BOOKING-PARTIAL-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-PARTIAL-001", "version": 2, "status_now": "APPROVED"}]
+ 3385 |                     |             196 |               6811 | 2026-10-02 20:02:41.08996+00  | SENT   | 2026-10-02 20:02:41.968261+00 | [{"code": "RESP-BOOKING-CONFIRMED-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-CONFIRMED-001", "version": 2, "status_now": "APPROVED"}]
+ 3386 |                     |             197 |               6814 | 2026-10-02 20:08:15.239915+00 | SENT   | 2026-10-02 20:08:15.853667+00 | [{"code": "RESP-GREETING-001", "version": 2, "status_now": "APPROVED"}]
+ 3387 |                     |             197 |               6816 | 2026-10-02 20:08:28.843524+00 | SENT   | 2026-10-02 20:08:29.579334+00 | [{"code": "RESP-CATALOG-001", "version": 2, "status_now": "APPROVED"}]
+ 3388 |                     |             197 |               6816 | 2026-10-02 20:08:28.843524+00 | SENT   | 2026-10-02 20:08:30.225755+00 | [{"code": "RESP-CATALOG-001", "version": 2, "status_now": "APPROVED"}]
+ 3389 |                     |             197 |               6816 | 2026-10-02 20:08:28.843524+00 | SENT   | 2026-10-02 20:08:30.846103+00 | [{"code": "RESP-CATALOG-001", "version": 2, "status_now": "APPROVED"}]
+ 3390 |                     |             197 |               6820 | 2026-10-02 20:09:02.384305+00 | SENT   | 2026-10-02 20:09:02.775871+00 | [{"code": "RESP-CUSTOMER-001", "version": 2, "status_now": "APPROVED"}]
+ 3391 |                     |             197 |               6822 | 2026-10-02 20:09:19.643805+00 | SENT   | 2026-10-02 20:09:20.518499+00 | [{"code": "RESP-BOOKING-CONFIRM-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-CONFIRM-001", "version": 2, "status_now": "APPROVED"}]
+ 3392 |                     |             197 |               6824 | 2026-10-02 20:09:28.943665+00 | SENT   | 2026-10-02 20:09:29.1081+00   | [{"code": "RESP-BOOKING-PAYMENT-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-PAYMENT-001", "version": 2, "status_now": "INACTIVE"}]
+ 3393 |                     |             197 |               6826 | 2026-10-02 20:10:26.347171+00 | SENT   | 2026-10-02 20:10:27.188802+00 | [{"code": "RESP-BOOKING-EVIDENCE-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-EVIDENCE-001", "version": 2, "status_now": "APPROVED"}]
+ 3394 |                     |             197 |               6826 | 2026-10-02 20:12:25.445942+00 | SENT   | 2026-10-02 20:12:25.662691+00 | [{"code": "RESP-BOOKING-PARTIAL-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-PARTIAL-001", "version": 2, "status_now": "APPROVED"}]
+ 3425 |                     |             208 |               6895 | 2026-10-07 02:51:52.579807+00 | SENT   | 2026-10-07 02:51:53.429143+00 | [{"code": "RESP-EVENTS-PROPOSAL-001", "version": 2, "status_now": "APPROVED"}]
+ 3426 |                     |             208 |               6895 | 2026-10-07 02:51:52.579807+00 | SENT   | 2026-10-07 02:51:55.587222+00 | [{"code": "RESP-CATALOG-001", "version": 2, "status_now": "APPROVED"}]
+ 3427 |                     |             208 |               6898 | 2026-10-07 02:52:10.522384+00 | SENT   | 2026-10-07 02:52:11.408674+00 | [{"code": "RESP-EVENT-DATA-003", "version": 2, "status_now": "APPROVED"}]
+ 3428 |                     |             208 |               6900 | 2026-10-07 02:52:19.260995+00 | SENT   | 2026-10-07 02:52:20.223262+00 | [{"code": "RESP-BOOKING-TIME-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-TIME-001", "version": 2, "status_now": "APPROVED"}]
+ 3429 |                     |             208 |               6902 | 2026-10-07 02:52:35.635339+00 | SENT   | 2026-10-07 02:52:36.045972+00 | [{"code": "RESP-CUSTOMER-001", "version": 2, "status_now": "APPROVED"}]
+ 3430 |                     |             208 |               6904 | 2026-10-07 02:52:44.37196+00  | SENT   | 2026-10-07 02:52:44.81158+00  | [{"code": "RESP-BOOKING-CONFIRM-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-CONFIRM-001", "version": 2, "status_now": "APPROVED"}]
+ 3431 |                     |             208 |               6906 | 2026-10-07 02:53:06.330865+00 | SENT   | 2026-10-07 02:53:06.724834+00 | [{"code": "RESP-BOOKING-EVIDENCE-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-EVIDENCE-001", "version": 2, "status_now": "APPROVED"}]
+ 3432 |                     |             196 |               6812 | 2026-10-07 02:54:24.560419+00 | SENT   | 2026-10-07 02:54:25.10679+00  | [{"code": "RESP-PAYMENT-004", "version": 3, "status_now": "APPROVED"}]
+ 3433 |                     |             209 |               6909 | 2026-10-07 02:59:07.437921+00 | SENT   | 2026-10-07 02:59:08.442778+00 | [{"code": "RESP-EVENTS-PROPOSAL-001", "version": 2, "status_now": "APPROVED"}]
+ 3434 |                     |             209 |               6909 | 2026-10-07 02:59:07.437921+00 | SENT   | 2026-10-07 02:59:10.199044+00 | [{"code": "RESP-CATALOG-001", "version": 2, "status_now": "APPROVED"}]
+ 3435 |                     |             209 |               6912 | 2026-10-07 02:59:19.571631+00 | SENT   | 2026-10-07 02:59:20.044217+00 | [{"code": "RESP-EVENT-DATA-003", "version": 2, "status_now": "APPROVED"}]
+ 3436 |                     |             209 |               6914 | 2026-10-07 02:59:24.190947+00 | SENT   | 2026-10-07 02:59:24.773711+00 | [{"code": "RESP-BOOKING-TIME-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-TIME-001", "version": 2, "status_now": "APPROVED"}]
+ 3437 |                     |             209 |               6916 | 2026-10-07 02:59:30.902946+00 | SENT   | 2026-10-07 02:59:31.387635+00 | [{"code": "RESP-CUSTOMER-001", "version": 2, "status_now": "APPROVED"}]
+ 3438 |                     |             209 |               6918 | 2026-10-07 02:59:37.898566+00 | SENT   | 2026-10-07 02:59:38.128321+00 | [{"code": "RESP-BOOKING-CONFIRM-001", "version": 1, "status_now": "INACTIVE"}, {"code": "RESP-BOOKING-CONFIRM-001", "version": 2, "status_now": "APPROVED"}]
+ 3439 |                     |             209 |               6920 | 2026-10-07 02:59:49.538236+00 | SENT   | 2026-10-07 02:59:49.837197+00 | [{"code": "RESP-HANDOFF-002", "version": 2, "status_now": "APPROVED"}]
+(36 rows)
+
+ROLLBACK
