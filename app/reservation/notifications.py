@@ -10,7 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.models import AuditEvent
 from app.channel.models import Message
 from app.config.settings import Settings
-from app.conversation.knowledge import KnowledgeRenderError
+from app.conversation.knowledge import (
+    KnowledgeRenderError,
+    get_latest_response,
+    variables_in_template,
+)
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
@@ -120,6 +124,7 @@ async def notify_booking_payment(
                 {},
                 notice_case=case,
                 strict=True,
+                request_id=request_id,
             )
         except KnowledgeRenderError as exc:
             skipped(session, evidence, kind, exc.reason.value, request_id)
@@ -145,7 +150,23 @@ async def notify_booking_payment(
         }
     elif kind == "PARTIAL":
         response_code = "RESP-BOOKING-PARTIAL-001"
-        variables = {"missing_amount": max(0, deposit_amount(row.price_cop) - row.amount_paid_cop)}
+        required_deposit = deposit_amount(row.price_cop)
+        candidates = {
+            "received_amount": evidence.amount_cop,
+            "paid_amount": row.amount_paid_cop,
+            "deposit_amount": required_deposit,
+            "missing_amount": max(0, required_deposit - row.amount_paid_cop),
+            "bank_name": settings,
+            "account_type": settings,
+            "account_number": settings,
+            "account_holder": settings,
+            "breb_key": settings,
+        }
+        latest = await get_latest_response(sm, response_code)
+        required_variables = variables_in_template(latest.answer_template) if latest else set()
+        # Older versions require only missing_amount; malformed new templates
+        # still fail strict rendering for missing or disallowed variables.
+        variables = {key: value for key, value in candidates.items() if key in required_variables}
     elif kind == "REJECTED":
         response_code = "RESP-BOOKING-REJECTED-001"
     elif kind == "BALANCE_PAID":
@@ -179,6 +200,7 @@ async def notify_booking_payment(
             variables,
             payment_decision=evidence,
             strict=True,
+            request_id=request_id,
         )
     except KnowledgeRenderError as exc:
         skipped(session, evidence, kind, exc.reason.value, request_id)

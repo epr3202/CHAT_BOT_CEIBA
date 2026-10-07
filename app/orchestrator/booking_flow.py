@@ -82,6 +82,7 @@ async def handoff(
     detail: str,
     *,
     reason: str = "RESERVATION_CONFIRMATION",
+    response_code_override: str | None = None,
 ) -> None:
     from app.orchestrator import service as core
 
@@ -105,6 +106,7 @@ async def handoff(
         reason=reason,
         priority="NORMAL",
         detail=detail,
+        response_code_override=response_code_override,
     )
 
 
@@ -128,6 +130,7 @@ async def send(
             f"RESP-BOOKING-{name}-001",
             variables or {},
             strict=True,
+            request_id=str(turn.request_id) if turn.request_id is not None else None,
         )
     except KnowledgeRenderError:
         await handoff(
@@ -260,7 +263,14 @@ async def handle_booking_start(
     # A catalog reply may prepare a proposal; confirmation still checks all of
     # the customer's pending requests before creating another reservation.
     if not catalog_followup and await has_pending_request(session, turn.customer.id):
-        await handoff(session, settings, sm, turn, "Ya existe una solicitud pendiente de pago")
+        await handoff(
+            session,
+            settings,
+            sm,
+            turn,
+            "Ya existe una solicitud pendiente de pago",
+            response_code_override="RESP-BOOKING-PENDING-001",
+        )
         return
     draft = dict(turn.conversation.booking_draft or {}) if catalog_followup else {}
     turn.conversation.booking_draft = draft
@@ -357,6 +367,7 @@ async def continue_slots(
                 "RESP-EVENT-DATA-003",
                 {"resolved_date": date.fromisoformat(draft["date"])},
                 strict=True,
+                request_id=str(turn.request_id) if turn.request_id is not None else None,
             )
         except KnowledgeRenderError:
             await handoff(session, settings, sm, turn, "Confirmación de fecha no disponible")
@@ -422,6 +433,7 @@ async def continue_slots(
             "RESP-CUSTOMER-001",
             {},
             strict=True,
+            request_id=str(turn.request_id) if turn.request_id is not None else None,
         )
         return
     conversation.pending_action = "CONFIRM_BOOKING"
@@ -568,6 +580,7 @@ async def handle_booking_step(
                         "RESP-CUSTOMER-003",
                         {},
                         strict=True,
+                        request_id=str(turn.request_id) if turn.request_id is not None else None,
                     )
                 return
             old = {"full_name": turn.customer.full_name}
@@ -653,7 +666,12 @@ async def handle_booking_step(
                     return
                 if await has_pending_request(session, turn.customer.id):
                     await handoff(
-                        session, settings, sm, turn, "Ya existe una solicitud pendiente de pago"
+                        session,
+                        settings,
+                        sm,
+                        turn,
+                        "Ya existe una solicitud pendiente de pago",
+                        response_code_override="RESP-BOOKING-PENDING-001",
                     )
                     return
                 lead, event = await core.get_or_create_capture_models(

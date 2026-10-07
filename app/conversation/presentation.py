@@ -291,6 +291,8 @@ VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
     "booking_date": _present_date,
     "booking_time": _present_time,
     "total_amount": _present_cop,
+    "received_amount": _present_cop,
+    "paid_amount": _present_cop,
     "deposit_amount": _present_cop,
     "missing_amount": _present_cop,
     "balance_due_date": _present_date,

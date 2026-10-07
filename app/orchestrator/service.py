@@ -4356,6 +4356,11 @@ async def create_handoff_and_pause(
         response_code_override or response_code,
         {},
         notice_case=handoff,
+        request_id=(
+            str(orchestration_input.request_id)
+            if orchestration_input.request_id is not None
+            else None
+        ),
     )
     persist_classification_context(conversation, classification)
     set_pending_action(conversation, "WAIT_FOR_HUMAN")
@@ -4376,14 +4381,39 @@ async def enqueue_template(
     payment_decision: PaymentEvidence | None = None,
     payment_ack: tuple[PaymentEvidence, Handoff] | None = None,
     strict: bool = False,
+    request_id: str | None = None,
 ) -> None:
     rendered_code = response_code
     try:
         body = await render_response(knowledge_sessionmaker, response_code, variables)
-    except KnowledgeRenderError:
+    except KnowledgeRenderError as error:
+        context_request_id = request_id or structlog.contextvars.get_contextvars().get("request_id")
+        render_request_id = str(context_request_id) if context_request_id is not None else None
+        logger.error(
+            "approved_response_render_failed",
+            response_code=response_code,
+            reason=error.reason.value,
+            conversation_id=conversation.id,
+            request_id=render_request_id,
+        )
+        session.add(
+            AuditEvent(
+                actor="SYSTEM",
+                action="TEMPLATE_RENDER_FAILED",
+                entity="conversation",
+                old_value=None,
+                new_value={
+                    "response_code": response_code,
+                    "reason": error.reason.value,
+                    "conversation_id": conversation.id,
+                    "request_id": render_request_id,
+                },
+                reason=error.reason.value,
+                request_id=render_request_id,
+            )
+        )
         if strict:
             raise
-        logger.error("approved_response_render_failed", response_code=response_code)
         body = await render_response(knowledge_sessionmaker, "RESP-AI-ERROR-001", {})
         rendered_code = "RESP-AI-ERROR-001"
 
