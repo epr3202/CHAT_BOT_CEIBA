@@ -373,8 +373,7 @@ def telemetry_context(context: dict[str, Any]) -> dict[str, Any]:
         if isinstance(known_fields, dict)
         else {}
     )
-    return {
-        "input_origin": context.get("input_origin", "TEXT"),
+    result = {
         "last_intent": context.get("last_intent"),
         "pending_action": context.get("pending_action"),
         "last_question_code": context.get("last_question_code"),
@@ -382,6 +381,9 @@ def telemetry_context(context: dict[str, Any]) -> dict[str, Any]:
         "failed_understanding_count": context.get("failed_understanding_count", 0),
         "pending_confirmation": context.get("pending_confirmation"),
     }
+    if context.get("input_origin") == "AUDIO_TRANSCRIPT":
+        result["input_origin"] = "AUDIO_TRANSCRIPT"
+    return result
 
 
 def _parse_event_type_result(output: dict[str, Any]) -> _TaskResult[str | None]:

@@ -207,6 +207,12 @@ class PendingConfirmationResolution:
     confirmation_uplifted: bool
 
 
+def record_audio_response_code(session: AsyncSession, code: str) -> None:
+    info = session.info
+    if isinstance(info, dict) and "audio_response_codes" in info:
+        info["audio_response_codes"].append(code)
+
+
 async def orchestrate_inbound_message(
     session: AsyncSession,
     settings: Settings,
@@ -220,9 +226,10 @@ async def orchestrate_inbound_message(
     pending_before = conversation.pending_action
     audio_turn = orchestration_input.input_origin == "AUDIO_TRANSCRIPT"
     response_codes: list[str] = []
-    previous_codes = session.info.get("audio_response_codes")
-    if audio_turn:
-        session.info["audio_response_codes"] = response_codes
+    info = session.info
+    previous_codes = info.get("audio_response_codes") if isinstance(info, dict) else None
+    if audio_turn and isinstance(info, dict):
+        info["audio_response_codes"] = response_codes
     intent = classification.primary_intent if classification is not None else "UNKNOWN"
     decision_token = _decision_source.set(orchestration_input.decision_source)
     try:
@@ -256,10 +263,11 @@ async def orchestrate_inbound_message(
             pending_action=conversation.pending_action,
         )
         if audio_turn:
-            if previous_codes is None:
-                session.info.pop("audio_response_codes", None)
-            else:
-                session.info["audio_response_codes"] = previous_codes
+            if isinstance(info, dict):
+                if previous_codes is None:
+                    info.pop("audio_response_codes", None)
+                else:
+                    info["audio_response_codes"] = previous_codes
             session.add(
                 AuditEvent(
                     actor="SYSTEM",
@@ -4500,8 +4508,7 @@ async def enqueue_template(
         rendered_code = "RESP-AI-ERROR-001"
 
     conversation.last_question_code = response_code
-    if "audio_response_codes" in session.info:
-        session.info["audio_response_codes"].append(rendered_code)
+    record_audio_response_code(session, rendered_code)
     context = automatic_context(conversation, "TEMPLATE")
     if payment_ack is not None and rendered_code == "RESP-BOOKING-EVIDENCE-001":
         context = payment_evidence_ack_context(*payment_ack)
