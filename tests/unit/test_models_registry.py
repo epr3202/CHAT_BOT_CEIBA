@@ -28,6 +28,7 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
         "lead",
         "message",
         "message_provider_status",
+        "message_transcription",
         "notification_recipient",
         "outbox",
         "payment_evidence",

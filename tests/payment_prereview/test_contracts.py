@@ -352,7 +352,9 @@ async def test_r7_synthetic_images(monkeypatch, index):
 async def test_r8_migration_round_trip(monkeypatch):
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_current_head() == "20261002_0035", "Balance requires migration 0035"
+    assert "20261002_0035" in {
+        revision.revision for revision in scripts.walk_revisions("base", "head")
+    }, "Balance requires migration 0035"
     assert scripts.get_revision("20261002_0035").down_revision == "20261002_0034"
     assert scripts.get_revision("20261002_0034").down_revision == "20260930_0033"
     assert scripts.get_revision("20260930_0033").down_revision == "20260930_0032"
@@ -377,7 +379,7 @@ async def test_r8_migration_round_trip(monkeypatch):
             await connection.execute(text("CREATE SCHEMA public"))
         await asyncio.to_thread(command.upgrade, config, "20260930_0032")
         before = await snapshot()
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20261002_0035")
         after = await snapshot()
         assert set(after) - set(before) == {
             "payment_evidence_review",
@@ -436,7 +438,7 @@ async def test_r8_migration_round_trip(monkeypatch):
                     await connection.execute(text(statement), {"id": review_id})
         await asyncio.to_thread(command.downgrade, config, "20260930_0032")
         assert await snapshot() == before
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20261002_0035")
         assert await snapshot() == after
     finally:
         await engine.dispose()
