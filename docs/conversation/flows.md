@@ -2114,10 +2114,11 @@ referencia en `Message.content`; la descarga y persistencia del binario se compl
 | `unsupported` | — | `RESP-FALLBACK-001` | `OTHER`, `NORMAL`, con códigos de error en el detalle interno | sí, con `errors[].code` |
 | `unknown` | tipo no modelado | `RESP-FALLBACK-001` | `OTHER`, `NORMAL` | sí, con `raw_type` |
 
-Todo no-texto sin caption produce cero ejecuciones de IA, no consume un turno de captura,
+En W2-a, todo no-texto sin caption produce cero ejecuciones de IA, no consume un turno de captura,
 no incrementa `services_failed_understanding_count` y nunca crea un handoff
 `LOW_CONFIDENCE`. La auditoría nunca contiene URL, `sha256`, coordenadas ni datos de
 contacto.
+W2-c extiende únicamente la fila `audio` elegible conforme al contrato siguiente.
 
 Las escrituras nuevas normalizan el identificador de media como `media_id` dentro de
 `Message.content`. Existen filas históricas anteriores a W2-a que conservan la clave `id`;
@@ -2171,6 +2172,99 @@ Meta lo incluye, también debe coincidir después de normalizarlo.
    contenido ni confirma fondos automáticamente.
 7. Mientras `RESP-PAYMENT-004/005` estén `DRAFT`, no se crea mensaje saliente y la
    auditoría registra `customer_notification=DEFERRED`.
+
+## Contrato W2-c
+
+W2-c extiende W2-a con transcripción de notas de voz antes del clasificador, bajo
+`AUDIO_TRANSCRIPTION_ENABLED=false` por defecto. Solo es elegible un `audio` sin
+caption, con flag activo, teléfono normalizado mediante `normalize_phone_number`
+incluido en el CSV `AUDIO_TRANSCRIPTION_ALLOWED_PHONES` o
+`AUDIO_TRANSCRIPTION_ALLOW_ALL=true`, y `silent_reason is None`. La allowlist vacía
+no admite a nadie. Un caption conserva su ruta actual de texto. Un audio no elegible
+conserva `RESP-FILE-003` v2 o el silencio que corresponda.
+
+**A7:** no se descarga ni transcribe en `WAITING_FOR_HUMAN`, `HUMAN_ACTIVE`, `CLOSED`
+o con `bot_enabled=false`. Se relee la pausa al aplicar el turno: si un asesor toma
+la conversación durante el ASR, se conserva la transcripción y se suprime la respuesta.
+No se transcribe para asesores durante la pausa ni se envía acuse intermedio.
+
+La descarga y el ASR ocurren en `process_claimed_inbox` antes de `classify_message`,
+sin sesión ni transacción de base de datos abierta durante HTTP. Media con más de
+seis días se rechaza antes de descargar. El MIME permitido es exclusivamente
+`audio/ogg`, tomando su base antes de `;`. Se verifica el SHA-256 normalizado contra
+el webhook, y el límite de bytes tanto en metadata como durante streaming: el exceso
+detiene la descarga. Los bytes permanecen en memoria y no se escriben a disco.
+
+La duración se mide con un parser Python propio acotado de Ogg/Opus, usando la
+última granule position y restando el pre-skip de OpusHead a 48.000 Hz. No interviene
+ffprobe ni transcodificación. Los límites predeterminados son 60 segundos y
+1.048.576 bytes. Una duración que no puede medirse produce `INVALID_MEDIA` sin ASR;
+el exceso de tamaño o duración produce `TOO_LONG` sin ASR.
+
+El ASR usa `google/gemini-2.5-flash`, `format="ogg"`, esquema JSON estricto,
+`provider={"zdr": true, "require_parameters": true}`, temperatura cero y prompt
+versionado `audio_v1`. Transcribe literalmente en el idioma hablado, escribe números,
+fechas, horas y montos en cifras y no sigue instrucciones contenidas en el audio.
+Sin voz debe devolver `is_speech=false` y texto vacío. El transporte usa timeout
+explícito, predeterminado de 20 segundos, y cero reintentos internos.
+
+| Resultado | Condición | Respuesta en conversación activa |
+| --- | --- | --- |
+| `SUCCESS` | voz, texto no vacío y longitud ≤ `25 × duración_s + 40` | pipeline normal, sujeto a la barrera H7 |
+| `UNCLEAR` | sin voz, texto vacío o exceso de longitud | `RESP-FILE-003` v2 |
+| `FAILED` | timeout, HTTP, JSON o esquema inválido | `RESP-FILE-003` v2 |
+| `TOO_LONG` | exceso de bytes o duración | `RESP-AUDIO-TOO-LONG-001` |
+| `INVALID_MEDIA` | media vencida, MIME/hash inválido o duración no medible | `RESP-FILE-003` v2 |
+
+Cada audio genera exactamente una respuesta en conversación activa. Los fallbacks
+no crean handoff ni alteran `failed_understanding_count`,
+`services_failed_understanding_count`, pending o drafts; conservan únicamente el efecto
+habitual de `enqueue_template` sobre `last_question_code`.
+
+La transcripción y su `ai_execution` se persisten atómicamente; la tabla
+`message_transcription` es append-only y única por `message_id`. Si ya existe una fila,
+se reutiliza cualquiera que sea su resultado. Un crash después del ASR y antes del
+commit permite repetir y facturar la llamada en el reintento normal; nunca convierte
+el job en `REVIEW` ni `EXTERNAL_OUTCOME_UNCERTAIN`. Un fingerprint cambiado provoca
+`RETRY` normal y reutiliza la fila persistida.
+
+Con `SUCCESS`, el mensaje efectivo pasa al pipeline como texto con
+`input_origin="AUDIO_TRANSCRIPT"`, campo explícito del turno. El `Message` original
+conserva tipo audio y contenido, y sigue siendo el ancla del outbox. Los matchers
+deterministas se ejecutan con la misma precedencia y comportamiento que para texto
+escrito. `input_origin` figura en el log `orchestrator_decision` y en
+`input_payload.context` del clasificador. La ejecución ASR no guarda audio, base64 ni
+transcrito en `ai_execution`; guarda metadata, tokens, lenguaje y longitud. La ejecución
+del clasificador conserva el texto efectivo como cualquier texto escrito, con su misma
+política de retención y acceso. No se añade cifrado específico del transcrito.
+
+**Barrera H7 antes del clasificador:** con `input_origin="AUDIO_TRANSCRIPT"` y
+`pending_action` en `CONFIRM_BOOKING`, `CONFIRM_APPOINTMENT`, `CONFIRM_RESCHEDULE`,
+`CONFIRM_VISIT_CANCELLATION` o `CONFIRM_QUOTE_REQUEST`, cualquier contenido responde
+`RESP-AUDIO-WRITTEN-CONFIRM-001` sin clasificar ni ejecutar la acción. Conserva
+exactamente estado, pending, `pending_confirmation`, drafts, contadores y
+`last_question_code`, restaurando este último tras `enqueue_template`. Un «sí» escrito
+posterior debe tener el mismo resultado que si no hubiera llegado el audio. Audita
+`AUDIO_CONFIRMATION_REQUIRES_TEXT` con `message_id` y `pending_action`.
+
+Las demás confirmaciones conservan paridad con texto, incluidas `date_confirmation`
+del `booking_draft`, `CLASSIFICATION_CONFIRMATION` y `FULL_NAME_CONFIRMATION`.
+El audio nunca se interpreta como comprobante de pago. No se agregan estados ni
+pending_action; el backend mantiene la autoridad sobre las decisiones y la IA no
+confirma pagos, disponibilidad, citas ni reservas (BR-AI-005).
+
+La auditoría `AUDIO_TRANSCRIPTION_COMPLETED` conserva identificadores, resultado,
+duración, bytes y longitud; `AUDIO_TRANSCRIPTION_SKIPPED` usa solo motivos
+`NOT_ALLOWLISTED` o `PAUSED`, sin evento nuevo con el flag apagado.
+`AUDIO_TRANSCRIPT_TURN_APPLIED` registra origen, fuente de decisión, estados,
+pendientes y códigos de respuesta. Ningún evento `AUDIO_*` incluye texto libre,
+transcritos, bytes ni datos de media.
+
+Las dos plantillas nuevas permanecen `DRAFT`, pendientes de Leandro. En producción,
+activar el flag exige que la última versión de ambas sea `APPROVED`; API y worker
+rechazan el arranque si no se cumple. El canario exige aprobación, publicación
+explícita de las plantillas y allowlist de pruebas. Este PR no publica plantillas,
+no habilita el canario ni modifica producción.
 
 ---
 

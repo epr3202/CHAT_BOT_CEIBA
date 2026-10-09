@@ -351,6 +351,9 @@ async def enqueue_catalogs_for_event_type(
             )
             continue
         sent += 1
+        from app.orchestrator.service import record_audio_response_code
+
+        record_audio_response_code(session, CATALOG_CAPTION_RESPONSE_CODE)
         audit_catalog_event(
             session,
             "CATALOG_SEND_ENQUEUED",
@@ -428,6 +431,9 @@ async def enqueue_template_text(
             status="PENDING",
         )
         session.add(outbox)
+        from app.orchestrator.service import record_audio_response_code
+
+        record_audio_response_code(session, current_response_code)
         return outbox
 
     await create_template_unavailable_handoff(

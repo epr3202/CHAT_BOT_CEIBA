@@ -82,6 +82,23 @@ class Settings(BaseSettings):
     catalog_media_ttl_days: int = Field(default=25, alias="CATALOG_MEDIA_TTL_DAYS")
     catalog_max_file_mb: int = Field(default=16, alias="CATALOG_MAX_FILE_MB")
     inbound_media_max_mb: int = Field(default=16, alias="INBOUND_MEDIA_MAX_MB", ge=0)
+    audio_transcription_enabled: bool = Field(default=False, alias="AUDIO_TRANSCRIPTION_ENABLED")
+    audio_transcription_allowed_phones: str = Field(
+        default="", alias="AUDIO_TRANSCRIPTION_ALLOWED_PHONES"
+    )
+    audio_transcription_allow_all: bool = Field(
+        default=False, alias="AUDIO_TRANSCRIPTION_ALLOW_ALL"
+    )
+    openrouter_model_audio: str = Field(
+        default="google/gemini-2.5-flash", alias="OPENROUTER_MODEL_AUDIO", min_length=1
+    )
+    audio_max_seconds: int = Field(default=60, alias="AUDIO_MAX_SECONDS", ge=1, le=300)
+    audio_max_bytes: int = Field(
+        default=1_048_576, alias="AUDIO_MAX_BYTES", ge=1, le=16 * 1024 * 1024
+    )
+    audio_transcription_timeout_seconds: float = Field(
+        default=20, alias="AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS", gt=0, le=60
+    )
     payment_evidence_dir: str = Field(
         default="/data/payment-evidence", alias="PAYMENT_EVIDENCE_DIR"
     )

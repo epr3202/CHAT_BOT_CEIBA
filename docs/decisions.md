@@ -418,3 +418,60 @@ requiere rechazar el comprobante de prueba 8 y cancelar la solicitud de prueba
 f3fb9b04-1f40-4172-b9e2-b157b1ecf41a con los endpoints administrativos auditados,
 y después resetear la conversación. El rechazo puede emitir una notificación;
 estas acciones se entregan para ejecución humana y no se ejecutan en esta tarea.
+
+## 2026-10-07 — W2-c: notas de voz bajo flag y canario por allowlist
+
+Emerson acepta el spike S0 y autoriza G2 adversarial en rojo, G3, un push y PR
+draft. No autoriza merge, deploy, seed/sync ni cambios en producción. El contrato
+de implementación corrige el [G1](design/audio-messages-2026-10-07/G1.md), que se
+conserva sin editar como antecedente; la evidencia del proveedor queda en
+[S0](design/audio-messages-2026-10-07/S0.md).
+
+Decisiones de Emerson:
+
+1. Canario por allowlist de teléfonos normalizados, con flag apagado por defecto.
+   La allowlist vacía no permite transcribir a nadie; `ALLOW_ALL` es explícito.
+2. Modelo `google/gemini-2.5-flash`, `format="ogg"`, esquema estricto y ZDR
+   requerido en el proveedor. La allowlist MIME acepta solo la base `audio/ogg`.
+   Flash Lite queda descartado: alteró «reserva» por «respuesta» en el audio 08
+   de inyección y alucinó «el 14» frente al «Sí» del 05, de 0,418 segundos.
+3. Barrera escrita H7 para `CONFIRM_BOOKING`, `CONFIRM_APPOINTMENT`,
+   `CONFIRM_RESCHEDULE`, `CONFIRM_VISIT_CANCELLATION` y `CONFIRM_QUOTE_REQUEST`.
+   Cualquier audio exige confirmación por texto, sin clasificar ni alterar el
+   estado conversacional, sus pendientes, drafts, contadores o última pregunta.
+   Las confirmaciones reversibles conservan su paridad con texto.
+4. Bytes exclusivamente en memoria. El transcrito se almacena en una tabla
+   append-only y sigue la política de los mensajes de texto; al clasificar se
+   conserva el payload literal como para un texto escrito. No se agrega cifrado
+   específico. El registro de ejecución ASR guarda metadata y longitudes, sin
+   audio, base64, raw_output ni transcrito.
+5. Límites predeterminados de 60 segundos y 1 MiB, aplicados antes del ASR.
+   El tamaño se controla en metadata y streaming. Se elige parser Python propio
+   acotado de Ogg/Opus: última granule position menos pre-skip, a 48.000 Hz.
+   No se usa ffprobe ni transcodificación en el pipeline.
+6. Sin ASR durante pausa: `WAITING_FOR_HUMAN`, `HUMAN_ACTIVE`, `CLOSED` o bot
+   deshabilitado. La relectura fresca al aplicar protege una toma humana durante
+   el ASR y suprime el envío sin repetir la transcripción persistida.
+7. `UNCLEAR`, `FAILED` e `INVALID_MEDIA` usan `RESP-FILE-003` v2 sin handoff
+   automático. `TOO_LONG` usa `RESP-AUDIO-TOO-LONG-001`. Las dos plantillas nuevas
+   permanecen DRAFT hasta aprobación de Leandro; producción rechaza habilitar el
+   flag si su última versión no está APPROVED, tanto en API como en worker.
+8. El prompt transcribe literalmente y exige números, fechas, horas y montos en
+   cifras. No responde, resume ni sigue instrucciones presentes en el audio.
+   El origen explícito del turno conserva la precedencia determinista y la IA
+   no confirma ninguna acción de dominio (BR-AI-005).
+9. Re-facturar una llamada ASR después de un crash previo al commit es preferible
+   a bloquear la conversación en `REVIEW`. No es una operación mutating. Una fila
+   ya persistida se reutiliza en todo reintento y cambio de fingerprint.
+
+El S0 usa audios TTS sintéticos; valida formato, ZDR, esquema, cifras e inyección,
+NO precisión con voz real, acento colombiano ni ruido real. Esa precisión se mide
+en el E2E del canario. Piper y la codificación ffmpeg se usaron solo para generar
+insumos sintéticos locales; ningún audio ni script del spike forma parte del repo.
+
+La migración `20261007_0036_audio_transcription.py`, con base `20261002_0035`,
+agrega `message_transcription` append-only y la tarea `AUDIO_TRANSCRIPTION` al CHECK
+de `ai_execution`. El downgrade elimina la tabla y restaura el CHECK anterior;
+si existen ejecuciones `AUDIO_TRANSCRIPTION`, falla a propósito para preservar
+los eventos append-only. Deben resolverse mediante una estrategia de reversión
+explícita, sin borrar ni modificar esas ejecuciones.

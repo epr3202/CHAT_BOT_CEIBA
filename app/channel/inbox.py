@@ -16,12 +16,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.channel import inbound
+from app.channel.audio import ensure_transcription
 from app.channel.models import InboxJob, Message, WebhookEvent
 from app.config.settings import Settings, get_settings
 from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.orchestrator.inbox_effects import AgendaResults, DeferredAgendaCall, agenda_results
-from app.orchestrator.service import booking_event_context
+from app.orchestrator.service import audio_confirmation_requires_text, booking_event_context
 
 logger = structlog.get_logger(__name__)
 SessionMaker = async_sessionmaker[AsyncSession]
@@ -294,6 +295,8 @@ async def apply_turn(
                         if turn
                         else False,
                         confidence_entity_rescued=turn.confidence_entity_rescued if turn else False,
+                        input_origin=claim.persisted.input_origin,
+                        transcription_id=claim.persisted.context.get("transcription_id"),
                     ),
                     classification=turn.classification if turn else None,
                     ai_error_reason=turn.ai_error_reason if turn else None,
@@ -351,13 +354,21 @@ async def record_external_result(sm: SessionMaker, claim: InboxClaim, value: Any
 
 async def process_claimed_inbox(sm: SessionMaker, claim: InboxClaim) -> str:
     try:
+        claim = await ensure_transcription(sm, claim)
         text = claim.persisted.message_text.strip()
         passive = claim.silent and claim.persisted.message_type != "text"
-        turn = (
-            await inbound.classify_message(claim.persisted, sm, claim.request_id)
-            if text and not passive
-            else None
-        )
+        if audio_confirmation_requires_text(
+            claim.persisted.input_origin, claim.persisted.context.get("pending_action")
+        ):
+            turn = inbound.ClassifiedTurn(
+                None, None, "DETERMINISTIC", None, False, False, "AUDIO_TRANSCRIPT"
+            )
+        else:
+            turn = (
+                await inbound.classify_message(claim.persisted, sm, claim.request_id)
+                if text and not passive
+                else None
+            )
         results = AgendaResults()
         for _ in range(12):  # Bound the number of deferred agenda reads/calls in one turn.
             try:

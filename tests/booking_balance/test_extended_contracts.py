@@ -58,7 +58,9 @@ def test_balance_settings_and_delivery_context_do_not_extend_public_state_catalo
 async def test_0035_one_step_cycle_preserves_append_only_history(monkeypatch):
     config = Config("alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_current_head() == "20261002_0035"
+    assert "20261002_0035" in {
+        revision.revision for revision in scripts.walk_revisions("base", "head")
+    }
     assert scripts.get_revision("20261002_0035").down_revision == "20261002_0034"
     url = configure_test_database(monkeypatch)
     await ensure_test_database_exists(url)
@@ -67,7 +69,7 @@ async def test_0035_one_step_cycle_preserves_append_only_history(monkeypatch):
         async with engine.begin() as connection:
             await connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
             await connection.execute(text("CREATE SCHEMA public"))
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20261002_0035")
         async with engine.begin() as connection:
             await connection.execute(
                 text("""
@@ -92,13 +94,13 @@ async def test_0035_one_step_cycle_preserves_append_only_history(monkeypatch):
                 )
 
         original = await snapshot()
-        await asyncio.to_thread(command.downgrade, config, "-1")
+        await asyncio.to_thread(command.downgrade, config, "20261002_0034")
         assert await snapshot() == original
         async with engine.connect() as connection:
             tables = await connection.run_sync(lambda c: inspect(c).get_table_names())
             assert "customer_notification" not in tables
             assert "payment_evidence_review" in tables
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20261002_0035")
         assert await snapshot() == original
         async with engine.connect() as connection:
             columns = await connection.run_sync(

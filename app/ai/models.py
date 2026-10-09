@@ -16,7 +16,7 @@ class AIExecution(Base):
     __table_args__ = (
         CheckConstraint(
             "task IN ('INTENT_CLASSIFICATION', 'SERVICES_CLASSIFICATION', "
-            "'EVENT_TYPE_EXTRACTION', 'RECEIPT_EXTRACTION')",
+            "'EVENT_TYPE_EXTRACTION', 'RECEIPT_EXTRACTION', 'AUDIO_TRANSCRIPTION')",
             name="ck_ai_execution_task",
         ),
         CheckConstraint(

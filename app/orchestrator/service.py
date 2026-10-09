@@ -171,6 +171,21 @@ HANDOFF_REASON_BY_INTENT = {
 }
 
 
+AUDIO_WRITTEN_CONFIRM_ACTIONS = frozenset(
+    {
+        "CONFIRM_BOOKING",
+        "CONFIRM_APPOINTMENT",
+        "CONFIRM_RESCHEDULE",
+        "CONFIRM_VISIT_CANCELLATION",
+        "CONFIRM_QUOTE_REQUEST",
+    }
+)
+
+
+def audio_confirmation_requires_text(input_origin: str, pending_action: str | None) -> bool:
+    return input_origin == "AUDIO_TRANSCRIPT" and pending_action in AUDIO_WRITTEN_CONFIRM_ACTIONS
+
+
 @dataclass(frozen=True)
 class OrchestrationInput:
     conversation: Conversation
@@ -182,12 +197,20 @@ class OrchestrationInput:
     directed_event_type: str | None = None
     services_resolution_failed: bool = False
     confidence_entity_rescued: bool = False
+    input_origin: Literal["TEXT", "AUDIO_TRANSCRIPT"] = "TEXT"
+    transcription_id: int | None = None
 
 
 @dataclass(frozen=True)
 class PendingConfirmationResolution:
     classification: IntentClassification
     confirmation_uplifted: bool
+
+
+def record_audio_response_code(session: AsyncSession, code: str) -> None:
+    info = session.info
+    if isinstance(info, dict) and "audio_response_codes" in info:
+        info["audio_response_codes"].append(code)
 
 
 async def orchestrate_inbound_message(
@@ -200,6 +223,13 @@ async def orchestrate_inbound_message(
 ) -> None:
     conversation = orchestration_input.conversation
     state_before = ConversationState(conversation.state).value
+    pending_before = conversation.pending_action
+    audio_turn = orchestration_input.input_origin == "AUDIO_TRANSCRIPT"
+    response_codes: list[str] = []
+    info = session.info
+    previous_codes = info.get("audio_response_codes") if isinstance(info, dict) else None
+    if audio_turn and isinstance(info, dict):
+        info["audio_response_codes"] = response_codes
     intent = classification.primary_intent if classification is not None else "UNKNOWN"
     decision_token = _decision_source.set(orchestration_input.decision_source)
     try:
@@ -229,8 +259,36 @@ async def orchestrate_inbound_message(
             state_after=state_after,
             transition=transition,
             decision_source=decision_source,
+            input_origin=orchestration_input.input_origin,
             pending_action=conversation.pending_action,
         )
+        if audio_turn:
+            if isinstance(info, dict):
+                if previous_codes is None:
+                    info.pop("audio_response_codes", None)
+                else:
+                    info["audio_response_codes"] = previous_codes
+            session.add(
+                AuditEvent(
+                    actor="SYSTEM",
+                    action="AUDIO_TRANSCRIPT_TURN_APPLIED",
+                    entity="message",
+                    old_value=None,
+                    new_value={
+                        "message_id": orchestration_input.inbound_message.id,
+                        "transcription_id": orchestration_input.transcription_id,
+                        "input_origin": orchestration_input.input_origin,
+                        "decision_source": decision_source,
+                        "state_before": state_before,
+                        "state_after": state_after,
+                        "pending_before": pending_before,
+                        "pending_after": conversation.pending_action,
+                        "response_codes": response_codes,
+                    },
+                    reason="AUDIO_TRANSCRIPT_TURN_APPLIED",
+                    request_id=orchestration_input.request_id,
+                )
+            )
 
 
 async def _orchestrate_inbound_message(
@@ -274,6 +332,38 @@ async def _orchestrate_inbound_message(
             conversation,
             reason="Message received while bot_enabled is false",
             request_id=orchestration_input.request_id,
+        )
+        return
+
+    if audio_confirmation_requires_text(
+        orchestration_input.input_origin, conversation.pending_action
+    ):
+        last_question_code = conversation.last_question_code
+        try:
+            await enqueue_template(
+                session,
+                knowledge_sessionmaker,
+                conversation,
+                customer,
+                inbound_message,
+                "RESP-AUDIO-WRITTEN-CONFIRM-001",
+                {},
+            )
+        finally:
+            conversation.last_question_code = last_question_code
+        session.add(
+            AuditEvent(
+                actor="SYSTEM",
+                action="AUDIO_CONFIRMATION_REQUIRES_TEXT",
+                entity="message",
+                old_value=None,
+                new_value={
+                    "message_id": inbound_message.id,
+                    "pending_action": conversation.pending_action,
+                },
+                reason="AUDIO_CONFIRMATION_REQUIRES_TEXT",
+                request_id=orchestration_input.request_id,
+            )
         )
         return
 
@@ -4418,6 +4508,7 @@ async def enqueue_template(
         rendered_code = "RESP-AI-ERROR-001"
 
     conversation.last_question_code = response_code
+    record_audio_response_code(session, rendered_code)
     context = automatic_context(conversation, "TEMPLATE")
     if payment_ack is not None and rendered_code == "RESP-BOOKING-EVIDENCE-001":
         context = payment_evidence_ack_context(*payment_ack)
