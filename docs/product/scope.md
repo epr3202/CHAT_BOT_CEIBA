@@ -853,9 +853,16 @@ NO_SHOW
 * agenda de eventos completos;
 * asignación de personal del evento;
 * calendarios de proveedores;
-* reservas de habitaciones;
+* reservas de habitaciones independientes de una experiencia de precio fijo;
 * planificación de montajes;
 * agenda multipropiedad.
+
+Ampliación aprobada por Emerson, 2026-10-28: el backend puede consultar la agenda
+de planes `ROMANTIC_DINNER` y `PROPOSAL` sin iniciar una solicitud de reserva.
+`REFUGIO_DOS` es el único plan que incluye pernoctación; su intervalo termina al
+checkout del día siguiente. Esto no incorpora inventario hotelero ni agenda para
+bodas, cumpleaños u otros eventos completos. El pago y la reserva siguen bajo
+confirmación humana.
 
 ---
 
@@ -1801,6 +1808,10 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 # 29. Backlog posterior al MVP
 
 * centralizar el reloj de la app en un único proveedor inyectable (hoy hay al menos 3 fuentes de datetime.now).
+* modelar recursos de agenda (suite, terraza, mesa) antes de ampliar las reglas de
+  solapamiento de pernoctación; el bloqueo actual distingue exclusividad y pernoctación;
+* disponibilidad de eventos grandes: fuera del alcance actual porque no existe
+  inventario de recursos, intervalos de montaje ni agenda de eventos completos.
 
 ## Entradas cerradas
 

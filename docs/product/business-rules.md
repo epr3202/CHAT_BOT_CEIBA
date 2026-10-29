@@ -2674,3 +2674,37 @@ para destinatarios activos con notify_on_evidence, mediante los canales y ventan
 de B3. Un pago de saldo completo establece payment_kind=FULL y borra ambos campos
 de vencimiento. Los importes los calcula el backend y todos los pagos los confirma
 un humano; la IA no decide el saldo, el envío, el vencimiento ni la cancelación.
+
+## Disponibilidad y pernoctación — aprobación de Emerson, 2026-10-28/29
+
+* REFUGIO_DOS (Refugio para Dos) es el único plan del catálogo productivo que
+  incluye alojamiento para la pareja. La mención de hospedaje presenta esa
+  experiencia y el catálogo romántico; no crea una cotización de hotel ni una
+  reserva de habitación independiente. Dentro de COLLECT_SERVICES se conserva
+  el servicio ACCOMMODATION.
+* La consulta directa de disponibilidad pertenece solo a ROMANTIC_DINNER y
+  PROPOSAL. Una respuesta favorable es informativa y no separa fecha. Antes de
+  convertirla a solicitud se vuelve a consultar agenda y se aplica el guard
+  global de solicitudes pendientes del cliente. No hay agenda automatizada
+  de bodas o eventos grandes, conforme a scope.md §13.9.
+* El plan con pernoctación termina al checkout del día siguiente en Bogotá,
+  aunque conserve una duración histórica en minutos. Checkin y checkout se
+  inicializan a 15:00/11:00 (settings de migración) y luego se editan en el panel.
+  La entrada no puede superar BOOKING_LATEST_START. weekend_only se aplica a
+  todos los planes que tengan esa restricción.
+* Una reserva RESERVED con pernoctación bloquea solapamientos de planes
+  exclusivos o con pernoctación. Los planes compartidos conservan su convivencia
+  según los demás bloqueos existentes. El inventario suite/terraza/mesa queda
+  pendiente; no se interpreta una agenda libre como inventario hotelero.
+* La caída de agenda se registra como BOOKING_AVAILABILITY_FAILED y handoff
+  SYSTEM_ERROR; el borrador conserva plan, fecha, hora y demás datos para que
+  el asesor continúe. El bot permanece pausado bajo A7. Los demás handoffs
+  siguen borrando el borrador de reserva.
+* El saldo sigue venciendo antes de la entrada (starts_at − 1 día), por
+  aclaración expresa de Emerson del 29-oct. Los recordatorios auditan el
+  intervalo real sin desplazar el vencimiento al checkout.
+* Las tres respuestas nuevas son APPROVED v1 por adenda de Leandro del 29-oct;
+  sus textos exactos y variables están en approved-responses.md. Las frases
+  existentes de confirmación permanecen intactas: checkout se guarda en el
+  borrador y auditoría, a la espera de un texto aprobado específico si se desea
+  comunicarlo en esas confirmaciones.
