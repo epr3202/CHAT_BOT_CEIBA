@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, Time, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
@@ -18,6 +18,10 @@ class Plan(Base):
         CheckConstraint("event_type IN ('ROMANTIC_DINNER', 'PROPOSAL')", name="ck_plan_event_type"),
         CheckConstraint("price_cop > 0", name="ck_plan_price_positive"),
         CheckConstraint("duration_minutes > 0", name="ck_plan_duration_positive"),
+        CheckConstraint(
+            "NOT overnight OR (checkin_from IS NOT NULL AND checkout_time IS NOT NULL)",
+            name="ck_plan_overnight_hours",
+        ),
     )
 
     plan_id: Mapped[uuid.UUID] = mapped_column(
@@ -34,6 +38,11 @@ class Plan(Base):
     weekend_only: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    overnight: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    checkin_from: Mapped[time | None] = mapped_column(Time(), nullable=True)
+    checkout_time: Mapped[time | None] = mapped_column(Time(), nullable=True)
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )

@@ -882,6 +882,7 @@ function caseFromConversation(conversation) {
     resolvedAt: null,
     summary: conversation.handoff_summary || conversation.last_message_preview || conversation.last_message_body || "",
     lastMessageDirection: conversation.last_message_direction,
+    bookingDraft: conversation.booking_draft,
   };
 }
 
@@ -937,6 +938,25 @@ function renderAdminCases() {
     $(".caseAssignment", row).textContent = assignmentText(item);
     $(".caseReason", row).replaceChildren(reasonLabel(item));
     $(".caseActivity", row).replaceChildren(activityText(item));
+    const draftView = $(".caseBookingDraft", row);
+    if (item.bookingDraft && Object.keys(item.bookingDraft).length) {
+      draftView.hidden = false;
+      const values = $("dl", draftView);
+      const fields = {
+        plan_code: "Plan", date: "Fecha", time: "Hora", checkout: "Salida",
+        duration_minutes: "Duración (minutos)", inquiry_only: "Consulta de disponibilidad",
+      };
+      for (const [key, title] of Object.entries(fields)) {
+        const value = item.bookingDraft[key];
+        if (value === undefined || value === null || value === "") continue;
+        const term = document.createElement("dt");
+        const description = document.createElement("dd");
+        term.textContent = title;
+        description.textContent = key === "checkout" ? formatDate(value)
+          : typeof value === "boolean" ? (value ? "Sí" : "No") : String(value);
+        values.append(term, description);
+      }
+    }
     const actions = $(".caseActions", row);
     if (directTakeEligibleStates.has(item.status)) {
       actions.append(actionButton("Tomar conversación", () => takeConversation(item.conversationId), "primary"));
@@ -1421,13 +1441,15 @@ function renderPlans() {
   const body = $("#planRows");
   body.replaceChildren();
   if (!state.plans.length) {
-    emptyTable(body, 9, "No hay planes disponibles.");
+    emptyTable(body, 12, "No hay planes disponibles.");
     return;
   }
   const fields = [
     ["name", "Nombre", "text"], ["price_cop", "Precio (COP)", "number"],
     ["duration_minutes", "Duración (minutos)", "number"], ["exclusive", "Exclusivo", "checkbox"],
-    ["weekend_only", "Solo fines de semana", "checkbox"], ["active", "Activo", "checkbox"],
+    ["weekend_only", "Solo fines de semana", "checkbox"], ["overnight", "Pernoctación", "checkbox"],
+    ["checkin_from", "Entrada desde", "time"], ["checkout_time", "Salida", "time"],
+    ["active", "Activo", "checkbox"],
     ["sort_order", "Orden", "number"],
   ];
   for (const plan of state.plans) {
@@ -1440,13 +1462,15 @@ function renderPlans() {
       input.setAttribute("aria-label", title);
       if (type === "checkbox") input.checked = plan[field];
       else {
-        input.value = plan[field];
-        input.required = true;
+        input.value = type === "time" ? (plan[field]?.slice(0, 5) || "") : plan[field];
+        input.required = type === "time" ? Boolean(plan.overnight) : true;
         if (type === "number") {
           input.step = "1";
           input.min = field === "sort_order" ? "-2147483648" : "1";
           input.max = "2147483647";
-        } else input.maxLength = 180;
+        } else if (type === "time") input.step = "60";
+        else input.maxLength = 180;
+        if (field === "duration_minutes") input.title = "Se aplica a planes sin pernoctación.";
       }
       controls[field] = input;
       cell.append(input);
@@ -1457,6 +1481,9 @@ function renderPlans() {
         row.append(eventCell);
       }
     }
+    controls.overnight.addEventListener("change", () => {
+      controls.checkin_from.required = controls.checkout_time.required = controls.overnight.checked;
+    });
     const actions = document.createElement("td");
     actions.append(actionButton("Guardar", (event) => savePlan(plan, controls, event.currentTarget)));
     row.append(actions);
@@ -1470,7 +1497,8 @@ async function savePlan(plan, controls, button) {
   const changes = {};
   for (const [field, input] of Object.entries(controls)) {
     changes[field] = input.type === "checkbox" ? input.checked
-      : input.type === "number" ? Number(input.value) : input.value.trim();
+      : input.type === "number" ? Number(input.value)
+      : input.type === "time" ? (input.value || null) : input.value.trim();
   }
   const writes = state.planWrites;
   const token = state.sessionToken;
@@ -1488,7 +1516,7 @@ async function savePlan(plan, controls, button) {
     Object.assign(plan, updated);
     for (const [field, input] of Object.entries(controls)) {
       if (input.type === "checkbox") input.checked = updated[field];
-      else input.value = updated[field];
+      else input.value = input.type === "time" ? (updated[field]?.slice(0, 5) || "") : updated[field];
     }
     managementFeedback("plansFeedback", "Plan guardado.");
   } catch (error) {

@@ -47,7 +47,12 @@ async def audit_once(
             action=action,
             entity="reservation",
             old_value=None,
-            new_value={"reservation_id": str(reservation.reservation_id), "kind": kind},
+            new_value={
+                "reservation_id": str(reservation.reservation_id),
+                "kind": kind,
+                "starts_at": reservation.starts_at.isoformat(),
+                "ends_at": reservation.ends_at.isoformat(),
+            },
             reason=reason,
             request_id=request_id,
             created_at=now,
@@ -205,6 +210,15 @@ async def enqueue_balance_reminders(
                     from app.notifications.customer_worker import customer_audit
 
                     notification = await session.get(CustomerNotification, notification_id)
+                    await audit_once(
+                        session,
+                        "BALANCE_REMINDER_INTERVAL_CAPTURED",
+                        reservation,
+                        kind,
+                        "Intervalo real; saldo exigible antes de la entrada",
+                        now,
+                        request_id,
+                    )
                     customer_audit(
                         session,
                         "CUSTOMER_NOTIFICATION_ENQUEUED",
@@ -225,6 +239,8 @@ async def enqueue_balance_reminders(
                             "reservation_id": str(reservation.reservation_id),
                             "balance_overdue_at": now.isoformat(),
                             "balance_cop": reservation.price_cop - reservation.amount_paid_cop,
+                            "starts_at": reservation.starts_at.isoformat(),
+                            "ends_at": reservation.ends_at.isoformat(),
                         },
                         reason="Saldo pendiente al vencer el plazo de pago",
                         request_id=request_id,

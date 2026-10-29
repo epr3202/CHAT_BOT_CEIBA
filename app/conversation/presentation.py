@@ -286,6 +286,8 @@ def _present_event_type(value: Any) -> str:
 
 
 VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
+    "date": _present_date,
+    "time": _present_time,
     "plan_options": _present_plan_options,
     "plan_name": _present_plan_name,
     "booking_date": _present_date,

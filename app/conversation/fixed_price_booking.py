@@ -12,21 +12,72 @@ from app.conversation.catalog_event_type import (
 
 FIXED_PRICE_BOOKING_REASON = "FIXED_PRICE_BOOKING_REQUEST"
 SELF_SERVICE_BOOKING_REASON = "SELF_SERVICE_BOOKING"
-FIXED_PRICE_INFORMATION_CODES = {
+AVAILABILITY_INQUIRY_REASON = "FIXED_PRICE_AVAILABILITY_INQUIRY"
+FIXED_PRICE_PRIMARY_INFORMATION_CODES = {
     "PROPOSAL": "RESP-EVENTS-PROPOSAL-001",
     "ROMANTIC_DINNER": "RESP-EVENTS-ROMANTIC-001",
+}
+FIXED_PRICE_INFORMATION_CODES = {
+    "PROPOSAL": frozenset({FIXED_PRICE_PRIMARY_INFORMATION_CODES["PROPOSAL"]}),
+    "ROMANTIC_DINNER": frozenset(
+        {
+            FIXED_PRICE_PRIMARY_INFORMATION_CODES["ROMANTIC_DINNER"],
+            "RESP-ACCOMMODATION-ROMANTIC-001",
+        }
+    ),
 }
 # An informational interruption is not an answer to the catalog's plan invitation.
 _PLAN_INFORMATION_WORDS = frozenset(
     {
-        "catalogo", "catalogos", "pdf", "brochure", "ubicacion", "mapa", "horario", "horarios",
-        "parqueadero", "capacidad", "piscina", "mascotas", "proveedores", "alimentos",
-        "bebidas", "licor", "descorche", "alojamiento", "pago", "pagos", "pagar",
-        "comprobante", "cancelar", "cancelacion", "devolucion", "descuento", "queja",
-        "emergencia", "ayuda", "informacion", "informarme",
-        "espacios", "identidad", "seguridad", "servicios", "visitas", "respuesta",
-        "precio", "precios", "valor", "cuesta", "tarjetas", "transferencia",
-        "hola", "gracias", "adios",
+        "catalogo",
+        "catalogos",
+        "pdf",
+        "brochure",
+        "ubicacion",
+        "mapa",
+        "horario",
+        "horarios",
+        "parqueadero",
+        "capacidad",
+        "piscina",
+        "mascotas",
+        "proveedores",
+        "alimentos",
+        "bebidas",
+        "licor",
+        "descorche",
+        "alojamiento",
+        "pago",
+        "pagos",
+        "pagar",
+        "comprobante",
+        "cancelar",
+        "cancelacion",
+        "devolucion",
+        "descuento",
+        "queja",
+        "emergencia",
+        "ayuda",
+        "informacion",
+        "informarme",
+        "hotel",
+        "hospedaje",
+        "habitacion",
+        "espacios",
+        "identidad",
+        "seguridad",
+        "servicios",
+        "visitas",
+        "respuesta",
+        "precio",
+        "precios",
+        "valor",
+        "cuesta",
+        "tarjetas",
+        "transferencia",
+        "hola",
+        "gracias",
+        "adios",
     }
 )
 BOOKING_ACTIONS = frozenset(
@@ -36,6 +87,7 @@ BOOKING_ACTIONS = frozenset(
         "SELECT_BOOKING_TIME",
         "CONFIRM_BOOKING",
         "COLLECT_BOOKING_NAME",
+        "CONFIRM_AVAILABILITY_BOOKING",
     }
 )
 BOOKING_EXPRESSIONS = frozenset(
@@ -83,6 +135,33 @@ def _phrase_pattern(expressions: frozenset[str]) -> re.Pattern[str]:
 
 _BOOKING_PATTERN = _phrase_pattern(BOOKING_EXPRESSIONS)
 _VISIT_PATTERN = _phrase_pattern(VISIT_EXPRESSIONS)
+_AVAILABILITY_PATTERN = _phrase_pattern(
+    frozenset(
+        {
+            "disponibilidad",
+            "disponible",
+            "disponibles",
+            "libre",
+            "libres",
+            "cupo",
+            "cupos",
+            "hay espacio",
+            "hay agenda",
+            "tienen agenda",
+            "esta ocupado",
+            "ocupada",
+            "tienen el",
+            "tienen fecha",
+            "hay fecha",
+            "puedo reservar el",
+            "se puede el",
+        }
+    )
+)
+
+
+def is_availability_inquiry(message_text: str) -> bool:
+    return bool(_AVAILABILITY_PATTERN.search(normalize_catalog_event_type_label(message_text)))
 
 
 def booking_guard_eligible(
@@ -92,15 +171,16 @@ def booking_guard_eligible(
     *,
     self_service: bool = False,
 ) -> bool:
+    idle = pending_action is None or self_service and pending_action == "CLASSIFY_MESSAGE"
     return bot_enabled and (
-        pending_action is None
+        idle
         and state in {"BOT_ACTIVE", "ANSWERING_INFORMATION"}
         or self_service
         and state == "NEW"
         and pending_action is None
         or self_service
         and state == "COLLECTING_EVENT_DATA"
-        and pending_action in GENERIC_CAPTURE_ACTIONS | {None}
+        and pending_action in GENERIC_CAPTURE_ACTIONS | {None, "CLASSIFY_MESSAGE"}
     )
 
 
@@ -112,7 +192,7 @@ def is_explicit_visit_request(message_text: str) -> bool:
 def is_fixed_price_catalog_followup(event_type: str | None, last_question_code: str | None) -> bool:
     return (
         event_type in FIXED_PRICE_INFORMATION_CODES
-        and last_question_code == FIXED_PRICE_INFORMATION_CODES[event_type]
+        and last_question_code in FIXED_PRICE_INFORMATION_CODES[event_type]
     )
 
 

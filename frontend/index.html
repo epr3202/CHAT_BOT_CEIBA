@@ -296,7 +296,8 @@
             <table class="agentsTable plansTable">
               <thead><tr>
                 <th>Nombre</th><th>Tipo de evento</th><th>Precio (COP)</th><th>Duración (minutos)</th>
-                <th>Exclusivo</th><th>Solo fines de semana</th><th>Activo</th><th>Orden</th><th>Acciones</th>
+                <th>Exclusivo</th><th>Solo fines de semana</th><th>Pernoctación</th>
+                <th>Entrada desde</th><th>Salida</th><th>Activo</th><th>Orden</th><th>Acciones</th>
               </tr></thead>
               <tbody id="planRows"></tbody>
             </table>
@@ -478,6 +479,10 @@
         <div class="caseAssignment"></div>
         <div class="caseReason"></div>
         <div class="caseActivity"></div>
+        <details class="caseBookingDraft" hidden>
+          <summary>Datos de la experiencia</summary>
+          <dl></dl>
+        </details>
         <div class="caseActions"></div>
       </article>
     </template>
