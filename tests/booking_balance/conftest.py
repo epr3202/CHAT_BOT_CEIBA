@@ -1,15 +1,13 @@
 import re
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
 from app.config.settings import get_settings
 from app.conversation.models import KnowledgeEntry
-from app.reservation import booking
 from tests.booking_conversation.conftest import api, base_harness  # noqa: F401
 from tests.booking_conversation.conftest import harness as booking_harness  # noqa: F401
+from tests.clock import BALANCE_NOW, FreezeAppClock, FrozenDateTime
 from tests.payment_settlement.conftest import calendar, client  # noqa: F401
 from tests.visit_booking_guard.helpers import Harness
 
@@ -25,24 +23,25 @@ BALANCE_TEMPLATES = {
 }
 
 
-class BookingBalanceClock(datetime):
-    instant = datetime(2026, 10, 2, 15, tzinfo=UTC)
+class BookingBalanceClock(FrozenDateTime):
+    instant = BALANCE_NOW
 
-    @classmethod
-    def now(cls, tz: Any = None) -> datetime:
-        value = cls.instant
-        return value.astimezone(tz) if tz else value.replace(tzinfo=None)
+
+@pytest.fixture(autouse=True)
+def balance_clock(freeze_app_clock: FreezeAppClock) -> None:
+    freeze_app_clock(BALANCE_NOW)
 
 
 @pytest.fixture
 async def harness(
     booking_harness: Harness,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
+    freeze_app_clock: FreezeAppClock,
 ) -> AsyncIterator[Harness]:
     monkeypatch.setenv("STAFF_NOTIFICATIONS_ENABLED", "true")
     get_settings.cache_clear()
-    monkeypatch.setattr(BookingBalanceClock, "instant", datetime(2026, 10, 2, 15, tzinfo=UTC))
-    monkeypatch.setattr(booking, "datetime", BookingBalanceClock)
+    monkeypatch.setattr(BookingBalanceClock, "instant", BALANCE_NOW)
+    freeze_app_clock(BookingBalanceClock)
     async with booking_harness.db.begin() as session:
         # Approved, literal templates in a synthetic DB; no production knowledge is edited.
         for code, body in BALANCE_TEMPLATES.items():

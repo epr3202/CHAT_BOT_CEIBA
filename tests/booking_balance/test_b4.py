@@ -172,6 +172,11 @@ async def test_r4_overdue_marks_once_and_notifies_active_evidence_recipients(cli
         notification.params[1:] == [PARAMS[3], PARAMS[1], PARAMS[2]]
         for notification in notifications
     )
+    # SQL now() is not the injected scheduler clock; make the prepared notices due.
+    async with sm.begin() as session:
+        for notification in notifications:
+            saved_notice = await session.get(StaffOutbox, notification.id)
+            saved_notice.next_attempt_at = DUE_AT
     with respx.mock as router:
         meta = router.post(META_URL).respond(
             200, json={"messages": [{"id": "staff.balance.overdue"}]}

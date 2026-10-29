@@ -1800,6 +1800,8 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 
 # 29. Backlog posterior al MVP
 
+* centralizar el reloj de la app en un único proveedor inyectable (hoy hay al menos 3 fuentes de datetime.now).
+
 ## Entradas cerradas
 
 * Incidente de hash de evidencia #1 (cerrado el 2026-08-25): Meta puede representar el

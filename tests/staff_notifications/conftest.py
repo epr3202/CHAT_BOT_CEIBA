@@ -4,11 +4,15 @@ import pytest
 from httpx import AsyncClient
 
 from app.config.settings import get_settings
+from tests.clock import BALANCE_NOW, FreezeAppClock
 from tests.integration.helpers import app_client, bootstrap_agent, configure_test_environment
 
 
 @pytest.fixture
-async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+async def client(
+    monkeypatch: pytest.MonkeyPatch, freeze_app_clock: FreezeAppClock
+) -> AsyncIterator[AsyncClient]:
+    freeze_app_clock(BALANCE_NOW)
     await configure_test_environment(monkeypatch)
     monkeypatch.setenv("SELF_SERVICE_BOOKING_ENABLED", "true")
     monkeypatch.setenv("STAFF_NOTIFICATIONS_ENABLED", "true")

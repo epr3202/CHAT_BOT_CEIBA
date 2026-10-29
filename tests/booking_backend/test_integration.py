@@ -19,6 +19,7 @@ from app.payment.models import PaymentEvidence
 from app.plan.models import Plan
 from app.reservation.models import Reservation
 from tests.booking_backend.helpers import START, settings, symbol
+from tests.clock import BOOKING_NOW, FreezeAppClock
 from tests.integration.helpers import (
     app_client,
     bootstrap_agent,
@@ -36,7 +37,10 @@ from tests.test_w2b_payment_evidence_adversarial import (
 
 
 @pytest.fixture
-async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+async def client(
+    monkeypatch: pytest.MonkeyPatch, freeze_app_clock: FreezeAppClock
+) -> AsyncIterator[AsyncClient]:
+    freeze_app_clock(BOOKING_NOW)
     monkeypatch.setenv("GOOGLE_FREEBUSY_CALENDAR_IDS", "a,b")
     monkeypatch.setenv("CALENDAR_ADAPTER", "fake")
     await configure_test_environment(monkeypatch)

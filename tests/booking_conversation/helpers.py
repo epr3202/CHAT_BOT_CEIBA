@@ -1,7 +1,7 @@
 # Literal customer copy intentionally preserves long sentences.
 # ruff: noqa: E501
 import json
-from datetime import datetime
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -14,11 +14,12 @@ from app.event.models import Event
 from app.payment.models import PaymentEvidence
 from app.plan.models import Plan
 from app.reservation.models import Reservation
+from tests.clock import BOOKING_NOW
 from tests.integration.helpers import whatsapp_message_payload
 from tests.unit.test_ai_client import valid_classification
 from tests.visit_booking_guard.helpers import BOGOTA, PHONE, ROMANTIC_INFO, Harness
 
-START = datetime(2026, 10, 7, 19, tzinfo=BOGOTA)
+START = (BOOKING_NOW + timedelta(days=8)).astimezone(BOGOTA).replace(hour=19)
 TEMPLATES = {
     "PLAN": "¡Perfecto! Estas son nuestras experiencias disponibles:\n{plan_options}\nCuéntame el número o el nombre de la que quieres reservar.",
     "DATETIME": "¿Para qué fecha y a qué hora te gustaría vivirla? Por ejemplo: 7 de octubre a las 7 pm.",

@@ -19,7 +19,6 @@ from app.customer.models import Customer
 from app.event.models import Event
 from app.handoff.models import Handoff
 from app.lead.models import Lead
-from app.orchestrator import service as orchestrator
 from app.plan.models import Plan
 from app.reservation.models import Reservation
 from scripts.load_plans import PLAN_SEED
@@ -33,6 +32,7 @@ from tests.booking_conversation.test_fixed_price_catalog_context_g2 import (
     send,
     text_bodies,
 )
+from tests.clock import BOOKING_NOW, FreezeAppClock
 from tests.visit_booking_guard.helpers import BOGOTA, Harness
 
 # Verbatim production transcript, conversation 206. G1 found no T2 ai_execution,
@@ -42,16 +42,12 @@ INCIDENT_T2 = "Me interesa confesión bajo la luna"
 
 
 @pytest.fixture(autouse=True)
-def incident_clock(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    set_clock(monkeypatch, date(2026, 10, 6))
+def incident_clock(harness: Harness, freeze_app_clock: FreezeAppClock) -> None:
+    set_clock(freeze_app_clock, (BOOKING_NOW + timedelta(days=7)).date())
 
 
-def set_clock(monkeypatch: pytest.MonkeyPatch, today: date) -> None:
-    monkeypatch.setattr(
-        orchestrator,
-        "current_bogota_datetime",
-        lambda: datetime.combine(today, time(10), tzinfo=BOGOTA),
-    )
+def set_clock(freeze_app_clock: FreezeAppClock, today: date) -> None:
+    freeze_app_clock(datetime.combine(today, time(10), tzinfo=BOGOTA))
 
 
 async def current_conversation(harness: Harness) -> Conversation:
@@ -299,12 +295,12 @@ async def test_g2_plan_selection_stays_with_active_lead_event_type(
 async def test_g2_catalog_day_without_month_survives_until_plan_confirmation(
     harness: Harness,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    freeze_app_clock: FreezeAppClock,
     today: date,
     day: int,
     candidate: date,
 ) -> None:
-    set_clock(monkeypatch, today)
+    set_clock(freeze_app_clock, today)
     await harness.seed(event_type=None, with_lead=False)
     await seed_assets(harness, tmp_path)
     await send(harness, f"Hola Me gustaría agendar una pedida de mano para el {day}")

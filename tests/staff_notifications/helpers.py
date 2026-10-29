@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -6,8 +6,9 @@ from sqlalchemy import select
 from app.audit.models import AuditEvent
 from app.main import app
 from tests.b1a_contracts import require_symbol
+from tests.clock import BALANCE_NOW
 
-NOW = datetime(2026, 10, 2, 15, tzinfo=UTC)
+NOW = BALANCE_NOW
 PHONE = "+573000000123"
 
 

@@ -1,6 +1,6 @@
 """Balance-reminder fixtures keep clock and reservation confirmation explicit."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -11,11 +11,12 @@ from app.customer.models import Customer
 from app.main import app
 from app.reservation.models import Reservation
 from tests.b1a_contracts import require_symbol
+from tests.clock import BALANCE_NOW
 from tests.integration.test_b1a_plan_reservation_admin import seed_reservation
 
-START = datetime(2026, 10, 11, 0, tzinfo=UTC)  # October 10, 19:00 in Bogotá.
-EARLY = datetime(2026, 10, 7, 15, tzinfo=UTC)
-DUE = datetime(2026, 10, 9, 15, tzinfo=UTC)
+EARLY = BALANCE_NOW + timedelta(days=5)
+START = EARLY + timedelta(days=3, hours=9)  # Three reminder days; 19:00 in Bogotá.
+DUE = EARLY + timedelta(days=2)
 DUE_AT = START - timedelta(days=1)
 RESERVED_AT = START - timedelta(days=7)
 
