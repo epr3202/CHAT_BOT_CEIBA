@@ -18,15 +18,17 @@ from tests.integration.helpers import configure_test_database, ensure_test_datab
 
 
 @pytest.mark.parametrize("code,variables", list(NEW_TEMPLATES.items()))
-def test_R_new_sensitive_templates_seed_as_conditional_draft(
+# Cambio de contrato autorizado por Emerson: adenda de Leandro del 2026-10-29.
+def test_R_new_sensitive_templates_seed_as_approved_v1(
     code: str, variables: tuple[str, ...]
 ) -> None:
-    assert code in CONDITIONAL_DRAFT_CODES
+    assert code not in CONDITIONAL_DRAFT_CODES
     entries = [entry for entry in iter_seed_entries() if entry.code == code]
     assert len(entries) == 1
-    assert entries[0].status == "DRAFT"
+    assert entries[0].status == "APPROVED"
+    assert entries[0].version == 1
     assert set(entries[0].allowed_variables) == set(variables)
-    assert "DRAFT" in entries[0].answer_template
+    assert "DRAFT" not in entries[0].answer_template
 
 
 @pytest.mark.parametrize("checkin,checkout", [("15:00", "11:00"), ("16:30", "10:30")])
