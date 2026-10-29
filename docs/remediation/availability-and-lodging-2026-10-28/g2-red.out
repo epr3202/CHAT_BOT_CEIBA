@@ -1,0 +1,867 @@
+G2 baseline: 01557c15e6ac9b6d5478b485016117c985048170
+PRE verified: production HEAD 01557c1; alembic 20261007_0036; ready 200; tracebacks 0; REFUGIO_DOS active.
+Local isolated PostgreSQL 16; Makefile TEST_ENV; no production test execution; no G3 implementation.
+Command: .venv/bin/pytest -p availability_g2_probe tests/availability_lodging/ -q --tb=short -rA --junitxml=/tmp/ceiba-availability-g2.xml
+
+FFFF.F.FFFFFFFFFFFFFFFF.......FFFFFF.FFFF.FFFFFFFFFFFFFFFFFF.....FFFF... [ 79%]
+.FFFFFFFFFFF.FF.FFF                                                      [100%]
+=================================== FAILURES ===================================
+__________________ test_R_calendar_error_is_typed_and_logged ___________________
+tests/availability_lodging/test_agenda_failures.py:33: in test_R_calendar_error_is_typed_and_logged
+    assert result is not None, "CalendarUnavailableError debe producir BookingAvailabilityFailure"
+E   AssertionError: CalendarUnavailableError debe producir BookingAvailabilityFailure
+E   assert None is not None
+______________ test_R_invalid_plan_returns_failure[PLAN_INACTIVE] ______________
+tests/availability_lodging/test_agenda_failures.py:57: in test_R_invalid_plan_returns_failure
+    assert result is not None, f"Se requiere Failure({cause})"
+E   AssertionError: Se requiere Failure(PLAN_INACTIVE)
+E   assert None is not None
+______________ test_R_invalid_plan_returns_failure[PLAN_MISMATCH] ______________
+tests/availability_lodging/test_agenda_failures.py:57: in test_R_invalid_plan_returns_failure
+    assert result is not None, f"Se requiere Failure({cause})"
+E   AssertionError: Se requiere Failure(PLAN_MISMATCH)
+E   assert None is not None
+__________ test_R_case_A_failure_audits_overrides_and_preserves_draft __________
+tests/availability_lodging/test_agenda_failures.py:82: in test_R_case_A_failure_audits_overrides_and_preserves_draft
+    assert len(failures) == 1, f"Falta BOOKING_AVAILABILITY_FAILED; observado: {observed}"
+E   AssertionError: Falta BOOKING_AVAILABILITY_FAILED; observado: {'codes': ['RESP-HANDOFF-002'], 'draft_keys': [], 'handoff_reasons': ['SYSTEM_ERROR']}
+E   assert 0 == 1
+E    +  where 0 = len([])
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_HUMAN
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+____________________ test_R_weekend_only_tuesday_asks_date _____________________
+tests/availability_lodging/test_agenda_failures.py:132: in test_R_weekend_only_tuesday_asks_date
+    assert "WEEKEND_ONLY" in reasons
+E   AssertionError: assert 'WEEKEND_ONLY' in [None, None]
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=CONFIRM_BOOKING request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_ test_R_availability_vocabulary[hay disponibilidad el 17 de noviembre a las 7] _
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_______ test_R_availability_vocabulary[tienen el 20 de diciembre libre?] _______
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_ test_R_availability_vocabulary[esta disponible ritual del corazon el sabado] _
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+________ test_R_availability_vocabulary[hay cupo para el 14 a las 8pm] _________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_________________ test_R_availability_vocabulary[disponibles] __________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+____________________ test_R_availability_vocabulary[libres] ____________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+____________________ test_R_availability_vocabulary[cupos] _____________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_________________ test_R_availability_vocabulary[hay espacio] __________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+__________________ test_R_availability_vocabulary[hay agenda] __________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+________________ test_R_availability_vocabulary[tienen agenda] _________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_______________ test_R_availability_vocabulary[est\xe1 ocupado] ________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+___________________ test_R_availability_vocabulary[ocupada] ____________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_________________ test_R_availability_vocabulary[tienen fecha] _________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+__________________ test_R_availability_vocabulary[hay fecha] ___________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_____________ test_R_availability_vocabulary[puedo reservar el 17] _____________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+________________ test_R_availability_vocabulary[se puede el 17] ________________
+tests/availability_lodging/test_availability_inquiries.py:46: in test_R_availability_vocabulary
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:36: in symbol
+    assert value is not None, f"G2: falta {module}.{name}"
+           ^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.fixed_price_booking.is_availability_inquiry
+_____ test_R_inquiry_reports_availability_without_name_payment_or_calendar _____
+tests/availability_lodging/test_availability_inquiries.py:75: in test_R_inquiry_reports_availability_without_name_payment_or_calendar
+    assert harness.codes == [AVAILABLE]
+E   AssertionError: assert ['RESP-BOOKING-PLAN-001'] == ['RESP-AVAILA...VAILABLE-001']
+E     
+E     At index 0 diff: 'RESP-BOOKING-PLAN-001' != 'RESP-AVAILABILITY-AVAILABLE-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+________________ test_R_yes_revalidates_before_collecting_name _________________
+tests/availability_lodging/test_availability_inquiries.py:119: in test_R_yes_revalidates_before_collecting_name
+    await seed_answered_inquiry(harness)
+tests/availability_lodging/test_availability_inquiries.py:101: in seed_answered_inquiry
+    require_inquiry_pending()
+tests/availability_lodging/helpers.py:108: in require_inquiry_pending
+    assert CONFIRM_AVAILABILITY in symbol("app.conversation.pending_actions", "PENDING_ACTIONS"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta CONFIRM_AVAILABILITY_BOOKING
+______________ test_R_yes_with_existing_name_goes_to_confirmation ______________
+tests/availability_lodging/test_availability_inquiries.py:146: in test_R_yes_with_existing_name_goes_to_confirmation
+    await seed_answered_inquiry(harness, full_name="Cliente Sintético")
+tests/availability_lodging/test_availability_inquiries.py:101: in seed_answered_inquiry
+    require_inquiry_pending()
+tests/availability_lodging/helpers.py:108: in require_inquiry_pending
+    assert CONFIRM_AVAILABILITY in symbol("app.conversation.pending_actions", "PENDING_ACTIONS"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta CONFIRM_AVAILABILITY_BOOKING
+_____ test_R_yes_with_previous_payment_request_keeps_final_duplicate_guard _____
+tests/availability_lodging/test_availability_inquiries.py:157: in test_R_yes_with_previous_payment_request_keeps_final_duplicate_guard
+    plan = await seed_answered_inquiry(harness)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/test_availability_inquiries.py:101: in seed_answered_inquiry
+    require_inquiry_pending()
+tests/availability_lodging/helpers.py:108: in require_inquiry_pending
+    assert CONFIRM_AVAILABILITY in symbol("app.conversation.pending_actions", "PENDING_ACTIONS"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta CONFIRM_AVAILABILITY_BOOKING
+_________________ test_R_inquiry_skips_initial_duplicate_guard _________________
+tests/availability_lodging/test_availability_inquiries.py:174: in test_R_inquiry_skips_initial_duplicate_guard
+    assert harness.codes == [AVAILABLE]
+E   AssertionError: assert ['RESP-BOOKING-PENDING-001'] == ['RESP-AVAILA...VAILABLE-001']
+E     
+E     At index 0 diff: 'RESP-BOOKING-PENDING-001' != 'RESP-AVAILABILITY-AVAILABLE-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=HUMAN_REQUEST pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_HUMAN
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+___________ test_R_negative_correction_reenters_with_preserved_plan ____________
+tests/availability_lodging/test_availability_inquiries.py:182: in test_R_negative_correction_reenters_with_preserved_plan
+    plan = await seed_answered_inquiry(harness)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/test_availability_inquiries.py:101: in seed_answered_inquiry
+    require_inquiry_pending()
+tests/availability_lodging/helpers.py:108: in require_inquiry_pending
+    assert CONFIRM_AVAILABILITY in symbol("app.conversation.pending_actions", "PENDING_ACTIONS"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta CONFIRM_AVAILABILITY_BOOKING
+____________ test_R_unavailable_inquiry_keeps_unavailable_response _____________
+tests/availability_lodging/test_availability_inquiries.py:220: in test_R_unavailable_inquiry_keeps_unavailable_response
+    assert harness.codes == [code("UNAVAILABLE")]
+E   AssertionError: assert ['RESP-BOOKING-PLAN-001'] == ['RESP-BOOKIN...VAILABLE-001']
+E     
+E     At index 0 diff: 'RESP-BOOKING-PLAN-001' != 'RESP-BOOKING-UNAVAILABLE-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+______________ test_R_conversion_revalidation_detects_new_blocker ______________
+tests/availability_lodging/test_availability_inquiries.py:233: in test_R_conversion_revalidation_detects_new_blocker
+    await seed_answered_inquiry(harness)
+tests/availability_lodging/test_availability_inquiries.py:101: in seed_answered_inquiry
+    require_inquiry_pending()
+tests/availability_lodging/helpers.py:108: in require_inquiry_pending
+    assert CONFIRM_AVAILABILITY in symbol("app.conversation.pending_actions", "PENDING_ACTIONS"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta CONFIRM_AVAILABILITY_BOOKING
+_______ test_R_inquiry_calendar_failure_uses_observable_handoff[initial] _______
+tests/availability_lodging/test_availability_inquiries.py:253: in test_R_inquiry_calendar_failure_uses_observable_handoff
+    assert harness.codes == [AGENDA_ERROR]
+E   AssertionError: assert ['RESP-BOOKING-PLAN-001'] == ['RESP-BOOKIN...DA-ERROR-001']
+E     
+E     At index 0 diff: 'RESP-BOOKING-PLAN-001' != 'RESP-BOOKING-AGENDA-ERROR-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_____ test_R_inquiry_calendar_failure_uses_observable_handoff[conversion] ______
+tests/availability_lodging/test_availability_inquiries.py:247: in test_R_inquiry_calendar_failure_uses_observable_handoff
+    await seed_answered_inquiry(harness)
+tests/availability_lodging/test_availability_inquiries.py:101: in seed_answered_inquiry
+    require_inquiry_pending()
+tests/availability_lodging/helpers.py:108: in require_inquiry_pending
+    assert CONFIRM_AVAILABILITY in symbol("app.conversation.pending_actions", "PENDING_ACTIONS"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta CONFIRM_AVAILABILITY_BOOKING
+_________________ test_R_lodging_whole_word_vocabulary[HOTEL] __________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+________________ test_R_lodging_whole_word_vocabulary[hoteles] _________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_______________ test_R_lodging_whole_word_vocabulary[hospedaje] ________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+________________ test_R_lodging_whole_word_vocabulary[hospedar] ________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_______________ test_R_lodging_whole_word_vocabulary[hospedarme] _______________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+______________ test_R_lodging_whole_word_vocabulary[hospedarnos] _______________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_____________ test_R_lodging_whole_word_vocabulary[habitaci\xf3n] ______________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+______________ test_R_lodging_whole_word_vocabulary[habitaciones] ______________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+______________ test_R_lodging_whole_word_vocabulary[alojamiento] _______________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_________________ test_R_lodging_whole_word_vocabulary[alojar] _________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_______________ test_R_lodging_whole_word_vocabulary[alojarnos] ________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_______________ test_R_lodging_whole_word_vocabulary[estad\xeda] _______________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_________________ test_R_lodging_whole_word_vocabulary[posada] _________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_________________ test_R_lodging_whole_word_vocabulary[motel] __________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_________________ test_R_lodging_whole_word_vocabulary[dormir] _________________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+_____________ test_R_lodging_whole_word_vocabulary[pasar la noche] _____________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+____________ test_R_lodging_whole_word_vocabulary[noche de pareja] _____________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+____________ test_R_lodging_whole_word_vocabulary[amanecer juntos] _____________
+tests/availability_lodging/helpers.py:31: in symbol
+    loaded = import_module(module)
+             ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'app.conversation.lodging'
+
+During handling of the above exception, another exception occurred:
+tests/availability_lodging/test_lodging_alias.py:47: in test_R_lodging_whole_word_vocabulary
+    assert symbol("app.conversation.lodging", "is_lodging_inquiry")(message) is True
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/availability_lodging/helpers.py:33: in symbol
+    assert exc.name != module, f"G2: falta {module}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: falta app.conversation.lodging
+________ test_R_case_B_alias_orders_catalog_without_classifier[B-7279] _________
+tests/availability_lodging/test_lodging_alias.py:85: in test_R_case_B_alias_orders_catalog_without_classifier
+    assert harness.codes == [LODGING]
+E   AssertionError: assert ['RESP-FALLBACK-001'] == ['RESP-ACCOMM...ROMANTIC-001']
+E     
+E     At index 0 diff: 'RESP-FALLBACK-001' != 'RESP-ACCOMMODATION-ROMANTIC-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=CLASSIFY_MESSAGE request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+________ test_R_case_B_alias_orders_catalog_without_classifier[B-7281] _________
+tests/availability_lodging/test_lodging_alias.py:85: in test_R_case_B_alias_orders_catalog_without_classifier
+    assert harness.codes == [LODGING]
+E   AssertionError: assert ['RESP-FALLBACK-001'] == ['RESP-ACCOMM...ROMANTIC-001']
+E     
+E     At index 0 diff: 'RESP-FALLBACK-001' != 'RESP-ACCOMMODATION-ROMANTIC-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=CLASSIFY_MESSAGE request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+________ test_R_case_B_alias_orders_catalog_without_classifier[B-7285] _________
+tests/availability_lodging/test_lodging_alias.py:85: in test_R_case_B_alias_orders_catalog_without_classifier
+    assert harness.codes == [LODGING]
+E   AssertionError: assert ['RESP-FALLBACK-001'] == ['RESP-ACCOMM...ROMANTIC-001']
+E     
+E     At index 0 diff: 'RESP-FALLBACK-001' != 'RESP-ACCOMMODATION-ROMANTIC-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=CLASSIFY_MESSAGE request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+___ test_R_case_B_alias_orders_catalog_without_classifier[B-7295-synthetic] ____
+tests/availability_lodging/test_lodging_alias.py:85: in test_R_case_B_alias_orders_catalog_without_classifier
+    assert harness.codes == [LODGING]
+E   AssertionError: assert ['RESP-FALLBACK-001'] == ['RESP-ACCOMM...ROMANTIC-001']
+E     
+E     At index 0 diff: 'RESP-FALLBACK-001' != 'RESP-ACCOMMODATION-ROMANTIC-001'
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=CLASSIFY_MESSAGE request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+________________ test_R_lodging_catalog_context_selects_refugio ________________
+tests/availability_lodging/test_lodging_alias.py:147: in test_R_lodging_catalog_context_selects_refugio
+    assert is_fixed_price_catalog_followup("ROMANTIC_DINNER", LODGING), (
+E   AssertionError: El catálogo de hospedaje debe permitir seleccionar el plan posterior
+E   assert False
+E    +  where False = is_fixed_price_catalog_followup('ROMANTIC_DINNER', 'RESP-ACCOMMODATION-ROMANTIC-001')
+________ test_R_lodging_setting_fails_startup_for_invalid_plan[missing] ________
+tests/availability_lodging/test_lodging_alias.py:166: in test_R_lodging_setting_fails_startup_for_invalid_plan
+    assert "lodging_plan_code" in Settings.model_fields, "Falta LODGING_PLAN_CODE en Settings"
+E   AssertionError: Falta LODGING_PLAN_CODE en Settings
+E   assert 'lodging_plan_code' in {'database_url': FieldInfo(annotation=str, required=True, alias='DATABASE_URL', alias_priority=2), 'db_pool_size': Fie...lopment', 'testing', 'production'], required=False, default='development', alias='ENVIRONMENT', alias_priority=2), ...}
+E    +  where {'database_url': FieldInfo(annotation=str, required=True, alias='DATABASE_URL', alias_priority=2), 'db_pool_size': Fie...lopment', 'testing', 'production'], required=False, default='development', alias='ENVIRONMENT', alias_priority=2), ...} = Settings.model_fields
+_______ test_R_lodging_setting_fails_startup_for_invalid_plan[inactive] ________
+tests/availability_lodging/test_lodging_alias.py:166: in test_R_lodging_setting_fails_startup_for_invalid_plan
+    assert "lodging_plan_code" in Settings.model_fields, "Falta LODGING_PLAN_CODE en Settings"
+E   AssertionError: Falta LODGING_PLAN_CODE en Settings
+E   assert 'lodging_plan_code' in {'database_url': FieldInfo(annotation=str, required=True, alias='DATABASE_URL', alias_priority=2), 'db_pool_size': Fie...lopment', 'testing', 'production'], required=False, default='development', alias='ENVIRONMENT', alias_priority=2), ...}
+E    +  where {'database_url': FieldInfo(annotation=str, required=True, alias='DATABASE_URL', alias_priority=2), 'db_pool_size': Fie...lopment', 'testing', 'production'], required=False, default='development', alias='ENVIRONMENT', alias_priority=2), ...} = Settings.model_fields
+____________ test_R_information_words_do_not_select_a_catalog_plan _____________
+tests/availability_lodging/test_lodging_alias.py:186: in test_R_information_words_do_not_select_a_catalog_plan
+    assert {"hotel", "hospedaje", "habitacion"} <= words
+E   AssertionError: assert {'habitacion'...aje', 'hotel'} <= frozenset({'a...ochure', ...})
+E     
+E     Extra items in the left set:
+E     'hotel'
+E     'hospedaje'
+E     'habitacion'
+_ test_R_new_sensitive_templates_seed_as_conditional_draft[RESP-ACCOMMODATION-ROMANTIC-001-variables0] _
+tests/availability_lodging/test_migration_and_templates.py:24: in test_R_new_sensitive_templates_seed_as_conditional_draft
+    assert code in CONDITIONAL_DRAFT_CODES
+E   AssertionError: assert 'RESP-ACCOMMODATION-ROMANTIC-001' in {'RESP-AUDIO-TOO-LONG-001', 'RESP-AUDIO-WRITTEN-CONFIRM-001', 'RESP-PRICE-005', 'RESP-RESERVATION-006', 'RESP-SERVICES-004', 'RESP-SERVICES-005'}
+_ test_R_new_sensitive_templates_seed_as_conditional_draft[RESP-AVAILABILITY-AVAILABLE-001-variables1] _
+tests/availability_lodging/test_migration_and_templates.py:24: in test_R_new_sensitive_templates_seed_as_conditional_draft
+    assert code in CONDITIONAL_DRAFT_CODES
+E   AssertionError: assert 'RESP-AVAILABILITY-AVAILABLE-001' in {'RESP-AUDIO-TOO-LONG-001', 'RESP-AUDIO-WRITTEN-CONFIRM-001', 'RESP-PRICE-005', 'RESP-RESERVATION-006', 'RESP-SERVICES-004', 'RESP-SERVICES-005'}
+_ test_R_new_sensitive_templates_seed_as_conditional_draft[RESP-BOOKING-AGENDA-ERROR-001-variables2] _
+tests/availability_lodging/test_migration_and_templates.py:24: in test_R_new_sensitive_templates_seed_as_conditional_draft
+    assert code in CONDITIONAL_DRAFT_CODES
+E   AssertionError: assert 'RESP-BOOKING-AGENDA-ERROR-001' in {'RESP-AUDIO-TOO-LONG-001', 'RESP-AUDIO-WRITTEN-CONFIRM-001', 'RESP-PRICE-005', 'RESP-RESERVATION-006', 'RESP-SERVICES-004', 'RESP-SERVICES-005'}
+__________ test_R_0037_backfill_and_clean_migrate_cycle[15:00-11:00] ___________
+tests/availability_lodging/test_migration_and_templates.py:42: in test_R_0037_backfill_and_clean_migrate_cycle
+    assert revision is not None, "Falta la única migración 20261028_0037_plan_overnight"
+E   AssertionError: Falta la única migración 20261028_0037_plan_overnight
+E   assert None is not None
+__________ test_R_0037_backfill_and_clean_migrate_cycle[16:30-10:30] ___________
+tests/availability_lodging/test_migration_and_templates.py:42: in test_R_0037_backfill_and_clean_migrate_cycle
+    assert revision is not None, "Falta la única migración 20261028_0037_plan_overnight"
+E   AssertionError: Falta la única migración 20261028_0037_plan_overnight
+E   assert None is not None
+______________ test_R_refugio_19_valid_and_ends_at_next_checkout _______________
+tests/availability_lodging/test_overnight.py:49: in test_R_refugio_19_valid_and_ends_at_next_checkout
+    require_overnight_columns()
+tests/availability_lodging/helpers.py:102: in require_overnight_columns
+    assert {"overnight", "checkin_from", "checkout_time"} <= set(Plan.__table__.columns.keys()), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: faltan columnas del plan con pernoctación
+___________________ test_R_refugio_before_checkin_asks_time ____________________
+tests/availability_lodging/test_overnight.py:64: in test_R_refugio_before_checkin_asks_time
+    require_overnight_columns()
+tests/availability_lodging/helpers.py:102: in require_overnight_columns
+    assert {"overnight", "checkin_from", "checkout_time"} <= set(Plan.__table__.columns.keys()), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: faltan columnas del plan con pernoctación
+_____ test_R_reserved_overnight_blocks_exclusive_or_overnight[True-False] ______
+tests/availability_lodging/test_overnight.py:115: in test_R_reserved_overnight_blocks_exclusive_or_overnight
+    assert [blocker.kind for blocker in result.blockers] == ["RESERVED_OVERNIGHT"]
+E   AssertionError: assert ['RESERVED_CONFLICT'] == ['RESERVED_OVERNIGHT']
+E     
+E     At index 0 diff: 'RESERVED_CONFLICT' != 'RESERVED_OVERNIGHT'
+E     Use -v to get more diff
+_____ test_R_reserved_overnight_blocks_exclusive_or_overnight[False-True] ______
+tests/availability_lodging/test_overnight.py:114: in test_R_reserved_overnight_blocks_exclusive_or_overnight
+    assert result.available is False
+E   assert True is False
+E    +  where True = BookingAvailability(available=True, blockers=[]).available
+_________________ test_R_calendar_receives_real_overnight_end __________________
+tests/availability_lodging/test_overnight.py:125: in test_R_calendar_receives_real_overnight_end
+    require_overnight_columns()
+tests/availability_lodging/helpers.py:102: in require_overnight_columns
+    assert {"overnight", "checkin_from", "checkout_time"} <= set(Plan.__table__.columns.keys()), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: faltan columnas del plan con pernoctación
+____________________ test_R_agenda_fetch_uses_real_checkout ____________________
+tests/availability_lodging/test_overnight.py:148: in test_R_agenda_fetch_uses_real_checkout
+    require_overnight_columns()
+tests/availability_lodging/helpers.py:102: in require_overnight_columns
+    assert {"overnight", "checkin_from", "checkout_time"} <= set(Plan.__table__.columns.keys()), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: faltan columnas del plan con pernoctación
+_________________ test_R_overnight_check_rejects_missing_hours _________________
+tests/availability_lodging/test_overnight.py:169: in test_R_overnight_check_rejects_missing_hours
+    require_overnight_columns()
+tests/availability_lodging/helpers.py:102: in require_overnight_columns
+    assert {"overnight", "checkin_from", "checkout_time"} <= set(Plan.__table__.columns.keys()), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: G2: faltan columnas del plan con pernoctación
+==================================== PASSES ====================================
+_______________ test_V_low_confidence_handoff_still_clears_draft _______________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=SELECT_BOOKING_TIME request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.2
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=BOT_ACTIVE transition=BOT_ACTIVE->WAITING_FOR_HUMAN
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=2 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+____________________ test_V_regular_plan_tuesday_continues _____________________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=SELECT_BOOKING_DATETIME request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=UNKNOWN pending_action=CONFIRM_BOOKING request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+____________________ test_V_birthday_has_no_booking_agenda _____________________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=CLASSIFY_MESSAGE request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+____________________ test_V_inquiry_without_plan_asks_plan _____________________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=HUMAN_REQUEST pending_action=SELECT_BOOKING_PLAN request_id=None state_after=COLLECTING_EVENT_DATA state_before=BOT_ACTIVE transition=BOT_ACTIVE->COLLECTING_EVENT_DATA
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+_____________ test_V_collect_services_keeps_accommodation_capture ______________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=DETERMINISTIC input_origin=TEXT intent=EVENT_INFORMATION pending_action=COLLECT_GUEST_COUNT request_id=None state_after=COLLECTING_EVENT_DATA state_before=COLLECTING_EVENT_DATA transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+___________ test_V_A7_paused_lodging_stays_silent[WAITING_FOR_HUMAN] ___________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=WAIT_FOR_HUMAN request_id=None state_after=WAITING_FOR_HUMAN state_before=WAITING_FOR_HUMAN transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=SILENT_WAITING_FOR_HUMAN request_id=None
+_____________ test_V_A7_paused_lodging_stays_silent[HUMAN_ACTIVE] ______________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=WAIT_FOR_HUMAN request_id=None state_after=HUMAN_ACTIVE state_before=HUMAN_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=SILENT_HUMAN_ACTIVE request_id=None
+________________ test_V_active_booking_draft_is_not_interrupted ________________
+----------------------------- Captured stdout call -----------------------------
+2026-10-20 21:10:00 [warning  ] legacy_webhook_request_id_ignored legacy_request_id=g2.189.1
+2026-10-20 21:10:00 [info     ] orchestrator_decision          conversation_id=1 decision_source=LLM input_origin=TEXT intent=UNKNOWN pending_action=CLASSIFY_MESSAGE request_id=None state_after=BOT_ACTIVE state_before=BOT_ACTIVE transition=None
+2026-10-20 21:10:00 [info     ] inbox_completed                conversation_id=1 job_id=1 outcome=COMPLETED reason=ORCHESTRATED request_id=None
+=========================== short test summary info ============================
+PASSED tests/availability_lodging/test_agenda_failures.py::test_V_low_confidence_handoff_still_clears_draft
+PASSED tests/availability_lodging/test_agenda_failures.py::test_V_regular_plan_tuesday_continues
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_other_requests_and_substrings_are_not_inquiries[quiero reservar]
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_other_requests_and_substrings_are_not_inquiries[me interesa confesion bajo la luna]
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_other_requests_and_substrings_are_not_inquiries[cuanto cuesta]
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_other_requests_and_substrings_are_not_inquiries[donde quedan]
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_other_requests_and_substrings_are_not_inquiries[libreta]
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_other_requests_and_substrings_are_not_inquiries[ocupadosx]
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_other_requests_and_substrings_are_not_inquiries[disponibilidadx]
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_birthday_has_no_booking_agenda
+PASSED tests/availability_lodging/test_availability_inquiries.py::test_V_inquiry_without_plan_asks_plan
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_no_lodging_substrings_or_night_alone[noche]
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_no_lodging_substrings_or_night_alone[buenas noches]
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_no_lodging_substrings_or_night_alone[hoteleria]
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_no_lodging_substrings_or_night_alone[posadasx]
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_no_lodging_substrings_or_night_alone[hospedajesx]
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_collect_services_keeps_accommodation_capture
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_A7_paused_lodging_stays_silent[WAITING_FOR_HUMAN]
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_A7_paused_lodging_stays_silent[HUMAN_ACTIVE]
+PASSED tests/availability_lodging/test_lodging_alias.py::test_V_active_booking_draft_is_not_interrupted
+PASSED tests/availability_lodging/test_overnight.py::test_V_non_overnight_still_rejects_crossing_midnight
+PASSED tests/availability_lodging/test_overnight.py::test_V_reserved_overnight_does_not_block_shared_plan
+FAILED tests/availability_lodging/test_agenda_failures.py::test_R_calendar_error_is_typed_and_logged
+FAILED tests/availability_lodging/test_agenda_failures.py::test_R_invalid_plan_returns_failure[PLAN_INACTIVE]
+FAILED tests/availability_lodging/test_agenda_failures.py::test_R_invalid_plan_returns_failure[PLAN_MISMATCH]
+FAILED tests/availability_lodging/test_agenda_failures.py::test_R_case_A_failure_audits_overrides_and_preserves_draft
+FAILED tests/availability_lodging/test_agenda_failures.py::test_R_weekend_only_tuesday_asks_date
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[hay disponibilidad el 17 de noviembre a las 7]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[tienen el 20 de diciembre libre?]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[esta disponible ritual del corazon el sabado]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[hay cupo para el 14 a las 8pm]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[disponibles]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[libres]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[cupos]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[hay espacio]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[hay agenda]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[tienen agenda]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[est\xe1 ocupado]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[ocupada]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[tienen fecha]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[hay fecha]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[puedo reservar el 17]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_availability_vocabulary[se puede el 17]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_inquiry_reports_availability_without_name_payment_or_calendar
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_yes_revalidates_before_collecting_name
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_yes_with_existing_name_goes_to_confirmation
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_yes_with_previous_payment_request_keeps_final_duplicate_guard
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_inquiry_skips_initial_duplicate_guard
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_negative_correction_reenters_with_preserved_plan
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_unavailable_inquiry_keeps_unavailable_response
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_conversion_revalidation_detects_new_blocker
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_inquiry_calendar_failure_uses_observable_handoff[initial]
+FAILED tests/availability_lodging/test_availability_inquiries.py::test_R_inquiry_calendar_failure_uses_observable_handoff[conversion]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[HOTEL]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[hoteles]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[hospedaje]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[hospedar]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[hospedarme]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[hospedarnos]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[habitaci\xf3n]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[habitaciones]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[alojamiento]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[alojar]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[alojarnos]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[estad\xeda]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[posada]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[motel]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[dormir]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[pasar la noche]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[noche de pareja]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_whole_word_vocabulary[amanecer juntos]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_case_B_alias_orders_catalog_without_classifier[B-7279]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_case_B_alias_orders_catalog_without_classifier[B-7281]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_case_B_alias_orders_catalog_without_classifier[B-7285]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_case_B_alias_orders_catalog_without_classifier[B-7295-synthetic]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_catalog_context_selects_refugio
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_setting_fails_startup_for_invalid_plan[missing]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_lodging_setting_fails_startup_for_invalid_plan[inactive]
+FAILED tests/availability_lodging/test_lodging_alias.py::test_R_information_words_do_not_select_a_catalog_plan
+FAILED tests/availability_lodging/test_migration_and_templates.py::test_R_new_sensitive_templates_seed_as_conditional_draft[RESP-ACCOMMODATION-ROMANTIC-001-variables0]
+FAILED tests/availability_lodging/test_migration_and_templates.py::test_R_new_sensitive_templates_seed_as_conditional_draft[RESP-AVAILABILITY-AVAILABLE-001-variables1]
+FAILED tests/availability_lodging/test_migration_and_templates.py::test_R_new_sensitive_templates_seed_as_conditional_draft[RESP-BOOKING-AGENDA-ERROR-001-variables2]
+FAILED tests/availability_lodging/test_migration_and_templates.py::test_R_0037_backfill_and_clean_migrate_cycle[15:00-11:00]
+FAILED tests/availability_lodging/test_migration_and_templates.py::test_R_0037_backfill_and_clean_migrate_cycle[16:30-10:30]
+FAILED tests/availability_lodging/test_overnight.py::test_R_refugio_19_valid_and_ends_at_next_checkout
+FAILED tests/availability_lodging/test_overnight.py::test_R_refugio_before_checkin_asks_time
+FAILED tests/availability_lodging/test_overnight.py::test_R_reserved_overnight_blocks_exclusive_or_overnight[True-False]
+FAILED tests/availability_lodging/test_overnight.py::test_R_reserved_overnight_blocks_exclusive_or_overnight[False-True]
+FAILED tests/availability_lodging/test_overnight.py::test_R_calendar_receives_real_overnight_end
+FAILED tests/availability_lodging/test_overnight.py::test_R_agenda_fetch_uses_real_checkout
+FAILED tests/availability_lodging/test_overnight.py::test_R_overnight_check_rejects_missing_hours
+69 failed, 22 passed in 56.25s
+
+G2 classification (exception types from pytest call.excinfo): {'R_failed_assertion': 69, 'R_passed': 0, 'V_passed': 22, 'V_failed': 0, 'errors': 0, 'unexpected_failures': []}
+
+Frozen G2 file SHA256 (retain byte-identical for G3):
+e5c9164c88c0df3f6112f83bc6198c9056ffb05729872a99a524fe58d70c1df4  tests/availability_lodging/__init__.py
+320a841944112cc21d251e053c4188bc333574a526edc9f83fc85ec82db5ff0b  tests/availability_lodging/conftest.py
+e8e26a695684332f1ef231ffc850839d8e2e62593f2c4dbf8e78630171d121d9  tests/availability_lodging/helpers.py
+0680cacb9f3073e36e572f0029da1d20a64fe5e40a4ce2f24b28c73fbd8aea0a  tests/availability_lodging/test_agenda_failures.py
+92be89d871eb1f7840c1772501415d77ea145b49ef00448d24c1b10aa5adfc42  tests/availability_lodging/test_availability_inquiries.py
+7c1cddd1586932fcd01f998967d9660fa624b5ccafccd75441844e11a9b7472d  tests/availability_lodging/test_lodging_alias.py
+71a40288714a246f6b04ca57a301dd8a62629ac69b8362402149821f57c628c5  tests/availability_lodging/test_migration_and_templates.py
+05ff2f33b5c79d7c11b5355e8db5a78d8e36bb18bbc248ffb93e533e35255943  tests/availability_lodging/test_overnight.py
