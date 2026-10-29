@@ -6,7 +6,7 @@ from app.config.settings import get_settings
 from app.conversation.models import Conversation
 from app.plan.models import Plan
 from tests.b1a_contracts import require_symbol
-from tests.booking_conversation.helpers import code
+from tests.booking_conversation.helpers import START, code
 
 
 @pytest.mark.parametrize(
@@ -57,7 +57,7 @@ async def seed_booking(harness, *, full_name="Cliente", clock=None):
         conversation.pending_action = "SELECT_BOOKING_TIME"
         conversation.booking_draft = {
             "plan_id": str(selected.plan_id),
-            "date": "2026-10-07",
+            "date": START.date().isoformat(),
             **({"time": clock} if clock else {}),
         }
     return selected

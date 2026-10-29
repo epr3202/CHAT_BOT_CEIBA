@@ -370,7 +370,7 @@ async def test_a_r6_expiration(client: AsyncClient) -> None:
 
 
 async def test_a_r7_calendar_outside_transactions(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, transaction_engine: str
 ):
     from app.admin import routes
 
@@ -380,8 +380,10 @@ async def test_a_r7_calendar_outside_transactions(
                 transactions = await session.scalar(
                     __import__("sqlalchemy").text(
                         "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                        "AND application_name = :application_name "
                         "AND pid <> pg_backend_pid() AND xact_start IS NOT NULL"
-                    )
+                    ),
+                    {"application_name": transaction_engine},
                 )
                 assert transactions == 0
             return await super().create_event(*args, **kwargs)

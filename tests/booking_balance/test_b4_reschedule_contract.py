@@ -1,29 +1,22 @@
 """B4 contract extension: a later payment deadline clears the old overdue marker."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
-import pytest
-
-from app.admin import routes
 from tests.booking_balance.b4_helpers import reload_reservation, reserved
+from tests.clock import BALANCE_NOW, FreezeAppClock
 from tests.integration.helpers import login_headers
 from tests.staff_notifications.helpers import audits
 
-NOW = datetime(2026, 10, 9, 18, tzinfo=UTC)
-OLD_START = datetime(2026, 10, 10, 17, tzinfo=UTC)
-NEW_START = datetime(2026, 10, 17, 17, tzinfo=UTC)
-
-
-class RescheduleClock(datetime):
-    @classmethod
-    def now(cls, tz: Any = None) -> datetime:
-        return NOW.astimezone(tz) if tz else NOW.replace(tzinfo=None)
+NOW = BALANCE_NOW + timedelta(days=7, hours=3)
+OLD_START = NOW + timedelta(hours=23)
+NEW_START = OLD_START + timedelta(days=7)
 
 
 async def test_rescheduling_to_future_deadline_clears_overdue_and_keeps_reserved(
-    client: Any, monkeypatch: pytest.MonkeyPatch
+    client: Any, freeze_app_clock: FreezeAppClock
 ) -> None:
+    freeze_app_clock(NOW)
     old_due = OLD_START - timedelta(days=1)
     row = await reserved(
         reserved_at=NOW - timedelta(days=7),
@@ -33,8 +26,6 @@ async def test_rescheduling_to_future_deadline_clears_overdue_and_keeps_reserved
         balance_overdue_at=NOW,
     )
     headers = await login_headers(client, "90000000")
-    # FastAPI resolves deferred endpoint annotations on its first request.
-    monkeypatch.setattr(routes, "datetime", RescheduleClock)
     before = await client.get(
         "/admin/reservations", params={"balance_status": "overdue"}, headers=headers
     )

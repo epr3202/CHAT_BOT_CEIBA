@@ -1,7 +1,6 @@
 """Post-G2 contract extensions; no retroactive red claim for these cases."""
 
 import asyncio
-from datetime import UTC, datetime
 
 import pytest
 from alembic.config import Config
@@ -14,7 +13,7 @@ from app.config.settings import Settings
 from app.conversation.pending_actions import PENDING_ACTIONS
 from app.main import app
 from app.reservation.models import Reservation
-from tests.booking_balance.b4_helpers import DUE_AT, reserved
+from tests.booking_balance.b4_helpers import DUE, DUE_AT, reserved
 from tests.integration.helpers import (
     configure_test_database,
     ensure_test_database_exists,
@@ -127,7 +126,7 @@ async def test_invalid_balance_filter_returns_422(client):
 
 async def test_overdue_filter_requires_reserved_and_positive_balance(client):
     assert "balance_overdue_at" in Reservation.__table__.c
-    row = await reserved(balance_overdue_at=datetime(2026, 10, 9, tzinfo=UTC))
+    row = await reserved(balance_overdue_at=DUE.replace(hour=0))
     async with app.state.db_sessionmaker.begin() as session:
         saved = await session.scalar(
             select(Reservation).where(Reservation.reservation_id == row.reservation_id)

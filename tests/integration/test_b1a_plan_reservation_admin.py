@@ -1,7 +1,7 @@
 """R2-R5: persisted admin contracts, without running conversational flows."""
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -19,6 +19,7 @@ from app.lead.models import Lead
 from app.main import app
 from app.payment.models import PaymentEvidence
 from tests.b1a_contracts import EXPECTED_PLANS, STATUSES, require_symbol
+from tests.clock import BOOKING_NOW
 from tests.integration.helpers import (
     app_client,
     bootstrap_agent,
@@ -27,7 +28,7 @@ from tests.integration.helpers import (
     login_headers,
 )
 
-START = datetime(2026, 10, 10, 14, tzinfo=UTC)
+START = (BOOKING_NOW + timedelta(days=11)).replace(hour=14)
 
 
 @pytest.fixture

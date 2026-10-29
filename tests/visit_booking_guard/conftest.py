@@ -12,12 +12,16 @@ from app.ai.client import OpenRouterIntentClient
 from app.config.settings import get_settings
 from app.handoff import service as handoff_service
 from app.orchestrator import service as orchestrator
+from tests.clock import FreezeAppClock
 from tests.integration.helpers import configure_test_environment, database_sessionmaker
 from tests.visit_booking_guard.helpers import BOGOTA, NOW, Harness, ObservedCalendar
 
 
 @pytest.fixture
-async def harness(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Harness]:
+async def harness(
+    monkeypatch: pytest.MonkeyPatch, freeze_app_clock: FreezeAppClock
+) -> AsyncIterator[Harness]:
+    freeze_app_clock(NOW)
     real_classify = OpenRouterIntentClient.classify_intent
     await configure_test_environment(monkeypatch)
     # Exercise the real client and its persistence, with a respx provider double.
@@ -28,7 +32,6 @@ async def harness(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Harness]:
     monkeypatch.setenv("HUMAN_HOURS_START", "08:00")
     monkeypatch.setenv("HUMAN_HOURS_END", "16:00")
     get_settings.cache_clear()
-    monkeypatch.setattr(orchestrator, "current_bogota_datetime", lambda: NOW)
     set_human_clock(monkeypatch, outside=False)
     async with aclosing(database_sessionmaker()) as databases:
         db = await anext(databases)
