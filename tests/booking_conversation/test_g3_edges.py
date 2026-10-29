@@ -156,7 +156,13 @@ async def test_g3_pending_check_matches_model_and_migration(harness: Harness) ->
     )
     migration = module_from_spec(spec)
     spec.loader.exec_module(migration)
-    assert migration.BEFORE + migration.ADDED + ("COLLECT_BOOKING_NAME",) == PENDING_ACTIONS
+    overnight_spec = spec_from_file_location(
+        "overnight_migration", "alembic/versions/20261028_0037_plan_overnight.py"
+    )
+    overnight = module_from_spec(overnight_spec)
+    overnight_spec.loader.exec_module(overnight)
+    assert migration.BEFORE + migration.ADDED + ("COLLECT_BOOKING_NAME",) == overnight.BEFORE
+    assert overnight.BEFORE + overnight.ADDED == PENDING_ACTIONS
     async with harness.db() as session:
         definition = await session.scalar(
             text(

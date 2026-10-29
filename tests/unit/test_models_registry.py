@@ -41,3 +41,8 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
     }
 
     assert set(Base.metadata.tables) == expected_tables
+    plan = Base.metadata.tables["plan"]
+    assert {"overnight", "checkin_from", "checkout_time"} <= set(plan.c.keys())
+    assert plan.c.overnight.nullable is False
+    assert plan.c.checkin_from.nullable is True
+    assert plan.c.checkout_time.nullable is True

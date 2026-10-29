@@ -94,6 +94,8 @@ def test_registered_core_formatters_preserve_their_contracts() -> None:
     present_variables, presenters, _ = presentation_api()
 
     assert {"event_type", "event_date", "event_month"} <= set(presenters)
+    assert presenters["date"] is presenters["booking_date"]
+    assert presenters["time"] is presenters["booking_time"]
     assert format_event_type("WEDDING") == "una boda"
     assert format_date_natural(date(2026, 8, 19)) == "19 de agosto de 2026"
     assert format_month_natural("2026-08") == "agosto de 2026"

@@ -28,7 +28,16 @@ def test_catalog_capture_constraint_lists_are_complete_and_reversible() -> None:
     booking = importlib.util.module_from_spec(booking_spec)
     booking_spec.loader.exec_module(booking)
     assert migration.PENDING_ACTIONS_AFTER == booking.BEFORE
-    assert booking.BEFORE + booking.ADDED + ("COLLECT_BOOKING_NAME",) == PENDING_ACTIONS
+    overnight_path = Path("alembic/versions/20261028_0037_plan_overnight.py")
+    overnight_spec = importlib.util.spec_from_file_location(
+        "overnight_constraint_0037", overnight_path
+    )
+    assert overnight_spec is not None and overnight_spec.loader is not None
+    overnight = importlib.util.module_from_spec(overnight_spec)
+    overnight_spec.loader.exec_module(overnight)
+    assert booking.BEFORE + booking.ADDED + ("COLLECT_BOOKING_NAME",) == overnight.BEFORE
+    assert overnight.ADDED == ("CONFIRM_AVAILABILITY_BOOKING",)
+    assert overnight.BEFORE + overnight.ADDED == PENDING_ACTIONS
     assert migration.PENDING_ACTIONS_BEFORE == tuple(
         action
         for action in migration.PENDING_ACTIONS_AFTER

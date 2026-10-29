@@ -6,6 +6,7 @@ const initialPlan = {
   plan_id: planId, code: "RITUAL_CORAZON", name: "Ritual del Corazón",
   event_type: "ROMANTIC_DINNER", price_cop: 250000, duration_minutes: 180,
   exclusive: false, weekend_only: false, active: true, sort_order: 1,
+  overnight: false, checkin_from: null, checkout_time: null,
   created_at: "2026-09-29T12:00:00Z", updated_at: "2026-09-29T12:00:00Z",
 };
 const initialReservation = {
@@ -21,7 +22,7 @@ const initialReservation = {
 
 // HTTP doubles isolate the panel contract; real auth/persistence is covered in R4.
 // Each test gets fresh data and does not depend on a future production seed.
-async function panel(page, role = "ADMIN") {
+async function panel(page, role = "ADMIN", conversation = null) {
   const data = {
     plan: { ...initialPlan }, reservation: { ...initialReservation }, writes: [], filters: [],
   };
@@ -30,6 +31,9 @@ async function panel(page, role = "ADMIN") {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/admin/me") {
       return route.fulfill({ json: { id: 1, name: "Admin B1a", role, active: true } });
+    }
+    if (path === "/api/admin/conversations") {
+      return route.fulfill({ json: conversation ? [conversation] : [] });
     }
     if (["/api/health", "/api/ready", "/api/live"].includes(path)) {
       return route.fulfill({ json: { status: "ok", database: "ok", environment: "production" } });
@@ -120,7 +124,8 @@ test("R6 Planes guarda inline y mantiene Guardando… durante la escritura", asy
   expect(data.writes).toHaveLength(1);
   expect(data.writes[0].price_cop).toBe(275000);
   expect(Object.keys(data.writes[0]).every(key => ["name", "price_cop", "duration_minutes",
-    "exclusive", "weekend_only", "active", "sort_order"].includes(key))).toBe(true);
+    "exclusive", "weekend_only", "active", "sort_order", "overnight", "checkin_from",
+    "checkout_time"].includes(key))).toBe(true);
   await page.reload();
   await expect(page.locator("#plans").getByLabel("Precio (COP)", { exact: true })).toHaveValue("275000");
 });
@@ -207,4 +212,55 @@ test("R6 las vistas nuevas no son accesibles para AGENT", async ({ page }) => {
     // This existing authorization invariant is expected green on G2.
     await expect(page.getByRole("button", { name: view, exact: true })).not.toBeVisible();
   }
+});
+
+test("G3 Planes edita entrada y checkout de Refugio para Dos y conserva horas", async ({ page }) => {
+  const data = await panel(page);
+  Object.assign(data.plan, {
+    code: "REFUGIO_DOS", name: "Refugio para Dos", overnight: true,
+    checkin_from: "15:00:00", checkout_time: "11:00:00",
+  });
+  await openPlans(page);
+  const row = page.locator("#plans tbody tr").first();
+  await expect(row.getByLabel("Pernoctación", { exact: true })).toBeChecked();
+  await expect(row.getByLabel("Entrada desde", { exact: true })).toHaveValue("15:00");
+  await expect(row.getByLabel("Salida", { exact: true })).toHaveValue("11:00");
+  await row.getByLabel("Entrada desde", { exact: true }).fill("16:30");
+  await row.getByLabel("Salida", { exact: true }).fill("10:30");
+  await row.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(page.locator("#plansFeedback")).toContainText("Plan guardado.");
+  expect(data.writes).toHaveLength(1);
+  expect(data.writes[0]).toMatchObject({ overnight: true, checkin_from: "16:30", checkout_time: "10:30" });
+  await page.reload();
+  await expect(page.locator("#plans").getByLabel("Entrada desde", { exact: true })).toHaveValue("16:30");
+  await expect(page.locator("#plans").getByLabel("Salida", { exact: true })).toHaveValue("10:30");
+});
+
+test("G3 Pernoctación requiere las dos horas antes de guardar", async ({ page }) => {
+  const data = await panel(page);
+  const row = await planRow(page);
+  await row.getByLabel("Pernoctación", { exact: true }).check();
+  await row.getByRole("button", { name: "Guardar", exact: true }).click();
+  expect(data.writes).toHaveLength(0);
+  await row.getByLabel("Entrada desde", { exact: true }).fill("15:00");
+  await row.getByLabel("Salida", { exact: true }).fill("11:00");
+  await row.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(page.locator("#plansFeedback")).toContainText("Plan guardado.");
+  expect(data.writes).toHaveLength(1);
+});
+
+test("G3 conversación pausada muestra borrador conservado solo para lectura", async ({ page }) => {
+  await panel(page, "ADMIN", {
+    id: 226, state: "WAITING_FOR_HUMAN", bot_enabled: false,
+    handoff_id: 70, handoff_status: "PENDING", handoff_reason: "SYSTEM_ERROR",
+    customer_name: "Cliente sintético", customer_phone: "+573000000226",
+    booking_draft: { plan_code: "PETALOS_ESTRELLAS", date: "2026-11-17", time: "19:00" },
+  });
+  const view = page.locator("#caseList .caseBookingDraft");
+  await expect(view).toBeVisible();
+  await view.getByText("Datos de la experiencia", { exact: true }).click();
+  await expect(view).toContainText("PETALOS_ESTRELLAS");
+  await expect(view).toContainText("2026-11-17");
+  await expect(view).toContainText("19:00");
+  await expect(view.locator("input, textarea, button")).toHaveCount(0);
 });
