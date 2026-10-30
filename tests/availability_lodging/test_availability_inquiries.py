@@ -39,7 +39,7 @@ from tests.visit_booking_guard.helpers import Harness
         "tienen fecha",
         "hay fecha",
         "puedo reservar el 17",
-        "se puede el 17",
+        "esta disponible el 17",
     ],
 )
 def test_R_availability_vocabulary(message: str) -> None:
@@ -63,6 +63,33 @@ def test_V_other_requests_and_substrings_are_not_inquiries(message: str) -> None
     predicate = symbol(
         "app.conversation.fixed_price_booking", "is_availability_inquiry", lambda _: False
     )
+    assert predicate(message) is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "tienen el catalogo de cenas romanticas?",
+        "me envian el pdf, esta disponible?",
+        "es libre de alcohol?",
+        "cuanto cuesta y si hay disponibilidad",
+        "tienen el 20 de diciembre?",
+        "se puede el 17",
+        "son libres de alcohol?",
+        "donde esta disponible?",
+        "como consulto disponibilidad?",
+        "cuanto cupo hay?",
+        "cuando esta libre?",
+        "cual esta disponible?",
+        "que disponibilidad hay?",
+        "por que esta ocupado?",
+        "y donde esta libre?",
+        "pero como consulto disponibilidad?",
+    ],
+)
+def test_R_review_informational_requests_are_not_availability_inquiries(message: str) -> None:
+    # F1: contract correction authorized by Emerson for PR #48's final CI round.
+    predicate = symbol("app.conversation.fixed_price_booking", "is_availability_inquiry")
     assert predicate(message) is False
 
 
