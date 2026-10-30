@@ -62,6 +62,13 @@ def payment_validator() -> PaymentValidator:
     return cast(PaymentValidator, validator)
 
 
+@pytest.fixture(autouse=True)
+def isolate_lodging_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This unit owns only the payment-template lookup and supplies a sentinel,
+    # not a database. Lodging startup validation has real-DB contracts in G2.
+    monkeypatch.setattr(readiness, "validate_lodging_settings", AsyncMock())
+
+
 def patch_payment_lookup(
     monkeypatch: pytest.MonkeyPatch,
     latest: KnowledgeEntry | None,

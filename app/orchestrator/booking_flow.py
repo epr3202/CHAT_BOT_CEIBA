@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,11 @@ from app.ai.schemas import IntentClassification
 from app.appointment.service import parse_visit_time_text, resolve_visit_date_text
 from app.calendar.adapter import CalendarUnavailableError
 from app.config.settings import Settings
-from app.conversation.catalog_event_type import normalize_catalog_event_type_label
+from app.conversation.catalog_event_type import (
+    FIXED_PRICE_EVENT_TYPES,
+    normalize_catalog_event_type_label,
+    resolve_catalog_event_type_match,
+)
 from app.conversation.confirmation import AFFIRMATIONS, DENIALS, normalize_confirmation_text
 from app.conversation.fixed_price_booking import (
     is_fixed_price_catalog_followup,
@@ -30,6 +35,8 @@ from app.conversation.service import transition_conversation
 from app.plan.models import Plan
 from app.reservation.availability import (
     BookingAvailability,
+    BookingAvailabilityFailure,
+    booking_ends_at,
     fetch_booking_context,
     validate_booking_window,
 )
@@ -40,38 +47,59 @@ if TYPE_CHECKING:
     from app.orchestrator.service import OrchestrationInput
 
 BOGOTA = ZoneInfo("America/Bogota")
+logger = structlog.get_logger(__name__)
 
 
 class BookingAgendaService:
-    def __init__(self, sessionmaker: Any, settings: Settings) -> None:
+    def __init__(
+        self,
+        sessionmaker: Any,
+        settings: Settings,
+        *,
+        request_id: UUID | str | None = None,
+        conversation_id: int | None = None,
+    ) -> None:
         self.sessionmaker, self.settings = sessionmaker, settings
+        self.request_id, self.conversation_id = request_id, conversation_id
 
     async def booking_availability(
         self,
         plan_id: UUID,
         starts_at: datetime,
         duration_minutes: int,
-    ) -> BookingAvailability | None:
+    ) -> BookingAvailability | BookingAvailabilityFailure:
         from app.orchestrator import service as core
 
         async with self.sessionmaker() as session:
             async with session.begin():
                 plan = await session.get(Plan, plan_id)
-                if plan is None or not plan.active or plan.duration_minutes != duration_minutes:
-                    return None
+                if plan is None or not plan.active:
+                    return BookingAvailabilityFailure("PLAN_INACTIVE")
+                if plan.duration_minutes != duration_minutes:
+                    return BookingAvailabilityFailure("PLAN_MISMATCH")
                 session.expunge(plan)
             try:
                 return await fetch_booking_context(
                     session,
                     plan=plan,
                     starts_at=starts_at,
-                    ends_at=starts_at + timedelta(minutes=duration_minutes),
+                    ends_at=booking_ends_at(plan, starts_at),
                     calendar=core.get_calendar_adapter(self.settings),
                     settings=self.settings,
                 )
-            except CalendarUnavailableError:
-                # Replay the failure as a value so the local turn can safely hand off.
-                return None
+            except CalendarUnavailableError as error:
+                context = structlog.contextvars.get_contextvars()
+                logger.error(
+                    "booking_availability_failed",
+                    request_id=str(self.request_id)
+                    if self.request_id
+                    else context.get("request_id"),
+                    conversation_id=self.conversation_id or context.get("conversation_id"),
+                    plan_code=plan.code,
+                    starts_at=starts_at.isoformat(),
+                    error_class=type(error).__name__,
+                )
+                return BookingAvailabilityFailure("CALENDAR_UNAVAILABLE", type(error).__name__)
 
 
 async def handoff(
@@ -83,10 +111,12 @@ async def handoff(
     *,
     reason: str = "RESERVATION_CONFIRMATION",
     response_code_override: str | None = None,
+    response_variables: dict[str, Any] | None = None,
 ) -> None:
     from app.orchestrator import service as core
 
-    turn.conversation.booking_draft = None
+    if reason != "SYSTEM_ERROR":
+        turn.conversation.booking_draft = None
     await core.create_handoff_and_pause(
         session,
         settings,
@@ -107,6 +137,68 @@ async def handoff(
         priority="NORMAL",
         detail=detail,
         response_code_override=response_code_override,
+        response_variables=response_variables,
+    )
+
+
+async def read_availability(
+    sm: Any,
+    settings: Settings,
+    turn: OrchestrationInput,
+    plan: Plan,
+    starts_at: datetime,
+) -> BookingAvailability | BookingAvailabilityFailure:
+    from app.orchestrator.inbox_effects import defer_agenda_service
+
+    return await defer_agenda_service(
+        BookingAgendaService(
+            sm,
+            settings,
+            request_id=turn.request_id,
+            conversation_id=turn.conversation.id,
+        )
+    ).booking_availability(plan.plan_id, starts_at, plan.duration_minutes)
+
+
+async def availability_failed(
+    session: AsyncSession,
+    settings: Settings,
+    sm: Any,
+    turn: OrchestrationInput,
+    plan: Plan,
+    starts_at: datetime,
+    failure: BookingAvailabilityFailure,
+) -> None:
+    from app.orchestrator import service as core
+
+    core.audit_domain_change(
+        session,
+        "BOOKING_AVAILABILITY_FAILED",
+        "conversation",
+        None,
+        {
+            "plan_code": plan.code,
+            "starts_at": starts_at.isoformat(),
+            "duration_minutes": plan.duration_minutes,
+            "error_class": failure.error_class,
+            "request_id": str(turn.request_id) if turn.request_id is not None else None,
+        },
+        failure.reason,
+        turn.request_id,
+    )
+    await handoff(
+        session,
+        settings,
+        sm,
+        turn,
+        "No se pudo consultar la disponibilidad",
+        reason="SYSTEM_ERROR",
+        response_code_override="RESP-BOOKING-AGENDA-ERROR-001",
+        response_variables={
+            "plan_name": plan,
+            "date": starts_at.date(),
+            "time": starts_at.strftime("%H:%M"),
+        },
     )
 
 
@@ -253,6 +345,8 @@ async def handle_booking_start(
     settings: Settings,
     sm: Any,
     turn: OrchestrationInput,
+    *,
+    inquiry_only: bool = False,
 ) -> None:
     from app.orchestrator import service as core
 
@@ -262,7 +356,11 @@ async def handle_booking_start(
     )
     # A catalog reply may prepare a proposal; confirmation still checks all of
     # the customer's pending requests before creating another reservation.
-    if not catalog_followup and await has_pending_request(session, turn.customer.id):
+    if (
+        not catalog_followup
+        and not inquiry_only
+        and await has_pending_request(session, turn.customer.id)
+    ):
         await handoff(
             session,
             settings,
@@ -272,7 +370,9 @@ async def handle_booking_start(
             response_code_override="RESP-BOOKING-PENDING-001",
         )
         return
-    draft = dict(turn.conversation.booking_draft or {}) if catalog_followup else {}
+    draft = dict(turn.conversation.booking_draft or {}) if catalog_followup or inquiry_only else {}
+    if inquiry_only:
+        draft["inquiry_only"] = True
     turn.conversation.booking_draft = draft
     turn.conversation.pending_confirmation = None
     if turn.conversation.state == "NEW":
@@ -334,10 +434,46 @@ async def handle_booking_start(
             ),
             turn.request_id,
         )
-        draft = {**draft, "plan_id": str(plan.plan_id)}
+        draft = {**draft, "plan_id": str(plan.plan_id), "plan_code": plan.code}
         turn.conversation.booking_draft = draft
         await continue_slots(session, settings, sm, turn, plan)
         return
+    if inquiry_only:
+        selected = next(
+            (
+                plan
+                for plan in plans
+                if str(plan.plan_id) == draft.get("plan_id")
+                and event is not None
+                and plan.event_type == event.event_type
+            ),
+            None,
+        )
+        if selected is not None:
+            await continue_slots(session, settings, sm, turn, selected)
+            return
+        label = resolve_catalog_event_type_match(turn.message_text)
+        if label is not None and label.event_type in FIXED_PRICE_EVENT_TYPES:
+            from app.ai.schemas import ExtractedEntity
+
+            _, event = await core.get_or_create_capture_models(
+                session,
+                turn.conversation,
+                turn.customer,
+                request_id=turn.request_id,
+            )
+            core.apply_event_type(
+                session,
+                event,
+                ExtractedEntity(
+                    entity="event_type",
+                    raw_value=label.matched_label,
+                    normalized_value=label.event_type,
+                    quality_status="PROVIDED",
+                    confidence=1.0,
+                ),
+                turn.request_id,
+            )
     if catalog_followup:
         turn.conversation.booking_draft = {**draft, "catalog_plan_selection": True}
     await ask_plan(session, settings, sm, turn)
@@ -349,12 +485,15 @@ async def continue_slots(
     sm: Any,
     turn: OrchestrationInput,
     plan: Plan,
+    *,
+    convert_inquiry: bool = False,
 ) -> None:
     from app.orchestrator import service as core
-    from app.orchestrator.inbox_effects import defer_agenda_service
 
     conversation = turn.conversation
     draft = dict(conversation.booking_draft or {})
+    draft["plan_code"] = plan.code
+    conversation.booking_draft = draft
     if draft.get("date_confirmation"):
         conversation.pending_action = "SELECT_BOOKING_DATETIME"
         try:
@@ -383,9 +522,13 @@ async def continue_slots(
     starts_at = datetime.combine(
         date.fromisoformat(draft["date"]), time.fromisoformat(draft["time"]), tzinfo=BOGOTA
     )
-    ends_at = starts_at + timedelta(minutes=plan.duration_minutes)
+    ends_at = booking_ends_at(plan, starts_at)
     window = validate_booking_window(
-        starts_at, ends_at, settings, today=core.current_bogota_datetime().date()
+        starts_at,
+        ends_at,
+        settings,
+        today=core.current_bogota_datetime().date(),
+        plan=plan,
     )
     if not window.ok:
         if window.reason in {"OUTSIDE_HOURS", "CROSSES_MIDNIGHT"}:
@@ -393,35 +536,92 @@ async def continue_slots(
             return
         await ask_booking_datetime(session, settings, sm, turn)
         return
-    try:
-        availability = await defer_agenda_service(
-            BookingAgendaService(sm, settings)
-        ).booking_availability(plan.plan_id, starts_at, plan.duration_minutes)
-    except (CalendarUnavailableError, ValueError):
-        await handoff(
+    if plan.overnight:
+        draft["checkout"] = ends_at.isoformat()
+        core.audit_domain_change(
             session,
-            settings,
-            sm,
-            turn,
-            "No se pudo consultar la disponibilidad",
-            reason="SYSTEM_ERROR",
+            "BOOKING_CHECKOUT_CALCULATED",
+            "conversation",
+            None,
+            {
+                "plan_code": plan.code,
+                "starts_at": starts_at.isoformat(),
+                "checkout": draft["checkout"],
+            },
+            "Overnight interval calculated by backend",
+            turn.request_id,
         )
+    else:
+        draft.pop("checkout", None)
+    conversation.booking_draft = draft
+    availability = await read_availability(sm, settings, turn, plan, starts_at)
+    if isinstance(availability, BookingAvailabilityFailure):
+        await availability_failed(session, settings, sm, turn, plan, starts_at, availability)
         return
-    if availability is None:
-        await handoff(
+    if draft.get("inquiry_only") or convert_inquiry:
+        core.audit_domain_change(
             session,
-            settings,
-            sm,
-            turn,
-            "No se pudo consultar la disponibilidad",
-            reason="SYSTEM_ERROR",
+            "AVAILABILITY_INQUIRY_ANSWERED",
+            "conversation",
+            None,
+            {
+                "plan_code": plan.code,
+                "starts_at": starts_at.isoformat(),
+                "available": availability.available,
+                "blockers_count": len(availability.blockers),
+            },
+            "Backend availability inquiry evaluated",
+            turn.request_id,
         )
-        return
     if not availability.available:
         await unavailable(session, settings, sm, turn)
         return
     draft["price_cop"], draft["duration_minutes"] = plan.price_cop, plan.duration_minutes
     conversation.booking_draft = draft
+    if draft.get("inquiry_only"):
+        conversation.pending_action = "CONFIRM_AVAILABILITY_BOOKING"
+        try:
+            await core.enqueue_template(
+                session,
+                sm,
+                conversation,
+                turn.customer,
+                turn.inbound_message,
+                "RESP-AVAILABILITY-AVAILABLE-001",
+                {"plan_name": plan, "date": starts_at.date(), "time": draft["time"]},
+                strict=True,
+                request_id=str(turn.request_id) if turn.request_id else None,
+            )
+        except KnowledgeRenderError:
+            await handoff(
+                session,
+                settings,
+                sm,
+                turn,
+                "plantilla de disponibilidad no aprobada o incompleta",
+                reason="TEMPLATE_UNAVAILABLE",
+            )
+        return
+    if convert_inquiry:
+        if await has_pending_request(session, turn.customer.id):
+            await handoff(
+                session,
+                settings,
+                sm,
+                turn,
+                "Ya existe una solicitud pendiente de pago",
+                response_code_override="RESP-BOOKING-PENDING-001",
+            )
+            return
+        core.audit_domain_change(
+            session,
+            "AVAILABILITY_INQUIRY_CONVERTED",
+            "conversation",
+            None,
+            {"plan_code": plan.code, "starts_at": starts_at.isoformat()},
+            "Customer requested booking after an availability inquiry",
+            turn.request_id,
+        )
     if turn.customer.full_name is None:
         conversation.pending_action = "COLLECT_BOOKING_NAME"
         await core.enqueue_template(
@@ -520,7 +720,7 @@ async def handle_booking_step(
     settings: Settings,
     sm: Any,
     turn: OrchestrationInput,
-) -> None:
+) -> bool | None:
     from app.orchestrator import service as core
 
     conversation = turn.conversation
@@ -529,6 +729,14 @@ async def handle_booking_step(
         return
     draft = dict(conversation.booking_draft or {})
     action = conversation.pending_action
+    if (
+        action == "CONFIRM_AVAILABILITY_BOOKING"
+        and normalize_confirmation_text(turn.message_text) not in AFFIRMATIONS
+    ):
+        draft.pop("inquiry_only", None)
+        conversation.booking_draft = draft
+        conversation.pending_action = None
+        return False
     plans = await plans_for_turn(session, turn)
     if action == "SELECT_BOOKING_PLAN":
         normalized = normalize_catalog_event_type_label(turn.message_text)
@@ -550,13 +758,18 @@ async def handle_booking_step(
                 await not_understood(session, settings, sm, turn, None)
             return
         draft.pop("catalog_plan_selection", None)
-        draft["plan_id"] = str(plan.plan_id)
+        draft["plan_id"], draft["plan_code"] = str(plan.plan_id), plan.code
     else:
         plan = next((p for p in plans if str(p.plan_id) == draft.get("plan_id")), None)
         if plan is None:
             await ask_plan(session, settings, sm, turn)
             return
         normalized = normalize_confirmation_text(turn.message_text)
+        if action == "CONFIRM_AVAILABILITY_BOOKING":
+            draft.pop("inquiry_only", None)
+            conversation.booking_draft = draft
+            await continue_slots(session, settings, sm, turn, plan, convert_inquiry=True)
+            return
         if action == "COLLECT_BOOKING_NAME":
             name = extract_booking_name(turn.message_text)
             if name is None:
@@ -595,6 +808,9 @@ async def handle_booking_step(
                 turn.request_id,
             )
         elif action == "CONFIRM_BOOKING":
+            if draft.get("inquiry_only"):
+                await continue_slots(session, settings, sm, turn, plan)
+                return
             if normalized in DENIALS:
                 draft = {"plan_id": str(plan.plan_id)}
             elif normalized in AFFIRMATIONS:
@@ -623,8 +839,6 @@ async def handle_booking_step(
                     return
                 # Recheck the advisory availability on confirmation. The deferred read
                 # rolls this turn back until it can run without the inbox transaction.
-                from app.orchestrator.inbox_effects import defer_agenda_service
-
                 start = datetime.combine(
                     date.fromisoformat(draft["date"]),
                     time.fromisoformat(draft["time"]),
@@ -632,9 +846,10 @@ async def handle_booking_step(
                 )
                 window = validate_booking_window(
                     start,
-                    start + timedelta(minutes=plan.duration_minutes),
+                    booking_ends_at(plan, start),
                     settings,
                     today=core.current_bogota_datetime().date(),
+                    plan=plan,
                 )
                 if not window.ok:
                     if window.reason in {"OUTSIDE_HOURS", "CROSSES_MIDNIGHT"}:
@@ -642,24 +857,9 @@ async def handle_booking_step(
                         return
                     await ask_booking_datetime(session, settings, sm, turn)
                     return
-                try:
-                    context = await defer_agenda_service(
-                        BookingAgendaService(sm, settings)
-                    ).booking_availability(plan.plan_id, start, plan.duration_minutes)
-                except (CalendarUnavailableError, ValueError):
-                    await handoff(
-                        session, settings, sm, turn, "No se pudo consultar la disponibilidad"
-                    )
-                    return
-                if context is None:
-                    await handoff(
-                        session,
-                        settings,
-                        sm,
-                        turn,
-                        "No se pudo consultar la disponibilidad",
-                        reason="SYSTEM_ERROR",
-                    )
+                context = await read_availability(sm, settings, turn, plan, start)
+                if isinstance(context, BookingAvailabilityFailure):
+                    await availability_failed(session, settings, sm, turn, plan, start, context)
                     return
                 if not context.available:
                     await unavailable(session, settings, sm, turn)

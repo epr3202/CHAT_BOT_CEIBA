@@ -21,7 +21,9 @@ BOGOTA = ZoneInfo("America/Bogota")
 
 @dataclass(frozen=True)
 class BookingBlocker:
-    kind: Literal["CALENDAR_EXCLUSIVE", "RESERVED_EXCLUSIVE", "RESERVED_CONFLICT"]
+    kind: Literal[
+        "CALENDAR_EXCLUSIVE", "RESERVED_EXCLUSIVE", "RESERVED_CONFLICT", "RESERVED_OVERNIGHT"
+    ]
     ref: str
 
 
@@ -29,6 +31,24 @@ class BookingBlocker:
 class BookingAvailability:
     available: bool
     blockers: list[BookingBlocker]
+
+
+@dataclass(frozen=True)
+class BookingAvailabilityFailure:
+    reason: Literal["CALENDAR_UNAVAILABLE", "PLAN_INACTIVE", "PLAN_MISMATCH"]
+    error_class: str | None = None
+
+
+def booking_ends_at(plan: Plan, starts_at: datetime) -> datetime:
+    """The overnight interval uses the next Bogotá checkout, never its legacy duration."""
+    if not plan.overnight:
+        return starts_at + timedelta(minutes=plan.duration_minutes)
+    if starts_at.utcoffset() is None or plan.checkout_time is None:
+        raise ValueError("Overnight bookings require a timezone and checkout time")
+    local = starts_at.astimezone(BOGOTA)
+    return datetime.combine(
+        local.date() + timedelta(days=1), plan.checkout_time, tzinfo=BOGOTA
+    ).astimezone(starts_at.tzinfo)
 
 
 @dataclass(frozen=True)
@@ -41,6 +61,7 @@ class BookingWindow:
             "CROSSES_MIDNIGHT",
             "OUTSIDE_HOURS",
             "MIN_LEAD_DAYS",
+            "WEEKEND_ONLY",
         ]
         | None
     ) = None
@@ -79,7 +100,9 @@ def evaluate_booking_availability(
             or starts_at >= reservation.ends_at
         ):
             continue
-        if reservation.plan.exclusive:
+        if reservation.plan.overnight and (plan.exclusive or plan.overnight):
+            blockers.append(BookingBlocker("RESERVED_OVERNIGHT", str(reservation.reservation_id)))
+        elif reservation.plan.exclusive:
             blockers.append(BookingBlocker("RESERVED_EXCLUSIVE", str(reservation.reservation_id)))
         elif plan.exclusive:
             blockers.append(BookingBlocker("RESERVED_CONFLICT", str(reservation.reservation_id)))
@@ -92,6 +115,7 @@ def validate_booking_window(
     settings: Settings,
     *,
     today: date | None = None,
+    plan: Plan | None = None,
 ) -> BookingWindow:
     """Calendar-day lead time in Bogotá, with an injectable date for deterministic callers."""
     if starts_at.utcoffset() is None or ends_at.utcoffset() is None:
@@ -99,9 +123,17 @@ def validate_booking_window(
     if ends_at <= starts_at:
         return BookingWindow(False, "INVALID_RANGE")
     start, end = starts_at.astimezone(BOGOTA), ends_at.astimezone(BOGOTA)
-    if start.time() < time.fromisoformat(
-        settings.booking_hours_start
-    ) or start.time() > time.fromisoformat(settings.booking_latest_start):
+    if plan is not None and plan.weekend_only and start.weekday() not in {5, 6}:
+        return BookingWindow(False, "WEEKEND_ONLY")
+    overnight = plan is not None and plan.overnight
+    if overnight and (plan.checkin_from is None or plan.checkout_time is None):
+        return BookingWindow(False, "INVALID_RANGE")
+    first_start = (
+        plan.checkin_from if overnight else time.fromisoformat(settings.booking_hours_start)
+    )
+    if start.time() < first_start or start.time() > time.fromisoformat(
+        settings.booking_latest_start
+    ):
         return BookingWindow(False, "OUTSIDE_HOURS")
     midnight = datetime.combine(start.date() + timedelta(days=1), time(), tzinfo=BOGOTA)
     allowed_end = (
@@ -111,9 +143,12 @@ def validate_booking_window(
             start.date(), time.fromisoformat(settings.booking_hours_end), tzinfo=BOGOTA
         )
     )
-    if end > midnight:
+    if overnight:
+        if ends_at != booking_ends_at(plan, starts_at):
+            return BookingWindow(False, "INVALID_RANGE")
+    elif end > midnight:
         return BookingWindow(False, "CROSSES_MIDNIGHT")
-    if end > allowed_end:
+    elif end > allowed_end:
         return BookingWindow(False, "OUTSIDE_HOURS")
     today = today if today is not None else datetime.now(BOGOTA).date()
     if start.date() < today + timedelta(days=settings.booking_min_lead_days):

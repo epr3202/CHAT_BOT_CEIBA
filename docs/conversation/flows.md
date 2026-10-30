@@ -2890,3 +2890,56 @@ código, conversación, razón y request_id antes de propagar el fallo estricto.
 Las notificaciones sensibles de pago no degradan al fallback genérico; conservan
 NOTIFICATION_SKIPPED y devuelven DEFERRED sin mensaje incompleto. En el flujo de
 reserva, TEMPLATE_UNAVAILABLE pausa con la plantilla de handoff existente.
+
+### Disponibilidad directa y hospedaje — C1–C4, 2026-10-29
+
+La mención determinista de hospedaje se evalúa antes del clasificador, con los
+guards de humano, confirmación, booking_draft activo y capturas pendientes.
+COLLECT_EVENT_TYPE y COLLECT_CATALOG_EVENT_TYPE son acciones diferentes y ambas
+quedan protegidas; COLLECT_SERVICES conserva su matcher ACCOMMODATION. Una
+consulta elegible crea/reutiliza lead y evento ROMANTIC_DINNER y envía texto
+RESP-ACCOMMODATION-ROMANTIC-001 (plan_name del plan activo LODGING_PLAN_CODE),
+seguido del PDF romántico ordered=True. Se audita CATALOG_EVENT_TYPE_RESOLVED
+con source=LODGING_ALIAS y matched_label normalizado. last_question_code permite
+seleccionar luego el plan por nombre sin usar el LLM.
+
+Una pregunta de disponibilidad entra a handle_booking_start con inquiry_only
+solo si tiene contexto de precio fijo, menciona un plan activo o una etiqueta
+ROMANTIC_DINNER/PROPOSAL. La captura usa las preguntas existentes de plan, fecha
+y hora. El backend valida ventana y consulta la agenda diferida. Si está libre,
+guarda precio/duración y responde RESP-AVAILABILITY-AVAILABLE-001 con plan_name,
+date y time; queda CONFIRM_AVAILABILITY_BOOKING. No pide el nombre todavía y
+no crea una solicitud de pago ni un evento externo.
+
+Al aceptar, vuelve a consultar mediante defer_agenda_service/inbox_effects.
+Si cambió la agenda repregunta con UNAVAILABLE; si falla aplica C1; si sigue
+libre comprueba solicitudes PAYMENT_PENDING/PAYMENT_REVIEW del customer antes
+de avanzar a nombre o confirmación ordinaria. El guard inicial se exceptúa
+solo para la consulta, como el followup de catálogo; el guard final permanece.
+Negativo u otra respuesta limpia la marca y el pending, preserva el borrador
+y reutiliza la clasificación normal obtenida fuera de transacción. Las
+auditorías AVAILABILITY_INQUIRY_ANSWERED/CONVERTED registran la decisión.
+
+CalendarUnavailableError produce BookingAvailabilityFailure y un ERROR con
+request_id, conversation_id, plan_code, starts_at y error_class sin mensaje de
+excepción. PLAN_INACTIVE/PLAN_MISMATCH también son failures tipados. El flujo
+audita BOOKING_AVAILABILITY_FAILED antes del handoff SYSTEM_ERROR y envía
+RESP-BOOKING-AGENDA-ERROR-001. Se conserva el booking_draft completo. Si una
+versión posterior no está aprobada, se audita el fallo de render y se usa el
+aviso aprobado del mismo caso de handoff, conservando reason y borrador.
+
+REFUGIO_DOS usa entrada desde checkin_from hasta BOOKING_LATEST_START y checkout
+del día siguiente en Bogotá; duration_minutes no calcula su final. El mismo
+booking_ends_at alimenta el flujo, las altas y la agenda del panel. Calendar
+usa el ends_at persistido al sincronizar. Los recordatorios conservan vencimiento
+antes de la entrada y auditan el intervalo persistido, incluido checkout.
+WEEKEND_ONLY pide fecha; los planes sin pernoctación siguen rechazando cruces
+de medianoche. RESERVED_OVERNIGHT añade el bloqueo mínimo frente a planes
+exclusivos o con pernoctación; el modelo de recursos queda en backlog §29.
+
+Adenda de Leandro autorizada por Emerson el 29-oct: las tres plantillas nuevas
+se publican APPROVED v1 con textos exactos; no pertenecen a CONDITIONAL_DRAFT_CODES.
+date/time usan los mismos presenters que booking_date/booking_time. El renderer
+estricto impide añadir checkout a las confirmaciones aprobadas actuales: se
+guarda en el borrador y en auditoría, sin cambiar esos textos. El panel permite
+editar las horas y muestra el borrador de conversación únicamente para lectura.

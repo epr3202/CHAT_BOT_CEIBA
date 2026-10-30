@@ -130,6 +130,13 @@ class Settings(BaseSettings):
     booking_account_number: str = Field(default="", alias="BOOKING_ACCOUNT_NUMBER")
     booking_account_holder: str = Field(default="", alias="BOOKING_ACCOUNT_HOLDER")
     bank_breb_key: str = Field(default="", alias="BANK_BREB_KEY")
+    lodging_plan_code: str = Field(default="REFUGIO_DOS", alias="LODGING_PLAN_CODE", min_length=1)
+    lodging_checkin_from: str = Field(
+        default="15:00", alias="LODGING_CHECKIN_FROM", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+    )
+    lodging_checkout_time: str = Field(
+        default="11:00", alias="LODGING_CHECKOUT_TIME", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+    )
     booking_exclusivity_keyword: str = Field(
         default="exclusividad", alias="BOOKING_EXCLUSIVITY_KEYWORD", min_length=1
     )
@@ -155,6 +162,10 @@ class Settings(BaseSettings):
             )
         if not self.booking_exclusivity_keyword.strip():
             raise ValueError("BOOKING_EXCLUSIVITY_KEYWORD must not be blank")
+        if not self.lodging_plan_code.strip():
+            raise ValueError("LODGING_PLAN_CODE must not be blank")
+        if self.lodging_checkin_from > self.booking_latest_start:
+            raise ValueError("LODGING_CHECKIN_FROM must not exceed BOOKING_LATEST_START")
         return self
 
     openrouter_api_key: str = Field(alias="OPENROUTER_API_KEY")

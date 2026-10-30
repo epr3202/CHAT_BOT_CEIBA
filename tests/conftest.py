@@ -9,6 +9,27 @@ from tests.clock import FrozenDateTime
 from tests.http_doubles import unrecognized_event_type_mock
 
 
+@pytest.fixture(autouse=True)
+def uncached_startup_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let capture_logs observe real processors after production readiness tests.
+
+    A production startup otherwise caches bound loggers against its processor
+    list. Later testing startups replace that list, so capture_logs can miss
+    real ERROR events. Keep startup rendering/levels intact; disable only the
+    cache in this test process, without mocking log emission or assertions.
+    """
+    import structlog
+
+    main = import_module("app.main")
+    configure = main.configure_logging
+
+    def configure_uncached(environment: str, log_level: str = "INFO") -> None:
+        configure(environment, log_level)
+        structlog.configure(cache_logger_on_first_use=False)
+
+    monkeypatch.setattr(main, "configure_logging", configure_uncached)
+
+
 @pytest.fixture
 def freeze_app_clock(
     monkeypatch: pytest.MonkeyPatch,

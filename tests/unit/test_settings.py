@@ -30,6 +30,30 @@ def test_settings_loads_technical_defaults_for_testing() -> None:
     assert settings.openrouter_max_retries == 1
     assert settings.ai_prompt_version == "intent_v4"
     assert settings.ai_confidence_safe == 0.85
+    assert settings.lodging_plan_code == "REFUGIO_DOS"
+    assert settings.lodging_checkin_from == "15:00"
+    assert settings.lodging_checkout_time == "11:00"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("LODGING_PLAN_CODE", " "),
+        ("LODGING_CHECKIN_FROM", "25:00"),
+        ("LODGING_CHECKOUT_TIME", "11:00Z"),
+    ],
+)
+def test_lodging_settings_reject_invalid_values(field: str, value: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            DATABASE_URL="postgresql+asyncpg://test/test",
+            META_APP_SECRET="test",
+            META_ACCESS_TOKEN="test",
+            OPENROUTER_API_KEY="test",
+            ENVIRONMENT="testing",
+            _env_file=None,
+            **{field: value},
+        )
 
 
 def test_production_rejects_blank_required_secrets() -> None:

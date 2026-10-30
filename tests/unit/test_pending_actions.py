@@ -21,3 +21,4 @@ def test_pending_action_literal_matches_states_catalog() -> None:
     assert get_args(PendingAction) == documented
     assert PENDING_ACTIONS == documented
     assert "COLLECT_BOOKING_NAME" in PENDING_ACTIONS
+    assert "CONFIRM_AVAILABILITY_BOOKING" in PENDING_ACTIONS

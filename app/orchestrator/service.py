@@ -53,6 +53,7 @@ from app.conversation.catalog_event_type import (
     resolve_fixed_price_information_type,
 )
 from app.conversation.confirmation import (
+    AFFIRMATIONS,
     DENIALS,
     normalize_confirmation_text,
     resolve_contextual_confirmation,
@@ -66,14 +67,17 @@ from app.conversation.entity_validation import (
     validate_entities,
     validate_entity,
 )
-from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON
+from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON, is_explicit_human_request
 from app.conversation.faq_catalog import NO_APPROVED_ANSWER, response_code_for_category
 from app.conversation.fixed_price_booking import (
+    AVAILABILITY_INQUIRY_REASON,
     BOOKING_ACTIONS,
     FIXED_PRICE_BOOKING_REASON,
+    FIXED_PRICE_PRIMARY_INFORMATION_CODES,
     GENERIC_CAPTURE_ACTIONS,
     SELF_SERVICE_BOOKING_REASON,
     booking_guard_eligible,
+    is_availability_inquiry,
     is_catalog_plan_choice,
     is_explicit_visit_request,
     is_fixed_price_booking,
@@ -81,6 +85,7 @@ from app.conversation.fixed_price_booking import (
     match_booking_plan,
 )
 from app.conversation.knowledge import KnowledgeRenderError, get_latest_response, render_response
+from app.conversation.lodging import LODGING_ALIAS_REASON, is_lodging_inquiry, match_lodging_label
 from app.conversation.models import Conversation
 from app.conversation.pending_actions import validate_pending_action
 from app.conversation.pending_confirmation import (
@@ -384,13 +389,33 @@ async def _orchestrate_inbound_message(
     if classification is None:
         raise ValueError("classification or ai_error_reason is required")
 
-    if (
-        orchestration_input.decision_source == "DETERMINISTIC"
-        and classification.reasoning_code == SELF_SERVICE_BOOKING_REASON
-    ):
+    if orchestration_input.decision_source == "DETERMINISTIC" and classification.reasoning_code in {
+        SELF_SERVICE_BOOKING_REASON,
+        AVAILABILITY_INQUIRY_REASON,
+    }:
         from app.orchestrator.booking_flow import handle_booking_start
 
-        await handle_booking_start(session, settings, knowledge_sessionmaker, orchestration_input)
+        await handle_booking_start(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            inquiry_only=classification.reasoning_code == AVAILABILITY_INQUIRY_REASON,
+        )
+        return
+
+    if (
+        orchestration_input.decision_source == "DETERMINISTIC"
+        and classification.reasoning_code == LODGING_ALIAS_REASON
+    ):
+        await handle_general_information(
+            session,
+            settings,
+            knowledge_sessionmaker,
+            orchestration_input,
+            classification,
+            lodging_alias=True,
+        )
         return
 
     if (
@@ -421,8 +446,11 @@ async def _orchestrate_inbound_message(
     if conversation.pending_action in BOOKING_ACTIONS:
         from app.orchestrator.booking_flow import handle_booking_step
 
-        await handle_booking_step(session, settings, knowledge_sessionmaker, orchestration_input)
-        return
+        handled = await handle_booking_step(
+            session, settings, knowledge_sessionmaker, orchestration_input
+        )
+        if handled is not False:
+            return
 
     _, envelope_errors = decode_entities(classification)
     envelope_errors = [
@@ -594,6 +622,7 @@ def conversation_context(conversation: Conversation) -> dict[str, Any]:
         "known_fields": {},
         "failed_understanding_count": conversation.failed_understanding_count,
         "pending_confirmation": conversation.pending_confirmation,
+        "booking_draft_active": bool(conversation.booking_draft),
     }
 
 
@@ -664,6 +693,13 @@ def deterministic_booking_or_catalog_classification(
     # Precedence: pending_action routes → D1 guard → CATALOG_CAPTURE/type resolution → LLM.
     facts = context.get("booking_event") or {}
     if context.get("pending_action") in BOOKING_ACTIONS:
+        if (
+            context.get("pending_action") == "CONFIRM_AVAILABILITY_BOOKING"
+            and normalize_confirmation_text(message_text) not in AFFIRMATIONS
+        ):
+            # Classify a declined/corrected inquiry before opening the apply transaction.
+            # handle_booking_step clears that pending and reuses this normal-route result.
+            return None
         return IntentClassification(
             primary_intent="UNKNOWN",
             sub_intent=None,
@@ -684,6 +720,51 @@ def deterministic_booking_or_catalog_classification(
     )
     if eligible and is_explicit_visit_request(message_text):
         return None
+    # A personal advisor request with a purpose must also reach the classifier.
+    human_request = re.split(r"\s+para\s+", message_text, maxsplit=1, flags=re.IGNORECASE)[0]
+    if is_explicit_human_request(human_request) or context.get("pending_confirmation"):
+        return None
+    lodging_eligible = (
+        booking_guard_eligible(
+            context.get("state"),
+            context.get("pending_action"),
+            context.get("bot_enabled", True),
+            self_service=True,
+        )
+        and context.get("pending_action")
+        not in {
+            "COLLECT_SERVICES",
+            "COLLECT_EVENT_TYPE",
+            "COLLECT_CATALOG_EVENT_TYPE",
+        }
+        and not context.get("booking_draft_active")
+    )
+    if (
+        lodging_eligible
+        and not is_explicit_visit_request(message_text)
+        and is_lodging_inquiry(message_text)
+    ):
+        return IntentClassification(
+            primary_intent="GENERAL_INFORMATION",
+            sub_intent=None,
+            handoff_reason=None,
+            confidence=1.0,
+            information_category="tipos de eventos",
+            requested_action=None,
+            needs_confirmation=False,
+            needs_human=False,
+            priority="NORMAL",
+            reasoning_code=LODGING_ALIAS_REASON,
+            extracted_entities=[
+                ExtractedEntity(
+                    entity="event_type",
+                    raw_value="ROMANTIC_DINNER",
+                    normalized_value="ROMANTIC_DINNER",
+                    quality_status="PROVIDED",
+                    confidence=1.0,
+                )
+            ],
+        )
     catalog_followup = self_service and is_fixed_price_catalog_followup(
         facts.get("event_type"), context.get("last_question_code")
     )
@@ -704,6 +785,28 @@ def deterministic_booking_or_catalog_classification(
         message_text,
         answering_event_type_question=context.get("pending_action") == CATALOG_CAPTURE_ACTION,
     )
+    if (
+        self_service
+        and eligible
+        and is_availability_inquiry(message_text)
+        and (
+            facts.get("event_type") in FIXED_PRICE_EVENT_TYPES
+            or named_plan is not None
+            or match is not None
+            and match.event_type in FIXED_PRICE_EVENT_TYPES
+        )
+    ):
+        return IntentClassification(
+            primary_intent="GENERAL_INFORMATION",
+            confidence=1.0,
+            needs_confirmation=False,
+            needs_human=False,
+            requested_action=None,
+            priority="NORMAL",
+            reasoning_code=AVAILABILITY_INQUIRY_REASON,
+            sub_intent=None,
+            handoff_reason=None,
+        )
     ambiguous_plan = (
         catalog_followup
         and named_plan is None
@@ -2524,6 +2627,7 @@ async def handle_general_information(
     classification: IntentClassification,
     *,
     understanding_failure_already_counted: bool = False,
+    lodging_alias: bool = False,
 ) -> None:
     conversation = orchestration_input.conversation
     previous_state = ConversationState(conversation.state)
@@ -2568,7 +2672,11 @@ async def handle_general_information(
         ),
         fixed_price_entities[0] if fixed_price_entities else None,
     )
-    mentioned_event_type = resolve_fixed_price_information_type(orchestration_input.message_text)
+    mentioned_event_type = (
+        "ROMANTIC_DINNER"
+        if lodging_alias
+        else resolve_fixed_price_information_type(orchestration_input.message_text)
+    )
     if mentioned_event_type is not None and (
         not event_type_entities
         or all(
@@ -2708,7 +2816,21 @@ async def handle_general_information(
             return
     if fixed_price_entity is not None:
         match = resolve_fixed_price_information_match(orchestration_input.message_text)
-        if (
+        if lodging_alias:
+            audit_orchestrator_event(
+                session,
+                "CATALOG_EVENT_TYPE_RESOLVED",
+                conversation,
+                reason="Lodging inquiry resolved to the romantic catalog",
+                request_id=orchestration_input.request_id,
+                extra={
+                    "event_type": "ROMANTIC_DINNER",
+                    "source": "LODGING_ALIAS",
+                    "matched_label": match_lodging_label(orchestration_input.message_text),
+                    "decision_source": "DETERMINISTIC",
+                },
+            )
+        elif (
             not is_catalog_request_category(category)
             and match is not None
             and mentioned_event_type is not None
@@ -2737,7 +2859,7 @@ async def handle_general_information(
             request_id=orchestration_input.request_id,
         )
         apply_event_type(session, event, fixed_price_entity, orchestration_input.request_id)
-        if not settings.self_service_booking_enabled:
+        if not settings.self_service_booking_enabled and not lodging_alias:
             await enqueue_fixed_price_catalogs(
                 session,
                 knowledge_sessionmaker,
@@ -2745,11 +2867,29 @@ async def handle_general_information(
                 lead,
                 event,
             )
-        response_code = (
-            "RESP-EVENTS-PROPOSAL-001"
-            if event.event_type == "PROPOSAL"
-            else "RESP-EVENTS-ROMANTIC-001"
+        response_code = FIXED_PRICE_PRIMARY_INFORMATION_CODES[event.event_type]
+    response_variables: dict[str, Any] = {}
+    if lodging_alias:
+        lodging_plan = await session.scalar(
+            select(Plan).where(
+                Plan.code == settings.lodging_plan_code,
+                Plan.active.is_(True),
+            )
         )
+        if lodging_plan is None:
+            from app.orchestrator.booking_flow import handoff
+
+            await handoff(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                "Plan de hospedaje no disponible",
+                reason="SYSTEM_ERROR",
+            )
+            return
+        response_code = "RESP-ACCOMMODATION-ROMANTIC-001"
+        response_variables = {"plan_name": lodging_plan}
     if response_code == "RESP-LOCATION-001" and wants_location_link(
         orchestration_input.message_text
     ):
@@ -2777,8 +2917,9 @@ async def handle_general_information(
             response_code,
             {"map_url": "https://maps.app.goo.gl/hvxQH8UFN7upKMwU8?g_st=iw"}
             if response_code == "RESP-LOCATION-002"
-            else {},
-            strict=fixed_price_entity is not None and settings.self_service_booking_enabled,
+            else response_variables,
+            strict=fixed_price_entity is not None
+            and (settings.self_service_booking_enabled or lodging_alias),
         )
     except KnowledgeRenderError:
         from app.orchestrator.booking_flow import handoff
@@ -2792,7 +2933,7 @@ async def handle_general_information(
             reason="TEMPLATE_UNAVAILABLE",
         )
         return
-    if fixed_price_entity is not None and settings.self_service_booking_enabled:
+    if fixed_price_entity is not None and (settings.self_service_booking_enabled or lodging_alias):
         await enqueue_fixed_price_catalogs(
             session,
             knowledge_sessionmaker,
@@ -4414,10 +4555,12 @@ async def create_handoff_and_pause(
     priority: str,
     detail: str | None = None,
     response_code_override: str | None = None,
+    response_variables: dict[str, Any] | None = None,
 ) -> None:
     conversation = orchestration_input.conversation
     conversation.visit_draft = None
-    conversation.booking_draft = None
+    if reason != "SYSTEM_ERROR":
+        conversation.booking_draft = None
     handoff, response_code = await create_handoff(
         session,
         conversation,
@@ -4437,21 +4580,37 @@ async def create_handoff_and_pause(
             handoff,
             request_id=orchestration_input.request_id,
         )
-    await enqueue_template(
-        session,
-        knowledge_sessionmaker,
-        conversation,
-        orchestration_input.customer,
-        orchestration_input.inbound_message,
-        response_code_override or response_code,
-        {},
-        notice_case=handoff,
-        request_id=(
-            str(orchestration_input.request_id)
-            if orchestration_input.request_id is not None
-            else None
-        ),
-    )
+    try:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            response_code_override or response_code,
+            response_variables or {},
+            notice_case=handoff,
+            strict=response_code_override == "RESP-BOOKING-AGENDA-ERROR-001",
+            request_id=str(orchestration_input.request_id)
+            if orchestration_input.request_id
+            else None,
+        )
+    except KnowledgeRenderError:
+        # DRAFT copy cannot be sent. Retain this SYSTEM_ERROR case/draft and use
+        # the approved transfer notice; never recurse through a different handoff reason.
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            response_code,
+            {},
+            notice_case=handoff,
+            request_id=str(orchestration_input.request_id)
+            if orchestration_input.request_id
+            else None,
+        )
     persist_classification_context(conversation, classification)
     set_pending_action(conversation, "WAIT_FOR_HUMAN")
     conversation.services_failed_understanding_count = 0
@@ -4512,7 +4671,9 @@ async def enqueue_template(
     context = automatic_context(conversation, "TEMPLATE")
     if payment_ack is not None and rendered_code == "RESP-BOOKING-EVIDENCE-001":
         context = payment_evidence_ack_context(*payment_ack)
-    elif notice_case is not None and rendered_code in TRANSFER_RESPONSE_CODES:
+    elif notice_case is not None and (
+        rendered_code in TRANSFER_RESPONSE_CODES or rendered_code == "RESP-BOOKING-AGENDA-ERROR-001"
+    ):
         context = await handoff_context(session, conversation, notice_case)
     elif payment_decision is not None and rendered_code in {
         "RESP-PAYMENT-004",

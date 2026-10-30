@@ -1,6 +1,6 @@
 """Pending booking requests and evidence linkage; no calendar effects or payment approval."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -15,6 +15,7 @@ from app.event.models import Event
 from app.lead.models import Lead
 from app.payment.models import PaymentEvidence
 from app.plan.models import Plan
+from app.reservation.availability import booking_ends_at
 from app.reservation.models import Reservation
 from app.reservation.service import transition_reservation
 
@@ -58,7 +59,7 @@ async def create_pending_reservation(
         conversation_id=conversation.id if conversation else None,
         customer_id=customer.id,
         starts_at=starts_at,
-        ends_at=starts_at + timedelta(minutes=plan.duration_minutes),
+        ends_at=booking_ends_at(plan, starts_at),
         price_cop=plan.price_cop,
         amount_paid_cop=0,
         status="PAYMENT_PENDING",
@@ -108,6 +109,8 @@ async def create_pending_reservation(
                 "reservation_id": str(reservation.reservation_id),
                 "plan_code": plan.code,
                 "starts_at": starts_at.isoformat(),
+                "ends_at": reservation.ends_at.isoformat(),
+                "checkout": reservation.ends_at.isoformat() if plan.overnight else None,
                 "price_cop": plan.price_cop,
             },
             reason="Solicitud pendiente de pago; sin bloqueo de disponibilidad",

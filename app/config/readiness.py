@@ -2,11 +2,12 @@ import asyncio
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.config.settings import Settings
 from app.conversation.knowledge import get_latest_response, variables_in_template
+from app.plan.models import Plan
 
 
 async def check_database(engine: AsyncEngine) -> None:
@@ -46,3 +47,18 @@ async def validate_payment_settings(
                     "AUDIO_TRANSCRIPTION_ENABLED requires the latest "
                     f"{audio_code} version to be APPROVED"
                 )
+    await validate_lodging_settings(settings, sessionmaker)
+
+
+async def validate_lodging_settings(
+    settings: Settings,
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessionmaker() as session:
+        plan_id = await session.scalar(
+            select(Plan.plan_id).where(
+                Plan.code == settings.lodging_plan_code, Plan.active.is_(True)
+            )
+        )
+    if plan_id is None:
+        raise ValueError("LODGING_PLAN_CODE must identify an active plan")

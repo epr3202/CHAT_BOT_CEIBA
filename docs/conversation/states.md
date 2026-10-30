@@ -1400,7 +1400,48 @@ SELECT_BOOKING_DATETIME
 SELECT_BOOKING_TIME
 CONFIRM_BOOKING
 COLLECT_BOOKING_NAME
+CONFIRM_AVAILABILITY_BOOKING
 ```
+
+### Disponibilidad y hospedaje — ampliación aprobada 2026-10-29
+
+No se añaden estados de conversación. `CONFIRM_AVAILABILITY_BOOKING` es una
+acción pendiente dentro de COLLECTING_EVENT_DATA. La precedencia conserva A7 y
+la solicitud explícita de asesor, luego las capturas/confirmaciones existentes
+y las rutas deterministas de hospedaje y disponibilidad antes del LLM.
+
+* Consulta de disponibilidad con contexto ROMANTIC_DINNER/PROPOSAL, plan por
+  nombre o etiqueta de precio fijo: captura plan → fecha/hora → hora mediante
+  los pending SELECT_BOOKING_* existentes y `booking_draft.inquiry_only=true`.
+* Ventana válida y agenda libre: RESP-AVAILABILITY-AVAILABLE-001, con
+  pending CONFIRM_AVAILABILITY_BOOKING; no pide nombre, no crea reservation ni
+  PAYMENT_PENDING y no escribe en Calendar.
+* Afirmativo en CONFIRM_AVAILABILITY_BOOKING: quita inquiry_only y vuelve a
+  consultar la agenda diferida. Si sigue libre, aplica el duplicate guard del
+  customer y avanza a COLLECT_BOOKING_NAME o CONFIRM_BOOKING. Sigue sin crear
+  reservation hasta la confirmación ordinaria posterior de la solicitud.
+* Negativo u otra respuesta: limpia inquiry_only y ese pending, conserva los
+  demás datos del borrador y procesa el mensaje por la ruta normal. Su
+  clasificación se obtiene fuera de la transacción de aplicación. Un fallback
+  CLASSIFY_MESSAGE permite retomar después una consulta explícita de precio fijo.
+* Agenda ocupada: RESP-BOOKING-UNAVAILABLE-001 y SELECT_BOOKING_DATETIME.
+  WEEKEND_ONLY repregunta fecha con RESP-BOOKING-DATETIME-001; OUTSIDE_HOURS y
+  CROSSES_MIDNIGHT repreguntan hora, según el contrato previo.
+* BookingAvailabilityFailure: BOOKING_AVAILABILITY_FAILED antes de handoff
+  SYSTEM_ERROR, aviso RESP-BOOKING-AGENDA-ERROR-001 y WAITING_FOR_HUMAN con
+  borrador conservado. Los demás reasons de handoff siguen limpiándolo.
+
+El alias determinista de hospedaje no intercepta BOOKING_ACTIONS, visitas,
+COLLECT_SERVICES, COLLECT_EVENT_TYPE ni COLLECT_CATALOG_EVENT_TYPE. Tampoco
+intercepta un borrador de reserva activo, confirmación pendiente o conversación
+HUMAN_*/WAITING_FOR_HUMAN. Fuera de esas capturas crea/reutiliza lead/evento
+ROMANTIC_DINNER, envía RESP-ACCOMMODATION-ROMANTIC-001 y después el PDF ordenado.
+Esa plantilla queda como last_question_code válido para seleccionar un plan.
+
+REFUGIO_DOS conserva checkout en el borrador. La confirmación de disponibilidad
+revalida; la confirmación de reserva y de pago siguen siendo humanas. El flujo
+de autoservicio sigue disponible 24/7; el horario de atención solo selecciona
+el aviso genérico de handoff cuando corresponde.
 
 ## 20.1 `COLLECT_CATALOG_EVENT_TYPE`
 

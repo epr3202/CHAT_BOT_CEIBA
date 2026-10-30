@@ -961,6 +961,7 @@ def persisted_message_from_models(
             "known_fields": {},
             "failed_understanding_count": conversation.failed_understanding_count,
             "pending_confirmation": conversation.pending_confirmation,
+            "booking_draft_active": bool(conversation.booking_draft),
             "pending_fields": conversation.pending_fields,
         },
         external_message_id=message.external_message_id,

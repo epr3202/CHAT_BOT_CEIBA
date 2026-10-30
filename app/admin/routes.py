@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from dataclasses import asdict
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -88,6 +88,7 @@ from app.plan.models import Plan
 from app.reservation.availability import (
     BookingBlocker,
     BookingWindow,
+    booking_ends_at,
     fetch_booking_context,
     validate_booking_window,
 )
@@ -195,6 +196,9 @@ class PlanPatchRequest(BaseModel):
     duration_minutes: int | None = Field(None, gt=0, le=2147483647)
     exclusive: bool | None = None
     weekend_only: bool | None = None
+    overnight: bool | None = None
+    checkin_from: time | None = None
+    checkout_time: time | None = None
     active: bool | None = None
     sort_order: int | None = Field(None, ge=-2147483648, le=2147483647)
 
@@ -202,8 +206,16 @@ class PlanPatchRequest(BaseModel):
     def validate_changes(self) -> PlanPatchRequest:
         if not self.model_fields_set:
             raise ValueError("Indica al menos un campo para actualizar.")
-        if any(getattr(self, field) is None for field in self.model_fields_set):
+        if any(
+            getattr(self, field) is None
+            for field in self.model_fields_set - {"checkin_from", "checkout_time"}
+        ):
             raise ValueError("Los campos del plan no pueden ser nulos.")
+        for clock in (self.checkin_from, self.checkout_time):
+            if clock is not None and (
+                clock.tzinfo is not None or clock.second or clock.microsecond
+            ):
+                raise ValueError("Usa horas locales con formato HH:MM.")
         if self.name is not None:
             self.name = self.name.strip()
             if not self.name:
@@ -222,6 +234,9 @@ class PlanPayload(BaseModel):
     duration_minutes: int
     exclusive: bool
     weekend_only: bool
+    overnight: bool
+    checkin_from: time | None
+    checkout_time: time | None
     active: bool
     sort_order: int
     created_at: datetime
@@ -295,6 +310,7 @@ class ConversationPayload(BaseModel):
     state: str
     last_intent: str | None
     pending_action: str | None
+    booking_draft: dict[str, Any] | None = None
     bot_enabled: bool
     handoff_id: int | None
     handoff_status: str | None
@@ -493,6 +509,11 @@ async def update_plan(
         if plan is None:
             raise HTTPException(status_code=404, detail="El plan no existe.")
         changes = body.model_dump(exclude_unset=True)
+        if changes.get("overnight", plan.overnight) and any(
+            changes.get(field, getattr(plan, field)) is None
+            for field in ("checkin_from", "checkout_time")
+        ):
+            raise HTTPException(422, "La pernoctación requiere hora de entrada y de salida.")
         old_value = {field: getattr(plan, field) for field in changes}
         for field, value in changes.items():
             setattr(plan, field, value)
@@ -501,8 +522,20 @@ async def update_plan(
                 actor=actor,
                 action="PLAN_UPDATED",
                 entity="plan",
-                old_value={"plan_id": str(plan_id), **old_value},
-                new_value={"plan_id": str(plan_id), **changes},
+                old_value={
+                    "plan_id": str(plan_id),
+                    **{
+                        key: value.isoformat() if isinstance(value, time) else value
+                        for key, value in old_value.items()
+                    },
+                },
+                new_value={
+                    "plan_id": str(plan_id),
+                    **{
+                        key: value.isoformat() if isinstance(value, time) else value
+                        for key, value in changes.items()
+                    },
+                },
                 reason="Administrador actualizó el plan.",
                 request_id=request_id or str(uuid4()),
             )
@@ -613,13 +646,13 @@ async def reservation_availability(
         raise HTTPException(status_code=404, detail="El plan no existe.")
     if not plan.active:
         raise HTTPException(status_code=422, detail="El plan está inactivo.")
-    ends_at = starts_at + timedelta(minutes=plan.duration_minutes)
+    ends_at = booking_ends_at(plan, starts_at)
     # Authentication/plan reads autobegin. Detach the snapshot, close that read,
     # and give the availability helper an idle session with no caller writes.
     session.expunge(plan)
     await session.rollback()
     settings = get_settings()
-    window = validate_booking_window(starts_at, ends_at, settings)
+    window = validate_booking_window(starts_at, ends_at, settings, plan=plan)
     try:
         availability = await fetch_booking_context(
             session,
@@ -723,11 +756,11 @@ async def admin_booking_context(
         raise HTTPException(404, "El plan no existe.")
     if not plan.active:
         raise HTTPException(422, "El plan está inactivo.")
-    ends_at = starts_at + timedelta(minutes=plan.duration_minutes)
+    ends_at = booking_ends_at(plan, starts_at)
     session.expunge(plan)
     await session.rollback()
     settings = get_settings()
-    window = validate_booking_window(starts_at, ends_at, settings)
+    window = validate_booking_window(starts_at, ends_at, settings, plan=plan)
     if not window.ok:
         raise HTTPException(409, {"reason": window.reason, "blockers": []})
     try:
@@ -2282,6 +2315,7 @@ async def list_conversations(
                 state=conversation.state,
                 last_intent=conversation.last_intent,
                 pending_action=conversation.pending_action,
+                booking_draft=conversation.booking_draft,
                 bot_enabled=conversation.bot_enabled,
                 handoff_id=handoff.id if handoff is not None else None,
                 handoff_status=handoff.status if handoff is not None else None,
