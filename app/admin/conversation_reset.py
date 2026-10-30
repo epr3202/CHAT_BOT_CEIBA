@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -16,6 +16,7 @@ from app.channel.models import InboxJob, Outbox
 from app.conversation.models import Conversation
 from app.customer.models import Customer
 from app.handoff.models import Handoff
+from app.reservation.models import Reservation
 
 RESET_ACTION = "ADMIN_CONVERSATION_RESET"
 
@@ -33,6 +34,7 @@ class ResetSummary:
     dry_run: bool = True
     active_lead_links_cleared: int = 0
     audit_events_added: int = 0
+    live_reservations: list[dict[str, str]] = field(default_factory=list)
 
 
 async def reset_conversation_by_phone(
@@ -113,6 +115,21 @@ async def reset_conversation_by_phone(
             .order_by(Outbox.id)
         )
     )
+    live_reservations = [
+        {
+            "reservation_id": str(row.reservation_id),
+            "status": row.status,
+            "starts_at": row.starts_at.astimezone(UTC).isoformat(),
+        }
+        for row in await session.scalars(
+            select(Reservation)
+            .where(
+                Reservation.customer_id == customer.id,
+                Reservation.status.in_(("PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED")),
+            )
+            .order_by(Reservation.starts_at, Reservation.reservation_id)
+        )
+    ]
     summary = ResetSummary(
         phone_number=phone_number,
         customer_id=customer.id,
@@ -124,7 +141,8 @@ async def reset_conversation_by_phone(
         customer_name_cleared=customer.full_name is not None,
         dry_run=dry_run,
         active_lead_links_cleared=sum(c.active_lead_id is not None for c in conversations),
-        audit_events_added=0 if dry_run else 1,
+        audit_events_added=0 if dry_run else 1 + bool(live_reservations),
+        live_reservations=live_reservations,
     )
     if dry_run:
         return summary
@@ -138,6 +156,7 @@ async def reset_conversation_by_phone(
         conversation.pending_fields = []
         conversation.pending_confirmation = None
         conversation.visit_draft = None
+        conversation.booking_draft = None
         conversation.last_question_code = None
         conversation.last_intent = None
         conversation.failed_understanding_count = 0
@@ -167,6 +186,7 @@ async def reset_conversation_by_phone(
                 "conversation_state": "CLOSED",
                 "full_name": None,
                 "active_lead_id": None,
+                "live_reservations": live_reservations,
                 "inbox_jobs_completed": len(jobs),
                 "pending_outbox_suppressed": len(outbox_items),
                 "automation_epochs": {str(c.id): str(c.automation_epoch) for c in conversations},
@@ -176,6 +196,18 @@ async def reset_conversation_by_phone(
             request_id=request_id,
         )
     )
+    if live_reservations:
+        session.add(
+            AuditEvent(
+                actor=actor,
+                action="RESET_LEFT_LIVE_RESERVATIONS",
+                entity="customer",
+                old_value=None,
+                new_value={"customer_id": customer.id, "reservations": live_reservations},
+                reason=reason.strip(),
+                request_id=request_id,
+            )
+        )
     return summary
 
 
@@ -204,6 +236,7 @@ def reset_snapshot(
                 "pending_fields": c.pending_fields,
                 "pending_confirmation": c.pending_confirmation,
                 "visit_draft": c.visit_draft,
+                "booking_draft": c.booking_draft,
             }
             for c in conversations
         ],
