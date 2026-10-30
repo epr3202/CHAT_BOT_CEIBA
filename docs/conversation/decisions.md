@@ -3,6 +3,20 @@
 Mandato de Emerson del 28-oct y adenda de Leandro del 29-oct. Las decisiones
 generales anteriores permanecen en `docs/decisions.md`.
 
+Revisión de Emerson del 30-oct para PR #48: después de RESP-FALLBACK-004, como
+en el caso B, CLASSIFY_MESSAGE expresa espera de clasificación y no una captura
+de datos. Con autoservicio habilitado, booking_guard_eligible lo considera ocioso
+en BOT_ACTIVE y ANSWERING_INFORMATION; también lo admite en COLLECTING_EVENT_DATA
+junto con las capturas genéricas existentes. Esto afecta tanto al alias de
+hospedaje como al guard de reserva de precio fijo: una nueva solicitud explícita
+puede entrar al booking determinista sin otra llamada al LLM. Fuera de los pasos
+de booking que tienen precedencia, pending_confirmation y una solicitud personal
+de asesor devuelven None para seguir la clasificación normal. La solicitud de
+asesor puede llevar un propósito separado por «para», como «para reservar cena
+romántica»; solo se reconoce su prefijo para decidir esa delegación, sin ampliar
+el reconocedor general de atención humana. Los estados HUMAN_*, las capturas
+activas protegidas y el guard sin autoservicio mantienen sus exclusiones.
+
 * La disponibilidad directa corresponde exclusivamente a planes de precio fijo
   ROMANTIC_DINNER/PROPOSAL. Es una lectura del backend, sin reservar, cobrar ni
   crear eventos en Calendar. Bodas y eventos grandes siguen fuera del alcance:
