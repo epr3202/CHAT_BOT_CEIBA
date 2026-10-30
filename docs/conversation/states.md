@@ -3140,3 +3140,16 @@ ruta de precio fijo después de una clasificación general (frases mixtas con
 prioridad PROPOSAL). La clasificación sigue registrada en ai_execution; el log
 identifica la fuente de la decisión de negocio. Esta fuente se conserva solo
 durante ese turno y se restaura antes del siguiente.
+
+## PR #49 — duplicado de reserva confirmada
+
+No hay estados de conversación nuevos. Ante una RESERVED repetida del mismo
+cliente/plan e intervalo solapado, el bot conserva COLLECTING_EVENT_DATA y pasa
+a pending_action SELECT_BOOKING_DATETIME. Limpia fecha/hora/confirmación de fecha
+y checkout del booking_draft, manteniendo el plan. Emite
+RESP-BOOKING-DUPLICATE-001 APPROVED v1 con la entrada existente; no crea handoff
+ni solicitud nueva. El guard global PAYMENT_PENDING/PAYMENT_REVIEW permanece.
+
+Solo si la respuesta nueva no está aprobada o no puede renderizarse, se mantiene
+el respaldo WAITING_FOR_HUMAN / RESP-BOOKING-PENDING-001. El reset deja CLOSED
+sin booking_draft, pero no cambia el estado de las reservas del cliente.

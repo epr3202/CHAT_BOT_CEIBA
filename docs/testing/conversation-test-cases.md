@@ -4392,3 +4392,28 @@ sus aserciones; su manifiesto original y declaración quedan en el informe del P
 Suites: tests/booking_conversation/test_b1b3_contracts.py,
 tests/payment_settlement/test_failed_evidence_annex.py,
 tests/frontend/test_f2_failed_evidence.spec.mjs y tests/payment_prereview/.
+
+## PR #49 — duplicados confirmados, alertas y reset (2026-10-30)
+
+| Caso | Entrada | Resultado obligatorio |
+|---|---|---|
+| PR49-R1 | Cliente sintético …8100, RESERVED RITUAL_CORAZON 7-nov 15:00, reset y misma petición en conversación nueva | DUPLICATE-001, sin reserva ni handoff nuevos; conserva plan y pide otra fecha/hora; audit con reserva existente |
+| PR49-R2 | Franja parcialmente solapada con la reserva propia | Presenta la hora existente, no la hora pedida |
+| PR49-R3 | La reserva se confirma después de ofrecer la nueva propuesta | Guard final impide crear la segunda solicitud |
+| PR49-V1 | Mismo cliente, hora adyacente sin solape | CONFIRM → PAYMENT_PENDING normal |
+| PR49-V2 | Otro cliente, misma franja, plan no exclusivo | Flujo normal y coexistencia |
+| PR49-V3 | Mismo cliente, otro plan no exclusivo | Flujo normal |
+| PR49-V4 | PAYMENT_PENDING/PAYMENT_REVIEW previo | Conserva guard global y handoff pendiente |
+| PR49-R4 | Nueva respuesta ausente/no aprobada | Respaldo de handoff PENDING sin crear reserva |
+| PR49-R5 | Alerta PENDING/DEFERRED/reactivada cuya reserva cambió de estado | EXPIRED, STAFF_NOTIFICATION_SUPERSEDED una vez, cero HTTP |
+| PR49-R6 | Evidencia aceptada/rechazada, padre cancelado o saldo vencido ya pagado | Retira el aviso; conserva envíos de fuentes aún vigentes |
+| PR49-R7 | Cancelación después del claim y antes de la última admisión | Retira sin HTTP; callback tardío no reactiva |
+| PR49-R8 | Reset por script o panel con booking_draft y reservas vivas | Limpia draft, devuelve/audita lista de supervivientes; no cancela |
+| PR49-R9 | Previsualización del reset | Devuelve todas las no terminales sin mutar ni auditar |
+| PR49-R10 | Panel recibe live_reservations | Muestra aviso con lista y estados presentados |
+| PR49-V5 | Esquema actual sin estados nuevos | migrate-cycle conserva head 0037; no se necesita 0038 |
+
+Suites: tests/booking_conversation/test_duplicate_reserved_guard_g2.py,
+test_duplicate_reserved_guard_edges.py; tests/staff_notifications/test_superseded_g2.py,
+test_superseded_edges.py; tests/frontend/test_reset_live_reservations.spec.mjs.
+Las variantes sin evidencia productiva usan datos sintéticos, sin teléfonos reales.

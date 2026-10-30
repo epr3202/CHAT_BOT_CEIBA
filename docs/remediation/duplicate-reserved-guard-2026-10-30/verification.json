@@ -1,0 +1,92 @@
+{
+  "base": "d0b8736d368087f90cf65229b8feffac0e419bfc",
+  "result": "RED",
+  "failed": [
+    "test_R_literal_8100_reset_then_same_confirmed_booking",
+    "test_R_overlap_reports_existing_time_not_requested_time[14]",
+    "test_R_overlap_reports_existing_time_not_requested_time[15]",
+    "test_R_overlap_reports_existing_time_not_requested_time[17]",
+    "test_R_final_check_blocks_reservation_confirmed_after_proposal",
+    "test_R_unapproved_duplicate_template_uses_pending_handoff",
+    "test_R_exact_template_published_approved_v1",
+    "test_R_reset_clears_draft_and_reports_live_reservations[script]",
+    "test_R_reset_clears_draft_and_reports_live_reservations[panel]",
+    "test_R_obsolete_pending_alert_never_sends[CANCELLED-PENDING]",
+    "test_R_obsolete_pending_alert_never_sends[CANCELLED-DEFERRED]",
+    "test_R_obsolete_pending_alert_never_sends[CANCELLED-REOPENED]",
+    "test_R_obsolete_pending_alert_never_sends[EXPIRED-PENDING]",
+    "test_R_obsolete_pending_alert_never_sends[EXPIRED-DEFERRED]",
+    "test_R_obsolete_pending_alert_never_sends[EXPIRED-REOPENED]",
+    "test_R_obsolete_pending_alert_never_sends[PAYMENT_REVIEW-PENDING]",
+    "test_R_obsolete_pending_alert_never_sends[PAYMENT_REVIEW-DEFERRED]",
+    "test_R_obsolete_pending_alert_never_sends[PAYMENT_REVIEW-REOPENED]",
+    "test_R_obsolete_pending_alert_never_sends[RESERVED-PENDING]",
+    "test_R_obsolete_pending_alert_never_sends[RESERVED-DEFERRED]",
+    "test_R_obsolete_pending_alert_never_sends[RESERVED-REOPENED]",
+    "test_R_reviewed_evidence_alert_never_sends[ACCEPTED]",
+    "test_R_reviewed_evidence_alert_never_sends[REJECTED]",
+    "test_R_expired_alert_cannot_be_revived_by_late_callback"
+  ],
+  "passed": [
+    "test_V_nonduplicates_continue_normally[adjacent_hour]",
+    "test_V_nonduplicates_continue_normally[other_customer]",
+    "test_V_nonduplicates_continue_normally[other_plan]",
+    "test_V_pending_global_guard_remains[PAYMENT_PENDING]",
+    "test_V_pending_global_guard_remains[PAYMENT_REVIEW]",
+    "test_V_current_pending_alert_still_sends"
+  ],
+  "errors": 0,
+  "tests_sha256": {
+    "tests/booking_conversation/test_duplicate_reserved_guard_g2.py": "ed3e8456509d2a49f4c390b2f38cf51cf3457d988f372a703fc43ddbc523a5a8",
+    "tests/staff_notifications/test_superseded_g2.py": "1c68b5964376b12ed849556bedd0c309f6fe7a25bc65658fff61d8ffbcc94cc2",
+    "tests/frontend/test_reset_live_reservations.spec.mjs": "495ed42d5ce26aa260f9c47abdc6296c5692ed63b9e805d826a2fa526f5392ac"
+  },
+  "final_tests_sha256": {
+    "tests/booking_conversation/test_duplicate_reserved_guard_g2.py": "ed3e8456509d2a49f4c390b2f38cf51cf3457d988f372a703fc43ddbc523a5a8",
+    "tests/staff_notifications/test_superseded_g2.py": "afb13367f9caec448d5a8c322ede9af195b7cb9e1305f90d62a12f329cfddc51",
+    "tests/frontend/test_reset_live_reservations.spec.mjs": "495ed42d5ce26aa260f9c47abdc6296c5692ed63b9e805d826a2fa526f5392ac"
+  },
+  "post_red_test_changes": "Type annotations/imports only in staff G2; assertion AST verified identical. G3 edge tests added separately.",
+  "frontend_red": {
+    "failed": 1,
+    "reason": "reset live-reservations warning absent"
+  },
+  "first_implementation": {
+    "failed": 3,
+    "passed": 27,
+    "cause": "Duplicate SELECT autoflush exposed in-place JSON mutation; fixed with a fresh draft value; assertions retained."
+  },
+  "G2_final": {
+    "passed": 30,
+    "failed": 0,
+    "errors": 0,
+    "source": "G3 subset run"
+  },
+  "G3": {
+    "subsets_passed": 698,
+    "by_group": {
+      "tests.booking_conversation": 315,
+      "tests.booking_backend": 91,
+      "tests.staff_notifications": 63,
+      "tests.payment_settlement": 103,
+      "tests.availability_lodging": 111,
+      "tests.integration": 9,
+      "tests.unit": 6
+    },
+    "edges_passed": 12,
+    "frontend_passed": 1,
+    "migrate_cycle": "PASS, head 20261028_0037",
+    "migration_added": false,
+    "ruff_clean_candidate": "PASS",
+    "ruff_workspace_dot": "210 pre-existing errors in unrelated untracked remediation scripts; untouched"
+  },
+  "artifacts_sha256": {
+    "/tmp/ceiba-pr49-g2-red.xml": "f4b003aec4ae708e5be627bd3a3e48edd2a213b15b5df527a943bf50c136c53f",
+    "/tmp/ceiba-pr49-g3-subsets.xml": "4b55201b8543a2c1e048c138101fcebf8233ec70299e7f8254d32156cac344aa",
+    "/tmp/ceiba-pr49-g3-edges.xml": "dbfba5cdd4e46073bde9ce4800e3dc96920917053d5fd057487d6c5e2b5937e6",
+    "/tmp/ceiba-pr49-frontend-red.log": "a87988d7879a2ef0260003aa3e51280b2bffd5cb704bef79709d7e0edb7533b6",
+    "/tmp/ceiba-pr49-frontend-green.log": "7a4a05344a230d2fd62d6d1e34404501d8422249ec04785f5a01255e2b831c88",
+    "/tmp/ceiba-pr49-migrate-cycle.log": "2a54bebd783aac5fe5a4cfc3896bb789b642513adde1fc2238e083deafc42825",
+    "/tmp/ceiba-pr49-ruff-clean-candidate.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

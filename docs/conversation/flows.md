@@ -2943,3 +2943,23 @@ date/time usan los mismos presenters que booking_date/booking_time. El renderer
 estricto impide añadir checkout a las confirmaciones aprobadas actuales: se
 guarda en el borrador y en auditoría, sin cambiar esos textos. El panel permite
 editar las horas y muestra el borrador de conversación únicamente para lectura.
+
+## PR #49 — reserva confirmada repetida, 2026-10-30
+
+En continue_slots, con ventana válida, se consulta RESERVED del mismo cliente,
+mismo plan y starts_at < fin solicitado / ends_at > inicio solicitado antes de
+consultar disponibilidad. En CONFIRM_BOOKING se repite el control antes de crear
+la solicitud. Usa booking_ends_at también para pernoctación. No altera el guard
+global de pendientes ni la disponibilidad de otros clientes/planes/franjas.
+
+Duplicado → BOOKING_DUPLICATE_BLOCKED (reservation_id existente, plan_code,
+starts_at existente), RESP-BOOKING-DUPLICATE-001 con plan/fecha/hora existentes,
+SELECT_BOOKING_DATETIME y borrador sin date/time/date_confirmation/checkout.
+Conserva el plan y la conversación activa, sin handoff. La respuesta exacta fue
+aprobada por Leandro y la aprobación confirmada por Emerson el 30-oct.
+Versión ausente/no aprobada o error de render → handoff con
+RESP-BOOKING-PENDING-001. No se crea otra reserva en ninguna de esas ramas.
+
+El reset compartido por CLI y panel limpia booking_draft, devuelve las reservas
+no terminales y audita su supervivencia si hay alguna; no las cancela. Una nueva
+conversación sigue sujeta al mismo guard aunque se haya borrado active_lead_id.
