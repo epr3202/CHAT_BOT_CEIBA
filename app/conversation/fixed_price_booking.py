@@ -141,8 +141,6 @@ _AVAILABILITY_PATTERN = _phrase_pattern(
             "disponibilidad",
             "disponible",
             "disponibles",
-            "libre",
-            "libres",
             "cupo",
             "cupos",
             "hay espacio",
@@ -150,18 +148,29 @@ _AVAILABILITY_PATTERN = _phrase_pattern(
             "tienen agenda",
             "esta ocupado",
             "ocupada",
-            "tienen el",
             "tienen fecha",
             "hay fecha",
             "puedo reservar el",
-            "se puede el",
         }
     )
+)
+_FREE_AVAILABILITY_PATTERN = re.compile(r"\blibres?\b(?!\s+de\b)")
+_INFORMATION_QUESTION_PATTERN = re.compile(
+    r"^(?:(?:y|pero)\s+)?(?:donde|como|cuanto|cuando|cual|que|por que)\b"
 )
 
 
 def is_availability_inquiry(message_text: str) -> bool:
-    return bool(_AVAILABILITY_PATTERN.search(normalize_catalog_event_type_label(message_text)))
+    normalized = normalize_catalog_event_type_label(message_text)
+    words = set(re.findall(r"\w+", normalized))
+    return (
+        not words.intersection(_PLAN_INFORMATION_WORDS)
+        and not _INFORMATION_QUESTION_PATTERN.match(normalized)
+        and bool(
+            _AVAILABILITY_PATTERN.search(normalized)
+            or _FREE_AVAILABILITY_PATTERN.search(normalized)
+        )
+    )
 
 
 def booking_guard_eligible(
@@ -200,9 +209,7 @@ def is_catalog_plan_choice(message_text: str, *, has_date: bool = False) -> bool
     """Keep unknown plan replies in selection while preserving explicit information requests."""
     normalized = normalize_catalog_event_type_label(message_text)
     words = set(re.findall(r"\w+", normalized))
-    information_question = re.match(
-        r"^(?:(?:y|pero)\s+)?(?:donde|como|cuanto|cuando|cual|que|por que)\b", normalized
-    )
+    information_question = _INFORMATION_QUESTION_PATTERN.match(normalized)
     explicit_choice = re.match(r"^(?:me interesa|quiero|el de)\b", normalized)
     return (
         bool(words)

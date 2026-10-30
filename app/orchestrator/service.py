@@ -720,7 +720,9 @@ def deterministic_booking_or_catalog_classification(
     )
     if eligible and is_explicit_visit_request(message_text):
         return None
-    if is_explicit_human_request(message_text) or context.get("pending_confirmation"):
+    # A personal advisor request with a purpose must also reach the classifier.
+    human_request = re.split(r"\s+para\s+", message_text, maxsplit=1, flags=re.IGNORECASE)[0]
+    if is_explicit_human_request(human_request) or context.get("pending_confirmation"):
         return None
     lodging_eligible = (
         booking_guard_eligible(
@@ -4605,6 +4607,9 @@ async def create_handoff_and_pause(
             response_code,
             {},
             notice_case=handoff,
+            request_id=str(orchestration_input.request_id)
+            if orchestration_input.request_id
+            else None,
         )
     persist_classification_context(conversation, classification)
     set_pending_action(conversation, "WAIT_FOR_HUMAN")
