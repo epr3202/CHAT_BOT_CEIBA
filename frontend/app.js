@@ -2171,6 +2171,21 @@ function renderResetSummary(summary) {
     list.append(term, value);
   }
   container.append(title, list);
+  if (summary.live_reservations?.length) {
+    const warning = document.createElement("div");
+    warning.className = "feedback";
+    warning.setAttribute("role", "alert");
+    const message = document.createElement("p");
+    message.textContent = "El reinicio no cancela estas reservas. Seguirán vigentes y deben gestionarse por separado.";
+    const reservations = document.createElement("ul");
+    for (const reservation of summary.live_reservations) {
+      const item = document.createElement("li");
+      item.textContent = `${reservation.reservation_id} — ${label("reservationStatus", reservation.status)} — ${formatDate(reservation.starts_at)}`;
+      reservations.append(item);
+    }
+    warning.append(message, reservations);
+    container.append(warning);
+  }
   setText("resetRequestId", `ID de solicitud: ${summary.request_id}`);
 }
 

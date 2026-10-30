@@ -87,6 +87,9 @@ async def apply_provider_status(
     # roll back only this savepoint using the existing uq_provider_status handler.
     await session.flush()
     old = row.status
+    if isinstance(row, StaffOutbox) and old == "EXPIRED":
+        # Keep the callback's append-only receipt, without reviving a retired alert.
+        return True
     rank = {"SENT": 0, "DELIVERED": 1, "READ": 2}
     incoming = payload["status"].upper()
     if incoming in {"DELIVERED", "READ"} and rank.get(incoming, -1) > rank.get(old, -1):

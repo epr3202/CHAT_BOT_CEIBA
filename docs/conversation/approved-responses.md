@@ -2908,6 +2908,19 @@ Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2
 
 ---
 
+## RESP-BOOKING-DUPLICATE-001 — Reserva confirmada duplicada
+
+Estado: **APPROVED**, versión v1. Aprobación de Leandro confirmada expresamente
+por Emerson el 2026-10-30 para PR #49. Variables: `plan_name`, `date`, `time`,
+tomadas del plan y la entrada de la reserva existente en America/Bogota.
+El aviso no crea otra reserva ni pausa el bot; solicita otra fecha/hora.
+Si falta una versión aprobada/renderizable, se conserva el handoff de respaldo
+con RESP-BOOKING-PENDING-001.
+
+> Ya tienes confirmada {plan_name} para el {date} a las {time}. Si quieres reservar otra fecha u hora, cuéntame cuál y la reviso.
+
+---
+
 ## RESP-BOOKING-PAYMENT-001 — Payment de reserva
 
 Estado: **APPROVED**, versión v3, publicada mediante PR #43 el 2026-10-07

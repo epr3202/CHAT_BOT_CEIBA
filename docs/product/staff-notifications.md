@@ -188,3 +188,31 @@ aprobada. Los comprobantes vinculados mantienen RESP-BOOKING-REJECTED-001.
 El flujo de reserva pide el nombre antes de confirmar si Customer.full_name es
 NULL. Lo extrae de forma determinista, sin repetirlo al cliente, y lo usa en el
 título de Calendar y en el primer parámetro del aviso interno.
+
+## PR #49 — fuente vigente antes del envío, 2026-10-30
+
+El barrido retira PENDING/DEFERRED obsoletos antes de reclamar, y cada claim
+revalida su fuente de nuevo inmediatamente antes de la decisión de HTTP:
+
+| Evento | Fuente necesaria al enviar |
+|---|---|
+| PAYMENT_PENDING_CREATED | Reservation existente en PAYMENT_PENDING |
+| EVIDENCE_RECEIVED | PaymentEvidence existente PENDING_REVIEW, vinculada a reserva no terminal del mismo cliente |
+| BALANCE_OVERDUE | Reservation RESERVED con balance_overdue_at y saldo pendiente |
+| TEST | Fuente manual_test; no depende de una reserva/evidencia |
+
+Una fuente inexistente o de otro tipo también se descarta. El aviso pasa al
+estado terminal existente EXPIRED y se audita STAFF_NOTIFICATION_SUPERSEDED
+una vez, con estado anterior y fuente. Las reentregas de callbacks conservan
+su recibo append-only, pero no reactivan un staff_outbox EXPIRED. El barrido de
+TTL sigue auditando STAFF_NOTIFICATION_EXPIRED cuando la fuente aún es vigente.
+
+La validación usa lecturas MVCC y locks de la cola, sin adquirir locks de dominio
+después del lock del aviso; libera todas las transacciones antes de HTTP. Una
+cancelación posterior a esa última admisión y concurrente al HTTP sigue teniendo
+la ventana de carrera habitual de un proveedor externo. No se afirma atomicidad
+entre cancelación y entrega ni se mantiene una transacción durante el envío.
+
+No se añade migración: EXPIRED ya está permitido por el CHECK y el panel. El
+caso staff_outbox 10 / d79893e0… CANCELLED queda cubierto por la misma regla; este
+PR no modifica esa fila productiva ni reabre la ventana del asesor.

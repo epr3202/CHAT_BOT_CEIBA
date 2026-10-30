@@ -148,7 +148,7 @@ def test_tc_b3_005_params(name, prefix):
 async def test_tc_b3_006_007_channel_and_no_http_in_transaction(client, hours, template, expected):
     target = await recipient()
     await fresh(target, hours)
-    row = await outbox(target)
+    row = await outbox(target, with_source=True)
     process = require_symbol("app.notifications.worker", "process_staff_outbox_once")
     calls = []
 
@@ -228,7 +228,7 @@ async def test_tc_b3_008_error_codes(http_status, code, retryable):
 )
 async def test_tc_b3_008_backoff_and_exhaustion(client, permanent, attempts, expected):
     target = await recipient(last_inbound_at=NOW)
-    row = await outbox(target, attempts=attempts)
+    row = await outbox(target, with_source=True, attempts=attempts)
     process = require_symbol("app.notifications.worker", "process_staff_outbox_once")
     assert "retryable" in __import__("inspect").signature(WhatsAppSendError).parameters
     sender = AsyncMock()
@@ -268,7 +268,11 @@ async def test_tc_b3_009_131047_recovery(client, monkeypatch, template, expected
     get_settings.cache_clear()
     target = await recipient(last_inbound_at=NOW)
     row = await outbox(
-        target, status="SENT", message_kind="TEXT", provider_message_id="staff.failed"
+        target,
+        with_source=True,
+        status="SENT",
+        message_kind="TEXT",
+        provider_message_id="staff.failed",
     )
     await record_provider_status(
         {
@@ -323,9 +327,9 @@ async def test_tc_b3_010_inactive_is_customer(client):
 
 async def test_tc_b3_011_expiration_and_disabled_flag(client):
     target = await recipient(active=False)
-    row = await outbox(target)
+    row = await outbox(target, with_source=True)
     active = await recipient(phone_number="+573000000124")
-    await outbox(active, status="DEFERRED", created_at=NOW - timedelta(hours=49))
+    await outbox(active, with_source=True, status="DEFERRED", created_at=NOW - timedelta(hours=49))
     process = require_symbol("app.notifications.worker", "process_staff_outbox_once")
     sender = AsyncMock()
     await process(

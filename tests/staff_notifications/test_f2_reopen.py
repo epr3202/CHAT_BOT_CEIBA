@@ -12,7 +12,11 @@ async def test_f2_reopen_clears_window_error_and_uses_text(client, monkeypatch):
     get_settings.cache_clear()
     target = await recipient()
     queued = await outbox(
-        target, status="DEFERRED", last_error_code=131047, last_error="Ventana cerrada"
+        target,
+        with_source=True,
+        status="DEFERRED",
+        last_error_code=131047,
+        last_error="Ventana cerrada",
     )
     with patch("app.notifications.service.datetime") as clock:
         clock.now.return_value = NOW
