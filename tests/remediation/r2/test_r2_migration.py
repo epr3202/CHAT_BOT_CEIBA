@@ -123,6 +123,7 @@ async def test_0025_legacy_is_not_mass_replayed_and_new_head_parity(
         assert upgraded == {
             **current,
             "conversation": [{**row, "booking_draft": None} for row in current["conversation"]],
+            "customer": [{**row, "email": None} for row in current["customer"]],
         }
         before["outbox"] = [{**row, **NEW_OUTBOX_COLUMNS} for row in before["outbox"]]
         with respx.mock(assert_all_called=False):

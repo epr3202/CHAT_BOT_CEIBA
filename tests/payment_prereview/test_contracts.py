@@ -22,7 +22,6 @@ from app.audit.models import AuditEvent
 from app.channel.models import Message
 from app.config.settings import get_settings
 from app.conversation.models import Conversation
-from app.customer.models import Customer
 from app.main import app
 from app.payment.models import PaymentEvidence
 from app.reservation.models import Reservation
@@ -390,15 +389,15 @@ async def test_r8_migration_round_trip(monkeypatch):
         model = require_symbol("app.payment.models", "PaymentEvidenceReview")
         sm = async_sessionmaker(engine, expire_on_commit=False)
         async with sm.begin() as session:
-            customer = Customer(phone_number="+573000000123")
-            session.add(customer)
-            await session.flush()
-            conversation = Conversation(customer_id=customer.id, channel="WHATSAPP", state="NEW")
+            customer_id = await session.scalar(
+                text("INSERT INTO customer (phone_number) VALUES ('+573000000123') RETURNING id")
+            )
+            conversation = Conversation(customer_id=customer_id, channel="WHATSAPP", state="NEW")
             session.add(conversation)
             await session.flush()
             message = Message(
                 external_message_id="migration-receipt-test",
-                customer_id=customer.id,
+                customer_id=customer_id,
                 conversation_id=conversation.id,
                 channel="WHATSAPP",
                 direction="INBOUND",
@@ -408,7 +407,7 @@ async def test_r8_migration_round_trip(monkeypatch):
             session.add(message)
             await session.flush()
             evidence = PaymentEvidence(
-                customer_id=customer.id,
+                customer_id=customer_id,
                 conversation_id=conversation.id,
                 message_id=message.id,
                 media_id="synthetic",

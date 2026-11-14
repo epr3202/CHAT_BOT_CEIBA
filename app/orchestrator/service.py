@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 from uuid import UUID
@@ -204,6 +204,7 @@ class OrchestrationInput:
     confidence_entity_rescued: bool = False
     input_origin: Literal["TEXT", "AUDIO_TRANSCRIPT"] = "TEXT"
     transcription_id: int | None = None
+    prefilled_visit_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -371,6 +372,18 @@ async def _orchestrate_inbound_message(
             )
         )
         return
+
+    from app.orchestrator.prefilled_capture import apply_prefilled_form
+
+    form = await apply_prefilled_form(
+        session,
+        conversation,
+        customer,
+        orchestration_input.message_text,
+        orchestration_input.request_id,
+    )
+    if form.visit_reason:
+        orchestration_input = replace(orchestration_input, prefilled_visit_reason=form.visit_reason)
 
     if ai_error_reason is not None:
         await handle_ai_unavailable(
@@ -1490,6 +1503,8 @@ async def start_visit_scheduling(
     existing_draft = dict(conversation.visit_draft or {})
     resume = existing_draft.get("resume") or capture_resume_marker(conversation)
     conversation.visit_draft = {"mode": "SCHEDULE", "resume": resume}
+    if orchestration_input.prefilled_visit_reason:
+        conversation.visit_draft["visit_reason"] = orchestration_input.prefilled_visit_reason
     await move_to_appointment_date(session, conversation)
     set_pending_action(conversation, "SELECT_VISIT_DATE")
     if not restart:
@@ -1896,6 +1911,15 @@ async def handle_waiting_for_appointment_selection(
             return
         draft["attendee_count"] = attendee_count
         conversation.visit_draft = draft
+        if draft.get("visit_reason"):
+            await ask_name_or_confirm_visit(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
+            )
+            return
         set_pending_action(conversation, "COLLECT_VISIT_REASON")
         await enqueue_template(
             session,
@@ -2012,6 +2036,36 @@ async def handle_waiting_for_appointment_selection(
 
     draft["visit_reason"] = orchestration_input.message_text
     conversation.visit_draft = draft
+    await ask_name_or_confirm_visit(
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
+    )
+
+
+async def ask_name_or_confirm_visit(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    """Pide el nombre si el cliente aún no lo dio; si ya se conoce, prepara el resumen de la visita.
+
+    Args:
+        session: sesión de la transacción del turno.
+        settings: configuración vigente.
+        knowledge_sessionmaker: fábrica de sesiones para plantillas.
+        orchestration_input: datos del turno.
+        classification: clasificación del mensaje.
+
+    Returns:
+        None.
+    """
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
     if not (orchestration_input.customer.full_name or "").strip():
         draft["return_to"] = "VISIT_CONFIRMATION_SUMMARY"
         conversation.visit_draft = draft
