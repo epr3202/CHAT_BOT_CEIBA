@@ -17,7 +17,9 @@ from app.calendar.adapter import (
     EventNotFoundError,
 )
 from app.config.settings import Settings, get_settings
+from app.conversation.prefilled_form import customer_detail_lines
 from app.customer.models import Customer
+from app.event.models import Event, EventServiceRequest
 from app.payment.models import PaymentEvidence, PaymentEvidenceReview
 from app.plan.models import Plan
 from app.reservation.availability import BookingBlocker, evaluate_booking_availability
@@ -319,10 +321,25 @@ async def sync_reservation_calendar(
         summary = f"{plan.name} — {customer.full_name or customer.phone_number}"
         if plan.exclusive:
             summary += f" — {settings.booking_exclusivity_keyword}"
-        description = (
-            f"Plan: {plan.name}\nPrecio: {reservation.price_cop}\n"
-            f"Pagado: {reservation.amount_paid_cop}\nTeléfono: {customer.phone_number}\n"
-            f"reservation_id: {reservation_id}"
+        event = await session.get(Event, reservation.event_id)
+        services = list(
+            await session.scalars(
+                select(EventServiceRequest.service_name)
+                .where(EventServiceRequest.event_id == reservation.event_id)
+                .order_by(EventServiceRequest.created_at, EventServiceRequest.position)
+            )
+        )
+        description = "\n".join(
+            [
+                f"Plan: {plan.name}",
+                f"Precio: {reservation.price_cop}",
+                f"Pagado: {reservation.amount_paid_cop}",
+                f"Teléfono: {customer.phone_number}",
+                *customer_detail_lines(
+                    customer.email, services, event.special_requests if event else None
+                ),
+                f"reservation_id: {reservation_id}",
+            ]
         )
     event_id = reservation_id.hex
     try:

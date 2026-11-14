@@ -39,13 +39,34 @@ def present_start(starts_at: datetime) -> str:
 
 
 def build_params(
-    *, customer: Customer, plan: Plan, starts_at: datetime, deposit_cop: int
+    *,
+    customer: Customer,
+    plan: Plan,
+    starts_at: datetime,
+    deposit_cop: int,
+    extras: tuple[str, ...] = (),
 ) -> list[str]:
+    """Arma los cuatro parámetros del aviso al asesor.
+
+    Args:
+        customer: cliente de la reserva.
+        plan: plan reservado.
+        starts_at: inicio de la reserva.
+        deposit_cop: monto pendiente que se muestra en el aviso.
+        extras: adicionales sin precio cargado que el asesor debe cotizar.
+
+    Returns:
+        Identidad del cliente, plan (con los adicionales por cotizar si los hay), fecha y monto,
+        saneados para la plantilla.
+    """
     phone = present_phone(customer.phone_number)
     identity = f"{customer.full_name} ({phone})" if customer.full_name else phone
+    plan_text = plan.name
+    if extras:
+        plan_text = f"{plan.name} (adicionales por cotizar: {', '.join(extras)})"
     return [
         sanitize_param(value)
-        for value in (identity, plan.name, present_start(starts_at), _present_cop(deposit_cop))
+        for value in (identity, plan_text, present_start(starts_at), _present_cop(deposit_cop))
     ]
 
 

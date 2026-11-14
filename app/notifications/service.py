@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
 from app.config.settings import Settings
+from app.conversation.prefilled_form import extras_to_quote
 from app.customer.models import Customer
+from app.event.models import Event
 from app.notifications.models import NotificationRecipient, StaffOutbox
 from app.notifications.staff_texts import build_params
 from app.plan.models import Plan
@@ -116,10 +118,15 @@ async def enqueue_for_reservation(
         return
     customer = await session.get(Customer, reservation.customer_id)
     plan = await session.get(Plan, reservation.plan_id)
+    extras: tuple[str, ...] = ()
+    if event_kind == "PAYMENT_PENDING_CREATED":
+        event = await session.get(Event, reservation.event_id)
+        extras = extras_to_quote(event.special_requests if event is not None else None)
     params = build_params(
         customer=customer,
         plan=plan,
         starts_at=reservation.starts_at,
+        extras=extras,
         deposit_cop=max(
             0,
             (

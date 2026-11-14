@@ -132,6 +132,7 @@ async def reset_conversation_by_phone(
     old_value = reset_snapshot(customer, conversations, handoffs, outbox_items, jobs)
     now = datetime.now(UTC)
     customer.full_name = None
+    customer.email = None
     for conversation in conversations:
         conversation.state = "CLOSED"
         conversation.pending_action = None
@@ -166,6 +167,7 @@ async def reset_conversation_by_phone(
                 "conversation_ids": conversation_ids,
                 "conversation_state": "CLOSED",
                 "full_name": None,
+                "email": None,
                 "active_lead_id": None,
                 "inbox_jobs_completed": len(jobs),
                 "pending_outbox_suppressed": len(outbox_items),
@@ -191,6 +193,7 @@ def reset_snapshot(
             "id": customer.id,
             "phone_number": customer.phone_number,
             "full_name": customer.full_name,
+            "email": customer.email,
         },
         "conversations": [
             {
