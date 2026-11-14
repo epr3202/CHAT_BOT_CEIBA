@@ -86,7 +86,7 @@ test("F1/F5 crear y editar asesor acepta teléfono local y muestra advertencia s
   await page.getByRole("button", { name: "Avisos a asesores", exact: true }).click();
   const view = page.locator("#staffNotifications");
   const form = view.locator("#notificationRecipientForm");
-  await expect(form.getByLabel("Teléfono", { exact: true })).toHaveAttribute("placeholder", "+57 300 123 4567");
+  await expect(form.getByLabel("Teléfono", { exact: true })).toHaveAttribute("placeholder", "300 123 4567");
   await form.getByLabel("Nombre", { exact: true }).fill("Operador de prueba");
   await form.getByLabel("Teléfono", { exact: true }).fill("300 123 4567");
   await form.getByRole("button", { name: "Guardar", exact: true }).click();

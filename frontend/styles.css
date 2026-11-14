@@ -60,7 +60,9 @@ body.loggedOut .sidebar {
 }
 
 .bookingForm .actions,
-.bookingForm p {
+.bookingForm p,
+.bookingForm .phoneFields,
+.formGrid .phoneFields {
   grid-column: 1 / -1;
 }
 

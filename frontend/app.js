@@ -3,7 +3,7 @@ import {
   bookingBlockersText, backendErrorText,
 } from "./labels.mjs";
 import {
-  DEFAULT_REGION, countryOptions, isKnownRegion, splitInternational, toE164,
+  DEFAULT_REGION, countryOptions, digitsOnly, isKnownRegion, splitInternational, toE164,
 } from "./phone.mjs";
 
 const sessionTokenStorageKey = "ceiba.sessionToken";
@@ -688,6 +688,7 @@ function clearSession() {
   $("#reservationDetail").hidden = true;
   $("#reservationCancelForm").reset();
   $("#manualReservationForm").reset();
+  $("#manualReservationCountry").value = preferredPhoneRegion();
   $("#manualReservationPlan").replaceChildren();
   $("#refreshPlans").disabled = false;
   for (const id of ["plansFeedback", "reservationsFeedback", "reservationDetailFeedback", "manualReservationFeedback", "paymentEvidenceFeedback"]) {
@@ -769,7 +770,7 @@ async function sendWebhook({ duplicate = false } = {}) {
   const payload = duplicate && state.lastWebhook
     ? state.lastWebhook
     : {
-        phone: $("#phone").value.trim(),
+        phone: phoneFieldValue($("#simulatorCountry"), $("#phone")),
         text: $("#messageText").value.trim(),
         messageId: messageId(),
         metaSecret: state.metaSecret,
@@ -1389,7 +1390,7 @@ function manualReservationData() {
   if (!form.reportValidity()) return null;
   const name = $("#manualReservationName").value.trim();
   return {
-    phone: $("#manualReservationPhone").value.trim(), ...(name ? { full_name: name } : {}),
+    phone: phoneFieldValue($("#manualReservationCountry"), $("#manualReservationPhone")), ...(name ? { full_name: name } : {}),
     plan_id: $("#manualReservationPlan").value,
     starts_at: bogotaDateTimeToISO($("#manualReservationDate").value, $("#manualReservationTime").value),
   };
@@ -2206,11 +2207,41 @@ function applyTypedCountryCode(input, select) {
 }
 
 /**
+ * Prepara un selector de indicativo y su campo de teléfono: llena el selector, reconoce el indicativo escrito
+ * en el campo y guarda la región elegida como preferencia del navegador.
+ * @param {HTMLSelectElement} select selector de indicativo.
+ * @param {HTMLInputElement} input campo de teléfono asociado.
+ * @param {() => void} [onChange] acción a ejecutar tras cada cambio del indicativo o del número.
+ * @returns {void}
+ */
+function bindPhoneField(select, input, onChange = () => {}) {
+  populatePhoneRegionSelect(select);
+  input.addEventListener("input", () => {
+    applyTypedCountryCode(input, select);
+    onChange();
+  });
+  select.addEventListener("change", () => {
+    rememberPhoneRegion(select.value);
+    onChange();
+  });
+}
+
+/**
+ * Compone el teléfono de un par selector y campo en formato internacional.
+ * @param {HTMLSelectElement} select selector de indicativo.
+ * @param {HTMLInputElement} input campo con el número nacional.
+ * @returns {string} número E.164 con el indicativo seleccionado.
+ */
+function phoneFieldValue(select, input) {
+  return toE164(select.value, input.value);
+}
+
+/**
  * Compone el teléfono del formulario de reinicio en formato internacional.
  * @returns {string} número E.164 con el indicativo seleccionado.
  */
 function resetPhoneNumber() {
-  return toE164($("#resetCountry").value, $("#resetPhone").value);
+  return phoneFieldValue($("#resetCountry"), $("#resetPhone"));
 }
 
 /**
@@ -2389,15 +2420,10 @@ function bindUi() {
   });
   $("#resetPreviewForm").addEventListener("submit", previewReset);
   $("#resetExecuteForm").addEventListener("submit", executeReset);
-  populatePhoneRegionSelect($("#resetCountry"));
-  $("#resetPhone").addEventListener("input", () => {
-    applyTypedCountryCode($("#resetPhone"), $("#resetCountry"));
-    invalidateResetPreview();
-  });
-  $("#resetCountry").addEventListener("change", () => {
-    rememberPhoneRegion($("#resetCountry").value);
-    invalidateResetPreview();
-  });
+  bindPhoneField($("#resetCountry"), $("#resetPhone"), invalidateResetPreview);
+  bindPhoneField($("#recipientCountry"), $("#notificationRecipientForm").elements.phone_number);
+  bindPhoneField($("#manualReservationCountry"), $("#manualReservationPhone"));
+  bindPhoneField($("#simulatorCountry"), $("#phone"));
   $("#resetReason").addEventListener("input", updateResetAvailability);
   $("#confirmDialogAccept").addEventListener("click", () => $("#confirmDialog").close("accept"));
   $("#confirmDialogCancel").addEventListener("click", () => $("#confirmDialog").close("cancel"));
@@ -2449,14 +2475,19 @@ function resetRecipientForm() {
   form.reset();
   delete form.dataset.recipientId;
   form.elements.phone_number.disabled = false;
+  $("#recipientCountry").disabled = false;
+  $("#recipientCountry").value = preferredPhoneRegion();
 }
 
 function editNotificationRecipient(recipient) {
   const form = $("#notificationRecipientForm");
   form.dataset.recipientId = recipient.id;
   form.elements.display_name.value = recipient.display_name;
-  form.elements.phone_number.value = recipient.phone_number;
+  const split = splitInternational(recipient.phone_number);
+  if (split) $("#recipientCountry").value = split.region;
+  form.elements.phone_number.value = split ? split.national : recipient.phone_number;
   form.elements.phone_number.disabled = true;
+  $("#recipientCountry").disabled = true;
   for (const field of ["notify_on_evidence", "notify_on_payment_pending", "active"]) {
     form.elements[field].checked = recipient[field];
   }
@@ -2530,9 +2561,9 @@ async function saveNotificationRecipient(event) {
   if (state.agent?.role !== "ADMIN") return;
   const form = event.currentTarget;
   const displayName = form.elements.display_name.value.trim();
-  const phone = form.elements.phone_number.value.trim();
-  if (!displayName || displayName.length > 120 || !phone) {
-    managementFeedback("staffNotificationFeedback", "Escribe un nombre y un teléfono, por ejemplo +57 300 123 4567.", true);
+  const phone = phoneFieldValue($("#recipientCountry"), form.elements.phone_number);
+  if (!displayName || displayName.length > 120 || !digitsOnly(form.elements.phone_number.value)) {
+    managementFeedback("staffNotificationFeedback", "Escribe un nombre y un teléfono, por ejemplo 300 123 4567.", true);
     return;
   }
   const body = { display_name: displayName };
