@@ -16,40 +16,40 @@
         </div>
       </div>
       <nav class="nav" hidden>
-        <button class="navItem active" data-view="admin" title="Conversaciones">
+        <button class="navItem active" data-view="admin" data-description="Clientes, estado y asignación de cada conversación." title="Conversaciones">
           <span class="icon">▦</span><span>Conversaciones</span>
         </button>
-        <button class="navItem" data-view="handoffs" title="Atención humana">
+        <button class="navItem" data-view="handoffs" data-description="Casos que esperan o están en manos de un asesor." title="Atención humana">
           <span class="icon">↔</span><span>Atención humana</span>
         </button>
-        <button class="navItem" data-view="paymentEvidence" title="Comprobantes">
+        <button class="navItem" data-view="paymentEvidence" data-description="Comprobantes de pago enviados por clientes." title="Comprobantes">
           <span class="icon">$</span><span>Comprobantes</span>
         </button>
-        <button class="navItem" data-view="simulator" title="Simulador">
+        <button class="navItem" data-view="simulator" data-description="Prueba mensajes de WhatsApp contra el backend local." title="Simulador">
           <span class="icon">✉</span><span>Simulador</span>
         </button>
-        <button class="navItem" data-view="coverage" title="Cobertura">
+        <button class="navItem" data-view="coverage" data-description="Qué resuelve el bot hoy y qué pasa a un asesor." title="Cobertura">
           <span class="icon">✓</span><span>Cobertura</span>
         </button>
-        <button class="navItem" data-view="catalogsModule" title="Catálogos">
+        <button class="navItem" data-view="catalogsModule" data-description="PDF que el bot envía según el tipo de evento." title="Catálogos">
           <span class="icon">▤</span><span>Catálogos</span>
         </button>
-        <button class="navItem" data-view="agents" data-admin-only="true" title="Agentes" hidden>
+        <button class="navItem" data-view="agents" data-description="Personas con acceso al panel y su rol." data-admin-only="true" title="Agentes" hidden>
           <span class="icon">♙</span><span>Agentes</span>
         </button>
-        <button class="navItem" data-view="staffNotifications" data-admin-only="true" title="Avisos a asesores" hidden>
+        <button class="navItem" data-view="staffNotifications" data-description="Quién recibe avisos por WhatsApp y de qué." data-admin-only="true" title="Avisos a asesores" hidden>
           <span class="icon" aria-hidden="true">✉</span><span>Avisos a asesores</span>
         </button>
-        <button class="navItem" data-view="plans" data-admin-only="true" title="Planes" hidden>
+        <button class="navItem" data-view="plans" data-description="Precio, duración y condiciones de cada plan." data-admin-only="true" title="Planes" hidden>
           <span class="icon" aria-hidden="true">▤</span><span>Planes</span>
         </button>
-        <button class="navItem" data-view="reservations" data-admin-only="true" title="Reservas" hidden>
+        <button class="navItem" data-view="reservations" data-description="Reservas, anticipos y reprogramaciones." data-admin-only="true" title="Reservas" hidden>
           <span class="icon" aria-hidden="true">▦</span><span>Reservas</span>
         </button>
-        <button class="navItem" data-view="manualReservations" data-agent-only="true" title="Crear reserva" hidden>
+        <button class="navItem" data-view="manualReservations" data-description="Crea una reserva a nombre de un cliente." data-agent-only="true" title="Crear reserva" hidden>
           <span class="icon" aria-hidden="true">+</span><span>Crear reserva</span>
         </button>
-        <button class="navItem" data-view="tools" data-admin-only="true" title="Herramientas" hidden>
+        <button class="navItem" data-view="tools" data-description="Acciones de soporte sobre las conversaciones." data-admin-only="true" title="Herramientas" hidden>
           <span class="icon">⚙</span><span>Herramientas</span>
         </button>
       </nav>
@@ -59,17 +59,18 @@
       <div id="authError" class="panel formError" role="alert" hidden></div>
       <header class="topbar" hidden>
         <div>
-          <h1>Seguimiento administrativo</h1>
-          <p>Clientes, estado, asignaciones y casos humanos con lo disponible hoy.</p>
+          <h1 id="viewTitle">Conversaciones</h1>
+          <p id="viewDescription"></p>
         </div>
         <div class="statusStrip">
+          <span id="agentState" class="pill neutral">Sin asesor</span>
           <span id="agentRoleState" class="pill neutral">Sesión requerida</span>
-          <button id="logout">Cerrar sesión</button>
+          <span id="apiState" class="pill neutral">API sin verificar</span>
+          <button id="themeToggle" class="iconButton" type="button" title="Modo oscuro" aria-label="Modo oscuro" aria-pressed="false"><span aria-hidden="true">☾</span></button>
+          <button id="refreshAll" class="iconButton" title="Actualizar" aria-label="Actualizar todo">↻</button>
           <button id="checkHealth">Verificar API</button>
           <button id="refreshCases">Actualizar casos</button>
-          <span id="agentState" class="pill neutral">Sin asesor</span>
-          <span id="apiState" class="pill neutral">API sin verificar</span>
-          <button id="refreshAll" class="iconButton" title="Actualizar">↻</button>
+          <button id="logout">Cerrar sesión</button>
         </div>
       </header>
 
@@ -110,7 +111,7 @@
 
         <section class="panel">
           <div class="panelHeader">
-            <h2>Conversaciones</h2>
+            <h2>Seguimiento de clientes</h2>
             <div class="segmented caseFilters">
               <button class="caseFilter active" data-case-status="ALL">Todos</button>
               <button class="caseFilter" data-case-status="PENDING" data-label-kind="handoffStatus" data-label-value="PENDING"></button>
@@ -151,17 +152,17 @@
       <section class="view" id="agents" hidden>
         <section class="panel">
           <div class="panelHeader">
-            <h2>Agentes</h2>
+            <h2>Agentes registrados</h2>
             <button id="refreshAgents" type="button">Actualizar</button>
           </div>
           <p id="agentsFeedback" role="status" aria-live="polite"></p>
-          <label>Mostrar
+          <div class="field agentsToolbar"><label for="agentStatusFilter">Mostrar</label>
             <select id="agentStatusFilter">
               <option value="active" data-label-kind="active" data-label-value="true"></option>
               <option value="inactive" data-label-kind="active" data-label-value="false"></option>
               <option value="all">Todos</option>
             </select>
-          </label>
+          </div>
           <div class="tableScroll">
             <table class="agentsTable">
               <thead><tr><th>Nombre</th><th>Rol</th><th>Documento</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr></thead>
@@ -170,7 +171,7 @@
           </div>
         </section>
         <form id="agentCreateForm" class="panel managementForm">
-          <h3>Crear agente</h3>
+          <h2>Crear agente</h2>
           <div class="formGrid">
             <label>Nombre<input id="agentCreateName" required minlength="2" maxlength="128" autocomplete="off" /></label>
             <label>Rol<select id="agentCreateRole"></select></label>
@@ -178,7 +179,7 @@
           <div class="actions"><button type="submit" class="primary">Crear agente</button></div>
         </form>
         <form id="agentEditForm" class="panel managementForm" hidden>
-          <h3 id="agentEditTitle">Editar agente</h3>
+          <h2 id="agentEditTitle">Editar agente</h2>
           <div class="formGrid">
             <label>Nombre<input id="agentEditName" required minlength="2" maxlength="128" /></label>
             <label>Rol<select id="agentEditRole"></select></label>
@@ -189,7 +190,7 @@
           </div>
         </form>
         <form id="agentCredentialsForm" class="panel managementForm" hidden>
-          <h3 id="agentCredentialsTitle">Credenciales del agente</h3>
+          <h2 id="agentCredentialsTitle">Credenciales del agente</h2>
           <p>Asignar credenciales cierra las sesiones del agente.</p>
           <div class="formGrid">
             <label>Documento<input id="agentDocument" required minlength="4" maxlength="64" autocomplete="off" /></label>
@@ -204,9 +205,14 @@
 
       <section class="view" id="staffNotifications" hidden>
         <section class="panel">
-          <div class="panelHead"><h2>Avisos a asesores</h2><button id="refreshStaffNotifications">Actualizar</button></div>
-          <p>Un número de asesor activo no puede usarse como número de prueba de cliente. Sus mensajes abren la ventana de avisos y el bot no responde.</p>
-          <form id="notificationRecipientForm" class="formGrid">
+          <div class="panelHeader">
+            <div>
+              <h2>Destinatarios</h2>
+              <span>Un número de asesor activo no puede usarse como número de prueba de cliente. Sus mensajes abren la ventana de avisos y el bot no responde.</span>
+            </div>
+            <button id="refreshStaffNotifications">Actualizar</button>
+          </div>
+          <form id="notificationRecipientForm" class="managementForm recipientForm">
             <label>Nombre<input name="display_name" maxlength="120" required /></label>
             <div class="phoneFields">
               <div class="phoneCountry">
@@ -215,14 +221,25 @@
               </div>
               <label>Teléfono<input name="phone_number" type="tel" maxlength="32" placeholder="300 123 4567" required /></label>
             </div>
-            <label><input name="notify_on_evidence" type="checkbox" checked />Comprobantes</label>
-            <label><input name="notify_on_payment_pending" type="checkbox" />Solicitudes</label>
-            <label><input name="active" type="checkbox" checked />Activo</label>
+            <fieldset class="checkGroup">
+              <legend>Recibe aviso por WhatsApp cuando</legend>
+              <label class="checkLabel"><input name="notify_on_evidence" type="checkbox" checked aria-describedby="evidenceHint" />Comprobantes</label>
+              <label class="checkLabel"><input name="notify_on_payment_pending" type="checkbox" aria-describedby="pendingHint" />Solicitudes</label>
+              <p id="evidenceHint" class="hint">Comprobantes: un cliente envía un comprobante de pago.</p>
+              <p id="pendingHint" class="hint">Solicitudes: se crea una solicitud de reserva pendiente de pago.</p>
+            </fieldset>
+            <fieldset class="checkGroup">
+              <legend>Estado</legend>
+              <label class="checkLabel"><input name="active" type="checkbox" checked aria-describedby="activeHint" />Activo</label>
+              <p id="activeHint" class="hint">Si está desactivado, el destinatario se conserva pero no recibe avisos.</p>
+            </fieldset>
             <div class="actions"><button type="submit" class="primary">Guardar</button><button type="button" id="cancelRecipientEdit">Cancelar edición</button></div>
           </form>
           <p id="staffNotificationFeedback" class="feedback" aria-live="polite"></p>
           <div id="notificationRecipientList" class="tableWrap"></div>
-          <h3>Últimos avisos</h3>
+        </section>
+        <section class="panel">
+          <div class="panelHeader"><h2>Últimos avisos</h2></div>
           <div id="staffNotificationList" class="tableWrap"></div>
         </section>
       </section>
@@ -254,8 +271,10 @@
       <section class="view" id="simulator">
         <section class="panel">
           <div class="panelHeader">
-            <h2>Simulador de WhatsApp</h2>
-            <span>Webhook firmado contra el backend local</span>
+            <div>
+              <h2>Simulador de WhatsApp</h2>
+              <span>Webhook firmado contra el backend local</span>
+            </div>
           </div>
           <div class="simulatorLayout">
             <form id="messageForm" class="composer">
@@ -303,7 +322,7 @@
       <section class="view" id="plans" hidden>
         <section class="panel">
           <div class="panelHeader">
-            <h2>Planes</h2>
+            <h2>Planes disponibles</h2>
             <button id="refreshPlans" type="button">Actualizar</button>
           </div>
           <p id="plansFeedback" role="status" aria-live="polite" hidden></p>
@@ -334,7 +353,7 @@
               <label>Teléfono<input id="manualReservationPhone" type="tel" required pattern="[\d\s\-]{6,20}" placeholder="300 123 4567" /></label>
             </div>
             <label>Nombre<input id="manualReservationName" maxlength="128" autocomplete="name" /></label>
-            <div><label for="manualReservationPlan">Plan</label><select id="manualReservationPlan" required><option value="">Selecciona un plan</option></select></div>
+            <div class="field"><label for="manualReservationPlan">Plan</label><select id="manualReservationPlan" required><option value="">Selecciona un plan</option></select></div>
             <label>Fecha<input id="manualReservationDate" type="date" required /></label>
             <label>Hora<input id="manualReservationTime" type="time" required step="60" /></label>
             <p>Fecha y hora de Bogotá.</p>
@@ -346,14 +365,12 @@
         </section>
         <section class="panel">
           <div class="panelHeader">
-            <h2>Reservas</h2>
+            <h2>Reservas registradas</h2>
             <button id="refreshReservations" type="button">Actualizar</button>
           </div>
-          <div class="managementForm">
-            <label for="reservationStatusFilter">Estado</label>
-            <select id="reservationStatusFilter"><option value="">Todos</option></select>
-            <label for="reservationBalanceFilter">Saldo</label>
-            <select id="reservationBalanceFilter"><option value="">Todos</option><option value="pending">Saldo pendiente</option><option value="overdue">Saldo vencido</option></select>
+          <div class="filterBar">
+            <div class="field"><label for="reservationStatusFilter">Estado</label><select id="reservationStatusFilter"><option value="">Todos</option></select></div>
+            <div class="field"><label for="reservationBalanceFilter">Saldo</label><select id="reservationBalanceFilter"><option value="">Todos</option><option value="pending">Saldo pendiente</option><option value="overdue">Saldo vencido</option></select></div>
             <label>Desde<input id="reservationFromFilter" type="date" /></label>
             <label>Hasta<input id="reservationToFilter" type="date" /></label>
           </div>
@@ -428,8 +445,10 @@
       <section class="view" id="coverage">
         <section class="panel">
           <div class="panelHeader">
-            <h2>Cobertura actual</h2>
-            <span>Basado en las rutas implementadas hoy</span>
+            <div>
+              <h2>Cobertura actual</h2>
+              <span>Basado en las rutas implementadas hoy</span>
+            </div>
           </div>
           <div class="coverageGrid">
             <article><strong>Webhook WhatsApp</strong><span>Recepción firmada, deduplicación y fase background.</span></article>

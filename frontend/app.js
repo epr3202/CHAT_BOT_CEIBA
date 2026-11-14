@@ -14,6 +14,7 @@ const currentStatusStorageKey = "ceiba.currentStatus";
 const caseStatusStorageKey = "ceiba.caseStatus";
 const conversationStateStorageKey = "ceiba.conversationState";
 const phoneRegionStorageKey = "ceiba.phoneRegion";
+const themeStorageKey = "ceiba.theme";
 const assignedToMeStorageKey = "ceiba.assignedToMe";
 const directTakeEligibleStates = new Set([
   "BOT_ACTIVE",
@@ -175,9 +176,17 @@ function renderAuthState() {
     view.hidden = !visible;
     view.classList.toggle("active", visible);
   });
-  $$(".navItem").forEach((button) =>
-    button.classList.toggle("active", authenticated && button.dataset.view === state.currentView)
-  );
+  $$(".navItem").forEach((button) => {
+    const current = authenticated && button.dataset.view === state.currentView;
+    button.classList.toggle("active", current);
+    if (current) {
+      button.setAttribute("aria-current", "page");
+      setText("viewTitle", button.title);
+      setText("viewDescription", button.dataset.description);
+    } else {
+      button.removeAttribute("aria-current");
+    }
+  });
 }
 
 function selectView(view) {
@@ -2144,6 +2153,60 @@ async function toggleAgentActive(agent, button) {
 }
 
 /**
+ * Lee el tema elegido en este navegador.
+ * @returns {"light" | "dark" | null} tema guardado, o null si se sigue la preferencia del sistema.
+ */
+function storedTheme() {
+  try {
+    const theme = localStorage.getItem(themeStorageKey);
+    return theme === "light" || theme === "dark" ? theme : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Indica si el panel se muestra en modo oscuro, por tema aplicado o por preferencia del sistema.
+ * @returns {boolean} true si el tema efectivo es oscuro.
+ */
+function isDarkTheme() {
+  const applied = document.documentElement.dataset.theme;
+  return applied ? applied === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/**
+ * Sincroniza el botón de tema con el tema efectivo.
+ * @returns {void}
+ */
+function syncThemeToggle() {
+  $("#themeToggle")?.setAttribute("aria-pressed", String(isDarkTheme()));
+}
+
+/**
+ * Aplica al documento el tema guardado en este navegador; sin elección guardada sigue al sistema.
+ * @returns {void}
+ */
+function applyTheme() {
+  const theme = storedTheme();
+  if (theme) document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+  syncThemeToggle();
+}
+
+/**
+ * Alterna entre modo claro y oscuro y guarda la elección en este navegador cuando el almacenamiento lo permite.
+ * @returns {void}
+ */
+function toggleTheme() {
+  const next = isDarkTheme() ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem(themeStorageKey, next);
+  } catch {}
+  syncThemeToggle();
+}
+
+/**
  * Devuelve la región de indicativo preferida por este navegador.
  * @returns {string} región guardada si es válida; si no, la región por defecto.
  */
@@ -2427,6 +2490,8 @@ function bindUi() {
   $("#resetReason").addEventListener("input", updateResetAvailability);
   $("#confirmDialogAccept").addEventListener("click", () => $("#confirmDialog").close("accept"));
   $("#confirmDialogCancel").addEventListener("click", () => $("#confirmDialog").close("cancel"));
+  $("#themeToggle").addEventListener("click", toggleTheme);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncThemeToggle);
   $("#logout").addEventListener("click", logout);
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);
@@ -2463,6 +2528,7 @@ function bindUi() {
   });
 }
 
+applyTheme();
 localizeControls();
 applyConfigToForm();
 bindUi();
@@ -2496,6 +2562,7 @@ function editNotificationRecipient(recipient) {
 
 function staffTable(headings) {
   const table = document.createElement("table");
+  table.className = "agentsTable";
   const head = document.createElement("thead");
   const tr = document.createElement("tr");
   for (const title of headings) {
