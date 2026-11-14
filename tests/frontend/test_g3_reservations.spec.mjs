@@ -6,6 +6,7 @@ test("G3 cancelar avisa si el evento de calendario no se pudo eliminar", async (
   const view = await detail(page);
   await view.getByLabel("Motivo", { exact: true }).fill("Cancelación solicitada");
   await view.getByRole("button", { name: "Cancelar reserva", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
   await expect(view.locator("#reservationDetailFeedback")).toContainText("Reserva cancelada; falta retirar el evento del calendario");
   await expect(view).toContainText("Cancelada");
 });

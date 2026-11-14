@@ -35,6 +35,7 @@ for (const [code, note] of [["ACCOUNT", "Cuenta destino no coincide"], ["REFEREN
     await expect(card.getByLabel("Nota interna")).toHaveValue(note);
     expect(data.calls.filter(c => c.key.endsWith("/reject"))).toHaveLength(0);
     await card.getByRole("button", { name: "Rechazar", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
     await expect.poll(() => data.calls.filter(c => c.key.endsWith("/reject")).length).toBe(1);
     expect(data.calls.find(c => c.key.endsWith("/reject")).body).toEqual({ note });
   });

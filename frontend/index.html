@@ -224,18 +224,21 @@
       <section class="view" id="tools" hidden>
         <section class="panel">
           <div class="panelHeader"><h2>Reiniciar conversación</h2></div>
-          <p>Previsualiza los cambios para un teléfono antes de confirmar el reinicio. El historial se conserva.</p>
+          <p>Verifica los cambios para un teléfono antes de confirmar el reinicio. El historial se conserva.</p>
           <form id="resetPreviewForm" class="managementForm">
-            <label>Teléfono<input id="resetPhone" type="tel" placeholder="+573001112233" required autocomplete="off" /></label>
-            <div class="actions"><button type="submit" id="previewReset">Previsualizar</button></div>
+            <div class="phoneFields">
+              <div class="phoneCountry">
+                <label for="resetCountry">Indicativo</label>
+                <select id="resetCountry"><button><selectedcontent></selectedcontent></button></select>
+              </div>
+              <label>Teléfono<input id="resetPhone" type="tel" placeholder="300 123 4567" required autocomplete="off" /></label>
+            </div>
+            <div class="actions"><button type="submit" id="previewReset">Verificar</button></div>
           </form>
           <p id="resetFeedback" role="status" aria-live="polite"></p>
           <div id="resetSummary" aria-live="polite"></div>
           <form id="resetExecuteForm" class="managementForm">
             <label>Motivo del reinicio<textarea id="resetReason" required maxlength="300" rows="2"></textarea></label>
-            <label>Escribe de nuevo el teléfono de la previsualización para confirmar
-              <input id="resetConfirmPhone" type="tel" required autocomplete="off" />
-            </label>
             <div class="actions"><button type="submit" id="executeReset" class="danger" disabled>Reiniciar</button></div>
           </form>
           <p id="resetRequestId"></p>
@@ -486,6 +489,15 @@
         <div class="caseActions"></div>
       </article>
     </template>
+
+    <dialog id="confirmDialog" class="confirmDialog" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogDetail">
+      <h2 id="confirmDialogTitle">¿Está seguro que desea realizar esta operación?</h2>
+      <p id="confirmDialogDetail"></p>
+      <div class="actions">
+        <button type="button" id="confirmDialogAccept" class="danger"></button>
+        <button type="button" id="confirmDialogCancel" autofocus>No, cancelar operación</button>
+      </div>
+    </dialog>
 
     <div id="summaryModal" class="modalBackdrop" hidden>
       <section class="summaryModal" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
