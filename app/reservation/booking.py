@@ -60,6 +60,7 @@ async def create_pending_reservation(
         customer_id=customer.id,
         starts_at=starts_at,
         ends_at=booking_ends_at(plan, starts_at),
+        commercial_details=commercial_snapshot(event, plan, plan.price_cop),
         price_cop=plan.price_cop,
         amount_paid_cop=0,
         status="PAYMENT_PENDING",
@@ -130,6 +131,21 @@ async def create_pending_reservation(
         request_id=request_id,
     )
     return reservation
+
+
+def commercial_snapshot(
+    event: Event, plan: Plan | None = None, price_cop: int | None = None
+) -> str | None:
+    lines = []
+    if plan is not None and price_cop is not None:
+        price = f"{price_cop:,}".replace(",", ".")
+        lines.extend((f"Plan: {plan.name}", f"Precio base de la solicitud: ${price} COP"))
+    if event.guest_count:
+        lines.append(f"Personas: {event.guest_count}")
+    if event.special_requests:
+        lines.extend(("Datos informados por el cliente:", event.special_requests))
+        lines.append("Adicionales y valor final pendientes de validación comercial.")
+    return "\n".join(lines) or None
 
 
 def deposit_amount(plan_or_price: Plan | int) -> int:

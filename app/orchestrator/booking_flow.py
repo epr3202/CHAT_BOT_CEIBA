@@ -38,6 +38,7 @@ from app.reservation.availability import (
     BookingAvailabilityFailure,
     booking_ends_at,
     fetch_booking_context,
+    minimum_notice_days,
     validate_booking_window,
 )
 from app.reservation.booking import create_pending_reservation, deposit_amount
@@ -311,7 +312,7 @@ def consume_date_time(
 ) -> bool:
     date_message = re.sub(r"\b(?:de|en|por)\s+la\s+ma[ñn]ana\b", "", message, flags=re.I)
     decision = resolve_visit_date_text(
-        date_message, today=today, require_absolute_confirmation=True
+        date_message, today=today, require_absolute_confirmation=True, include_explicit_past=True
     )
     recognized = decision.resolved_date is not None
     if recognized:
@@ -338,6 +339,86 @@ async def has_pending_request(session: AsyncSession, customer_id: int) -> bool:
         .limit(1)
     )
     return existing is not None
+
+
+async def block_confirmed_duplicate(
+    session: AsyncSession,
+    settings: Settings,
+    sm: Any,
+    turn: OrchestrationInput,
+    plan: Plan,
+    starts_at: datetime,
+    ends_at: datetime,
+) -> bool:
+    """Reuse the confirmed booking's identity without changing availability rules."""
+    from app.orchestrator import service as core
+
+    existing = await session.scalar(
+        select(Reservation)
+        .where(
+            Reservation.customer_id == turn.customer.id,
+            Reservation.plan_id == plan.plan_id,
+            Reservation.status == "RESERVED",
+            Reservation.starts_at < ends_at,
+            Reservation.ends_at > starts_at,
+        )
+        .order_by(Reservation.starts_at, Reservation.reservation_id)
+        .limit(1)
+    )
+    if existing is None or await has_pending_request(session, turn.customer.id):
+        # The existing global pending/review guards retain their precedence.
+        return False
+    core.audit_domain_change(
+        session,
+        "BOOKING_DUPLICATE_BLOCKED",
+        "reservation",
+        None,
+        {
+            "reservation_id": str(existing.reservation_id),
+            "plan_code": plan.code,
+            "starts_at": existing.starts_at.astimezone(UTC).isoformat(),
+        },
+        "El cliente ya tiene una reserva confirmada del mismo plan en esa franja",
+        turn.request_id,
+    )
+    response_code = "RESP-BOOKING-DUPLICATE-001"
+    template = await get_latest_response(sm, response_code)
+    if template is not None and template.status == "APPROVED":
+        draft = dict(turn.conversation.booking_draft or {})
+        for field in ("date", "time", "date_confirmation", "checkout"):
+            draft.pop(field, None)
+        turn.conversation.booking_draft = draft
+        turn.conversation.pending_action = "SELECT_BOOKING_DATETIME"
+        turn.conversation.failed_understanding_count = 0
+        local_start = existing.starts_at.astimezone(BOGOTA)
+        try:
+            await core.enqueue_template(
+                session,
+                sm,
+                turn.conversation,
+                turn.customer,
+                turn.inbound_message,
+                response_code,
+                {
+                    "plan_name": plan,
+                    "date": local_start.date(),
+                    "time": local_start.strftime("%H:%M"),
+                },
+                strict=True,
+                request_id=str(turn.request_id) if turn.request_id is not None else None,
+            )
+            return True
+        except KnowledgeRenderError:
+            # An unavailable/unapproved sensitive response uses the existing notice.
+            pass
+    await handoff(
+        session,
+        settings,
+        sm,
+        turn,
+        "Ya existe una reserva confirmada; respuesta de duplicado no disponible",
+    )
+    return True
 
 
 async def handle_booking_start(
@@ -392,7 +473,10 @@ async def handle_booking_start(
             reason="Reserva autoservicio de precio fijo",
         )
     consume_date_time(
-        draft, turn.message_text, core.current_bogota_datetime().date(), settings=settings
+        draft,
+        turn.prefilled_schedule or turn.message_text,
+        core.current_bogota_datetime().date(),
+        settings=settings,
     )
     turn.conversation.booking_draft = draft
     turn.conversation.failed_understanding_count = 0
@@ -479,6 +563,39 @@ async def handle_booking_start(
     await ask_plan(session, settings, sm, turn)
 
 
+async def reject_booking_date(
+    session: AsyncSession, settings: Settings, sm: Any, turn: OrchestrationInput, plan: Plan
+) -> bool:
+    from app.orchestrator import service as core
+
+    draft = dict(turn.conversation.booking_draft or {})
+    if not draft.get("date"):
+        return False
+    requested = date.fromisoformat(draft["date"])
+    today = core.current_bogota_datetime().date()
+    days = minimum_notice_days(plan, settings)
+    remaining = (requested - today).days
+    if remaining >= days:
+        return False
+    if remaining < 0:
+        code, values = "RESP-DATE-PAST-001", {"date": requested}
+    else:
+        code = "RESP-BOOKING-NOTICE-001"
+        values = {
+            "plan_name": plan,
+            "min_days": days,
+            "earliest_date": date.fromordinal(min(date.max.toordinal(), today.toordinal() + days)),
+        }
+    for field in ("date", "time", "date_confirmation", "checkout"):
+        draft.pop(field, None)
+    turn.conversation.booking_draft = draft
+    turn.conversation.pending_action = "SELECT_BOOKING_DATETIME"
+    await core.enqueue_template(
+        session, sm, turn.conversation, turn.customer, turn.inbound_message, code, values
+    )
+    return True
+
+
 async def continue_slots(
     session: AsyncSession,
     settings: Settings,
@@ -494,6 +611,8 @@ async def continue_slots(
     draft = dict(conversation.booking_draft or {})
     draft["plan_code"] = plan.code
     conversation.booking_draft = draft
+    if await reject_booking_date(session, settings, sm, turn, plan):
+        return
     if draft.get("date_confirmation"):
         conversation.pending_action = "SELECT_BOOKING_DATETIME"
         try:
@@ -554,6 +673,8 @@ async def continue_slots(
     else:
         draft.pop("checkout", None)
     conversation.booking_draft = draft
+    if await block_confirmed_duplicate(session, settings, sm, turn, plan, starts_at, ends_at):
+        return
     availability = await read_availability(sm, settings, turn, plan, starts_at)
     if isinstance(availability, BookingAvailabilityFailure):
         await availability_failed(session, settings, sm, turn, plan, starts_at, availability)
@@ -576,7 +697,9 @@ async def continue_slots(
     if not availability.available:
         await unavailable(session, settings, sm, turn)
         return
-    draft["price_cop"], draft["duration_minutes"] = plan.price_cop, plan.duration_minutes
+    # The duplicate SELECT can autoflush the earlier draft. Replace the JSON
+    # value so SQLAlchemy persists these fields after that flush as well.
+    draft = {**draft, "price_cop": plan.price_cop, "duration_minutes": plan.duration_minutes}
     conversation.booking_draft = draft
     if draft.get("inquiry_only"):
         conversation.pending_action = "CONFIRM_AVAILABILITY_BOOKING"
@@ -636,6 +759,27 @@ async def continue_slots(
             request_id=str(turn.request_id) if turn.request_id is not None else None,
         )
         return
+    from app.conversation.prefilled_form import extras_to_quote
+
+    event = await core.active_event(session, await core.active_lead(session, conversation))
+    extras = extras_to_quote(event.special_requests if event else None)
+    if extras:
+        preview = ", ".join(extras)
+        concise = len(preview) <= 320
+        try:
+            await core.enqueue_template(
+                session,
+                sm,
+                conversation,
+                turn.customer,
+                turn.inbound_message,
+                "RESP-SERVICES-003" if concise else "RESP-SERVICES-002",
+                {"service_name": preview} if concise else {},
+                strict=True,
+            )
+        except KnowledgeRenderError:
+            await handoff(session, settings, sm, turn, "Adicionales pendientes de cotización")
+            return
     conversation.pending_action = "CONFIRM_BOOKING"
     await send(
         session,
@@ -729,6 +873,11 @@ async def handle_booking_step(
         return
     draft = dict(conversation.booking_draft or {})
     action = conversation.pending_action
+    if turn.extra_followup and draft.get("plan_id"):
+        plan = await session.get(Plan, UUID(draft["plan_id"]))
+        if plan is not None and plan.active:
+            await continue_slots(session, settings, sm, turn, plan)
+            return
     if (
         action == "CONFIRM_AVAILABILITY_BOOKING"
         and normalize_confirmation_text(turn.message_text) not in AFFIRMATIONS
@@ -844,6 +993,8 @@ async def handle_booking_step(
                     time.fromisoformat(draft["time"]),
                     tzinfo=BOGOTA,
                 )
+                if await reject_booking_date(session, settings, sm, turn, plan):
+                    return
                 window = validate_booking_window(
                     start,
                     booking_ends_at(plan, start),
@@ -856,6 +1007,14 @@ async def handle_booking_step(
                         await ask_booking_time(session, settings, sm, turn)
                         return
                     await ask_booking_datetime(session, settings, sm, turn)
+                    return
+                # Serialize the final read and insert with staff confirmations and rescheduling.
+                from app.reservation.settlement import lock_booking_changes
+
+                await lock_booking_changes(session)
+                if await block_confirmed_duplicate(
+                    session, settings, sm, turn, plan, start, booking_ends_at(plan, start)
+                ):
                     return
                 context = await read_availability(sm, settings, turn, plan, start)
                 if isinstance(context, BookingAvailabilityFailure):

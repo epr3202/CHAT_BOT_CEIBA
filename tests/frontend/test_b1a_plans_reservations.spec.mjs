@@ -4,7 +4,7 @@ const planId = "11111111-1111-4111-8111-111111111111";
 const reservationId = "22222222-2222-4222-8222-222222222222";
 const initialPlan = {
   plan_id: planId, code: "RITUAL_CORAZON", name: "Ritual del Corazón",
-  event_type: "ROMANTIC_DINNER", price_cop: 250000, duration_minutes: 180,
+  event_type: "ROMANTIC_DINNER", price_cop: 250000, duration_minutes: 180, min_lead_days: 1,
   exclusive: false, weekend_only: false, active: true, sort_order: 1,
   overnight: false, checkin_from: null, checkout_time: null,
   created_at: "2026-09-29T12:00:00Z", updated_at: "2026-09-29T12:00:00Z",
@@ -107,6 +107,7 @@ test("R6 Planes guarda inline y mantiene Guardando… durante la escritura", asy
   const row = await planRow(page);
   const price = row.getByLabel("Precio (COP)", { exact: true });
   await price.fill("275000");
+  await row.getByLabel("Anticipación mínima (días calendario)").fill("0");
   let release;
   const pending = new Promise(resolve => { release = resolve; });
   await page.route(`**/api/admin/plans/${planId}`, async route => {
@@ -123,7 +124,8 @@ test("R6 Planes guarda inline y mantiene Guardando… durante la escritura", asy
   await expect(row.getByRole("button", { name: "Guardar", exact: true })).toBeEnabled();
   expect(data.writes).toHaveLength(1);
   expect(data.writes[0].price_cop).toBe(275000);
-  expect(Object.keys(data.writes[0]).every(key => ["name", "price_cop", "duration_minutes",
+  expect(data.writes[0].min_lead_days).toBe(0);
+  expect(Object.keys(data.writes[0]).every(key => ["name", "price_cop", "duration_minutes", "min_lead_days",
     "exclusive", "weekend_only", "active", "sort_order", "overnight", "checkin_from",
     "checkout_time"].includes(key))).toBe(true);
   await page.reload();
@@ -263,4 +265,25 @@ test("G3 conversación pausada muestra borrador conservado solo para lectura", a
   await expect(view).toContainText("2026-11-17");
   await expect(view).toContainText("19:00");
   await expect(view.locator("input, textarea, button")).toHaveCount(0);
+});
+
+test("Anticipación por plan persiste al recargar contra la API y PostgreSQL", async ({page}) => {
+  await page.goto("/");
+  await page.locator("#documentId").fill("90000000");
+  await page.locator("#pin").fill("123456");
+  await page.locator("#login").click();
+  await openPlans(page);
+  const row = page.locator("#planRows tr").first();
+  const control = row.getByLabel("Anticipación mínima (días calendario)");
+  const previous = await control.inputValue();
+  const changed = previous === "3" ? "4" : "3";
+  await control.fill(changed);
+  await row.getByRole("button", {name:"Guardar"}).click();
+  await expect(page.locator("#plansFeedback")).toHaveText("Plan guardado.");
+  await page.reload();
+  await openPlans(page);
+  await expect(control).toHaveValue(changed);
+  await control.fill(previous);
+  await row.getByRole("button", {name:"Guardar"}).click();
+  await expect(page.locator("#plansFeedback")).toHaveText("Plan guardado.");
 });

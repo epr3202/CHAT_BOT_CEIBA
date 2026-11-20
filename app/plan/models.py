@@ -16,6 +16,7 @@ class Plan(Base):
     __tablename__ = "plan"
     __table_args__ = (
         CheckConstraint("event_type IN ('ROMANTIC_DINNER', 'PROPOSAL')", name="ck_plan_event_type"),
+        CheckConstraint("min_lead_days >= 0", name="ck_plan_min_lead_days"),
         CheckConstraint("price_cop > 0", name="ck_plan_price_positive"),
         CheckConstraint("duration_minutes > 0", name="ck_plan_duration_positive"),
         CheckConstraint(
@@ -31,6 +32,7 @@ class Plan(Base):
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     price_cop: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_lead_days: Mapped[int | None] = mapped_column(Integer)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     exclusive: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")

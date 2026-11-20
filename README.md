@@ -41,6 +41,7 @@ make audit-conns
 Para verificar una migración de punta a punta, usar:
 
 ```bash
+export TEST_DATABASE_URL=postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test
 make migrate-cycle
 ```
 
@@ -53,26 +54,21 @@ pip install -e ".[dev]"
 pytest -x -q
 ```
 
-La suite usa `TEST_DATABASE_URL` y por defecto apunta a:
+Exportar `TEST_DATABASE_URL` antes de pytest y de make migrate-cycle. Ejemplo para PostgreSQL desechable local:
 
 ```text
 postgresql+asyncpg://ceiba:ceiba@localhost:5432/ceiba_test
 ```
 
-Los helpers de test se niegan a resetear una base cuyo nombre no incluya `test`.
+Los helpers de test se niegan a resetear una base cuyo nombre carezca del segmento `test` separado por guiones bajos.
 No usar la base operativa `ceiba` para `pytest`; ahí viven las conversaciones,
 handoffs, agentes, mensajes y auditoría del entorno local.
 
 ## Despliegue continuo
 
-Cada push a `main` dispara GitHub Actions:
+Las solicitudes de incorporación ejecutan los jobs Python y Playwright. Un push a main ejecuta ambos y, si pasan, invoca el despliegue por SSH con el SHA completo probado. El script exige ese argumento y serializa las operaciones con flock.
 
-1. CI levanta PostgreSQL 16, crea `ceiba_test`, instala `pip install -e ".[dev]"`,
-   ejecuta `ruff check .` y luego `pytest -x -q`.
-2. Si CI pasa y el evento no es un pull request, el job de deploy entra por SSH al VPS.
-3. El servidor ejecuta `./deploy.sh`: actualiza el checkout a `origin/main`, construye
-   `app` y `worker`, corre `alembic upgrade head` en un contenedor efímero, recarga la
-   base de conocimiento, reinicia `app` y `worker`, y valida `GET /health`.
+El despliegue detiene los tres servicios, crea un respaldo PostgreSQL de formato personalizado con permisos 0600, valida el índice del archivo y ejecuta migraciones y seeds. Antes de abrir el servicio valida el arranque y la revisión de Alembic. Tras activar comprueba la respuesta de la aplicación y del panel y el estado del worker.
 
 Secrets requeridos en GitHub:
 
@@ -98,21 +94,21 @@ El volumen se monta read-write en ambos servicios como `/data/payment-evidence`.
 `PAYMENT_EVIDENCE_RETENTION_DAYS=365` en el `.env` productivo. La retención queda declarada,
 pero W2-b no borra archivos automáticamente.
 
-Rollback operativo:
+### Recuperación y rollback
 
-```bash
-ssh <DEPLOY_USER>@<DEPLOY_HOST>
-cd <DEPLOY_PATH>
-git reset --hard <tag-o-sha>
-./deploy.sh
-```
+Un fallo de migración, carga de datos o arranque previo a la activación restaura el respaldo en una base nueva. El script intercambia los nombres dentro de una transacción, recupera el checkout anterior y arranca los contenedores anteriores con sus propias imágenes. La base del intento fallido queda identificada por el prefijo ceiba_failed_ para diagnóstico. Si falla la restauración se requiere intervención del operador con los escritores detenidos.
 
-Las migraciones no se revierten automáticamente. Un rollback que cruce una migración
-destructiva requiere un `alembic downgrade` manual, revisado caso por caso antes de
-volver a levantar la versión anterior.
+Para regresar a una versión con esquema compatible, ejecutar desde el checkout del servidor la orden siguiente con el SHA completo probado.
 
-Un downtime de aproximadamente 10-30 segundos por deploy es tolerable: Meta reintenta
-webhooks y el dedup por `external_message_id` evita duplicados.
+    ./deploy.sh "$SHA_COMPATIBLE"
+
+Para cruzar una revisión de esquema, ensayar primero restauración y compatibilidad en una copia desechable de PostgreSQL. Verificar posibles pérdidas de las columnas nuevas, preservar las escrituras posteriores y acordar la ventana de mantenimiento antes de ejecutar cualquier downgrade. Después de activar listeners o worker, atender un fallo de salud conservando las escrituras recientes.
+
+El ensayo local crea un repositorio y un proyecto Docker Compose temporales, introduce un fallo con cambios de datos confirmados y comprueba la restauración de precio, revisión, servicios, permisos, SHA anterior y despliegue a un SHA explícito.
+
+    bash tests/smoke_deploy_reexec.sh
+
+Se conservan siete respaldos completos en el directorio seleccionado por DEPLOY_BACKUP_DIR. El cifrado y la custodia de claves requieren un procedimiento de recuperación acordado. La base PostgreSQL y los archivos de comprobantes y catálogos tienen respaldos distintos.
 
 ## Simular webhook local
 

@@ -9,21 +9,24 @@ from uuid import UUID
 
 import asyncpg
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models_registry  # noqa: F401
+from alembic import command
 from app.agent.auth import hash_pin
 from app.agent.models import Agent
 from app.ai.client import OpenRouterIntentClient
 from app.ai.schemas import IntentClassification
-from app.config.database import Base
 from app.config.settings import get_settings
 from app.main import app
 from data.knowledge_seed import iter_seed_entries
 from scripts.load_knowledge import load_knowledge_entries
+from scripts.validate_test_database import validate_test_database_url
 
 APP_SECRET = "test-app-secret"
 VERIFY_TOKEN = "test-verify-token"
@@ -50,17 +53,11 @@ def configure_test_database(monkeypatch: pytest.MonkeyPatch) -> str:
 
 
 def assert_safe_test_database_url(database_url: str | None = None) -> None:
-    database_url = database_url or current_test_database_url()
-    database_name = make_url(database_url).database or ""
-    if "test" not in database_name.lower():
-        raise RuntimeError(
-            "Refusing to reset a non-test database. Set TEST_DATABASE_URL to a database "
-            "whose name includes 'test'."
-        )
+    validate_test_database_url(database_url or os.environ.get("TEST_DATABASE_URL"))
 
 
 async def ensure_test_database_exists(database_url: str | None = None) -> str:
-    database_url = database_url or current_test_database_url()
+    database_url = validate_test_database_url(database_url or os.environ.get("TEST_DATABASE_URL"))
     assert_safe_test_database_url(database_url)
     parsed = make_url(database_url)
     database_name = parsed.database
@@ -90,10 +87,30 @@ async def ensure_test_database_exists(database_url: str | None = None) -> str:
 async def reset_test_database(database_url: str | None = None) -> async_sessionmaker[AsyncSession]:
     database_url = await ensure_test_database_exists(database_url)
     engine = create_async_engine(database_url)
+
+    def prepare(connection: Connection) -> None:
+        config = Config("alembic.ini")
+        config.attributes["connection"] = connection
+        head = ScriptDirectory.from_config(config).get_current_head()
+        version_table = connection.scalar(text("SELECT to_regclass('public.alembic_version')"))
+        if (
+            not version_table
+            or connection.scalar(text("SELECT version_num FROM alembic_version")) != head
+        ):
+            connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            connection.execute(text("CREATE SCHEMA public"))
+            command.upgrade(config, "head")
+        tables = connection.scalar(
+            text(
+                "SELECT string_agg(format('%I.%I', schemaname, tablename), ', ') FROM pg_tables "
+                "WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
+            )
+        )
+        if tables:
+            connection.exec_driver_sql(f"TRUNCATE {tables} RESTART IDENTITY")
+
     async with engine.begin() as connection:
-        await connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
-        await connection.execute(text("CREATE SCHEMA public"))
-        await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(prepare)
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
     return sessionmaker

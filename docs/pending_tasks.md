@@ -84,3 +84,7 @@ y U12c siguen abiertos. Sin migraciones ni activacion.
 Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
 
 R9 candidato implementa procedencia de servidor, período durable y admisión por intento; migración aditiva 20260910_0027. La validación remota y el informe final post-CI siguen separados; sin activación ni cierre de H03/H11 agregados.
+
+## Publicación comercial · 20 de noviembre de 2026
+
+El catálogo de propuestas de producción y las tarifas de PostgreSQL difieren del portafolio propuesto. Falta autorización por código para nombre, precio, duración, personas y exclusividad, además del PDF y la versión de respuesta correspondientes. La custodia y recuperación de claves para respaldos cifrados queda pendiente de decisión operativa.

@@ -2708,3 +2708,39 @@ un humano; la IA no decide el saldo, el envío, el vencimiento ni la cancelació
   existentes de confirmación permanecen intactas: checkout se guarda en el
   borrador y auditoría, a la espera de un texto aprobado específico si se desea
   comunicarlo en esas confirmaciones.
+
+## Duplicados confirmados y avisos obsoletos — Emerson, 2026-10-30, PR #49
+
+Además del guard global PAYMENT_PENDING/PAYMENT_REVIEW, una solicitud con plan
+e intervalo completos no puede duplicar una reserva RESERVED del mismo cliente
+y plan cuyo intervalo semiabierto [starts_at, ends_at) se solape. El control se
+aplica antes de ofrecer confirmación y de crear la solicitud. No modifica D3,
+la coexistencia de planes no exclusivos entre clientes ni solicitudes de otra
+franja/plan. Los pendientes conservan su guard y precedencia existentes.
+
+Con RESP-BOOKING-DUPLICATE-001 aprobada, el backend presenta el plan y la entrada
+de la reserva existente en Bogotá, limpia fecha/hora/confirmación/checkout del
+borrador conservando el plan y pide otra franja sin handoff. Audita
+BOOKING_DUPLICATE_BLOCKED con reserva existente, plan y entrada. Leandro aprobó
+el texto exacto y Emerson confirmó la aprobación en esta tarea el 30-oct;
+se publica APPROVED v1. Si falta una versión aprobada/renderizable, se conserva
+la transferencia genérica aprobada (RESP-HANDOFF-001/002), sin crear otra solicitud.
+
+El reset de conversación limpia también booking_draft y conserva las reservas.
+Previsualización y ejecución devuelven live_reservations con id, estado e inicio
+de todas las reservas PAYMENT_PENDING/PAYMENT_REVIEW/RESERVED del cliente. Si
+la lista no está vacía, la ejecución audita RESET_LEFT_LIVE_RESERVATIONS con esa
+lista; la previsualización no escribe. El panel advierte que siguen vigentes.
+
+Los avisos staff se revalidan contra su fuente antes de enviar. Una fuente
+ausente, cancelada o cuyo estado dejó de ser aplicable retira el aviso a EXPIRED
+y registra STAFF_NOTIFICATION_SUPERSEDED, incluso si estaba DEFERRED. No se
+crean estados ni migraciones para esta distinción; la auditoría indica la causa.
+
+## Anticipación y datos de solicitudes comerciales · 20 de noviembre de 2026
+
+La anticipación se cuenta por días calendario en America/Bogota. Cada plan admite un mínimo entero no negativo editable en Planes por un administrador. Los planes existentes heredan BOOKING_MIN_LEAD_DAYS hasta que se edite ese campo. El primer día permitido puede consultarse en Calendar. La aceptación del cliente vuelve a comprobar la política vigente y la ocupación. Las visitas conservan sus tres días y sus horarios autorizados.
+
+El formulario identifica la fecha de visita por separado de la fecha del evento, y los invitados del evento por separado de los asistentes a la visita. Una fecha con año explícito en el pasado requiere una nueva fecha. La fecha y el presupuesto originales del formulario quedan identificados en los datos informados por el cliente. El presupuesto por rango conserva ambos límites en el texto y usa el inferior en el campo numérico.
+
+El importe oficial se toma del plan al crear la solicitud. Los adicionales de texto libre y sus importes declarados llegan al asesor y a la descripción de Calendar, pendientes de cotización. Los cambios de catálogo no alteran el precio histórico. La reentrega usa la identidad del mensaje del canal. El rechazo del correo impide utilizarlo como dato de contacto. Los mensajes recibidos mantienen su historial append-only.

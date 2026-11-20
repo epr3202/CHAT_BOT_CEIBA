@@ -883,6 +883,7 @@ function caseFromConversation(conversation) {
     summary: conversation.handoff_summary || conversation.last_message_preview || conversation.last_message_body || "",
     lastMessageDirection: conversation.last_message_direction,
     bookingDraft: conversation.booking_draft,
+    reservationDetails: conversation.reservation_details,
   };
 }
 
@@ -956,6 +957,16 @@ function renderAdminCases() {
           : typeof value === "boolean" ? (value ? "Sí" : "No") : String(value);
         values.append(term, description);
       }
+    }
+    if (item.reservationDetails) {
+      const details = document.createElement("details");
+      const title = document.createElement("summary");
+      title.textContent = "Detalles de la reserva";
+      const body = document.createElement("div");
+      body.style.whiteSpace = "pre-line";
+      body.textContent = item.reservationDetails;
+      details.append(title, body);
+      row.append(details);
     }
     const actions = $(".caseActions", row);
     if (directTakeEligibleStates.has(item.status)) {
@@ -1441,12 +1452,13 @@ function renderPlans() {
   const body = $("#planRows");
   body.replaceChildren();
   if (!state.plans.length) {
-    emptyTable(body, 12, "No hay planes disponibles.");
+    emptyTable(body, 13, "No hay planes disponibles.");
     return;
   }
   const fields = [
     ["name", "Nombre", "text"], ["price_cop", "Precio (COP)", "number"],
-    ["duration_minutes", "Duración (minutos)", "number"], ["exclusive", "Exclusivo", "checkbox"],
+    ["duration_minutes", "Duración (minutos)", "number"],
+    ["min_lead_days", "Anticipación mínima (días calendario)", "number"], ["exclusive", "Exclusivo", "checkbox"],
     ["weekend_only", "Solo fines de semana", "checkbox"], ["overnight", "Pernoctación", "checkbox"],
     ["checkin_from", "Entrada desde", "time"], ["checkout_time", "Salida", "time"],
     ["active", "Activo", "checkbox"],
@@ -1466,7 +1478,7 @@ function renderPlans() {
         input.required = type === "time" ? Boolean(plan.overnight) : true;
         if (type === "number") {
           input.step = "1";
-          input.min = field === "sort_order" ? "-2147483648" : "1";
+          input.min = field === "sort_order" ? "-2147483648" : field === "min_lead_days" ? "0" : "1";
           input.max = "2147483647";
         } else if (type === "time") input.step = "60";
         else input.maxLength = 180;
@@ -1496,6 +1508,7 @@ async function savePlan(plan, controls, button) {
   if (Object.values(controls).some((input) => !input.reportValidity())) return;
   const changes = {};
   for (const [field, input] of Object.entries(controls)) {
+    if (field === "min_lead_days" && Number(input.value) === plan.min_lead_days) continue;
     changes[field] = input.type === "checkbox" ? input.checked
       : input.type === "number" ? Number(input.value)
       : input.type === "time" ? (input.value || null) : input.value.trim();
@@ -1631,6 +1644,7 @@ function renderReservationDetail(reservation) {
     ["Origen", reservation.conversation_id === null ? "Manual" : "Conversación"],
     ["Estado", label("reservationStatus", reservation.status)], ["Inicio", formatDate(reservation.starts_at)],
     ["Fin", formatDate(reservation.ends_at)], ["Precio", cop.format(reservation.price_cop)],
+    ...(reservation.commercial_details ? [["Detalles de la solicitud", reservation.commercial_details]] : []),
     ["Pagado", cop.format(reservation.amount_paid_cop)],
     ["Saldo pendiente", formatCOP(Math.max(0, reservation.price_cop - reservation.amount_paid_cop))],
     ["Anticipo", formatCOP(reservation.deposit_amount_cop)],
@@ -2171,6 +2185,21 @@ function renderResetSummary(summary) {
     list.append(term, value);
   }
   container.append(title, list);
+  if (summary.live_reservations?.length) {
+    const warning = document.createElement("div");
+    warning.className = "feedback";
+    warning.setAttribute("role", "alert");
+    const message = document.createElement("p");
+    message.textContent = "El reinicio no cancela estas reservas. Seguirán vigentes y deben gestionarse por separado.";
+    const reservations = document.createElement("ul");
+    for (const reservation of summary.live_reservations) {
+      const item = document.createElement("li");
+      item.textContent = `${reservation.reservation_id} — ${label("reservationStatus", reservation.status)} — ${formatDate(reservation.starts_at)}`;
+      reservations.append(item);
+    }
+    warning.append(message, reservations);
+    container.append(warning);
+  }
   setText("resetRequestId", `ID de solicitud: ${summary.request_id}`);
 }
 

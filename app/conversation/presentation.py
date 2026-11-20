@@ -298,6 +298,8 @@ VARIABLE_PRESENTERS: dict[str, VariablePresenter] = {
     "deposit_amount": _present_cop,
     "missing_amount": _present_cop,
     "balance_due_date": _present_date,
+    "earliest_date": _present_date,
+    "min_days": _present_count,
     "bank_name": lambda value: _present_bank(value, "booking_bank_name"),
     "account_type": lambda value: _present_bank(value, "booking_account_type"),
     "account_number": lambda value: _present_bank(value, "booking_account_number"),

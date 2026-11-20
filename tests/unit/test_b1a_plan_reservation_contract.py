@@ -121,8 +121,10 @@ def test_r3_one_migration_directly_after_0027() -> None:
     lineage = {revision.revision: revision for revision in scripts.walk_revisions()}
     assert "20260930_0028" in lineage, "B1a: falta la migración de planes y reservas"
     assert lineage["20260930_0028"].down_revision == "20260910_0027"
-    assert heads == ["20261028_0037"]
+    assert heads == ["20261120_0039"]
     assert lineage["20261028_0037"].down_revision == "20261007_0036"
+    assert lineage["20261120_0039"].down_revision == "20261114_0038"
+    assert lineage["20261114_0038"].down_revision == "20261028_0037"
 
 
 def test_r3_deploy_seeds_plans_after_knowledge_before_start() -> None:

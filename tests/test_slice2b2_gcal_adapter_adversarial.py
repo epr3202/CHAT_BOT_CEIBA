@@ -461,3 +461,31 @@ def configure_base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("META_APP_SECRET", "test")
     monkeypatch.setenv("META_ACCESS_TOKEN", "test")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        {"calendars": {"visitas": {}}},
+        {"calendars": {"visitas": {"busy": [None]}}},
+        {"calendars": {"visitas": {"busy": [{"start": "2026-11-24", "end": "2026-11-25"}]}}},
+    ],
+)
+@respx.mock
+async def test_invalid_freebusy_never_returns_free(payload: object) -> None:
+    respx.post(f"{BASE_URL}/freeBusy").mock(return_value=httpx.Response(200, json=payload))
+    with pytest.raises(CalendarUnavailableError):
+        await adapter().get_busy_intervals(date(2026, 11, 24), ["visitas"])
+
+
+def test_fake_calendar_cannot_serve_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("CALENDAR_ADAPTER", raising=False)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(CalendarUnavailableError):
+            get_calendar_adapter(get_settings())
+    finally:
+        get_settings.cache_clear()

@@ -1,12 +1,16 @@
 from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import select
 
 from app.audit.models import AuditEvent
+from app.channel.models import Message
 from app.main import app
+from app.payment.models import PaymentEvidence
 from tests.b1a_contracts import require_symbol
 from tests.clock import BALANCE_NOW
+from tests.integration.test_b1a_plan_reservation_admin import seed_reservation
 
 NOW = BALANCE_NOW
 PHONE = "+573000000123"
@@ -32,7 +36,7 @@ async def recipient(**changes: Any) -> Any:
     return row
 
 
-async def outbox(target: Any, **changes: Any) -> Any:
+async def outbox(target: Any, *, with_source: bool = False, **changes: Any) -> Any:
     _, model = models()
     values = dict(
         recipient_id=target.id,
@@ -44,6 +48,35 @@ async def outbox(target: Any, **changes: Any) -> Any:
         next_attempt_at=NOW,
     )
     values.update(changes)
+    if with_source:
+        # PR49 validates the domain source before delivery. Window/retry tests
+        # need a real pending receipt; inbound-silence tests intentionally do not.
+        reservation = await seed_reservation(status="PAYMENT_REVIEW")
+        async with app.state.db_sessionmaker.begin() as session:
+            message = Message(
+                external_message_id=f"staff-source-{uuid4()}",
+                conversation_id=reservation.conversation_id,
+                customer_id=reservation.customer_id,
+                channel="WHATSAPP",
+                direction="INBOUND",
+                message_type="image",
+                content={},
+            )
+            session.add(message)
+            await session.flush()
+            evidence = PaymentEvidence(
+                conversation_id=reservation.conversation_id,
+                customer_id=reservation.customer_id,
+                message_id=message.id,
+                reservation_id=reservation.reservation_id,
+                media_id="synthetic-staff-source",
+                mime_type="image/jpeg",
+                declared_sha256="0" * 64,
+                review_status="PENDING_REVIEW",
+            )
+            session.add(evidence)
+            await session.flush()
+            values["source_id"] = str(evidence.id)
     async with app.state.db_sessionmaker.begin() as session:
         row = model(**values)
         session.add(row)

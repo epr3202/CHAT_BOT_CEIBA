@@ -19,14 +19,14 @@ from tests.integration.helpers import configure_test_database, ensure_test_datab
 
 @pytest.mark.parametrize("code,variables", list(NEW_TEMPLATES.items()))
 # Cambio de contrato autorizado por Emerson: adenda de Leandro del 2026-10-29.
-def test_R_new_sensitive_templates_seed_as_approved_v1(
+def test_R_sensitive_templates_seed_at_their_approved_versions(
     code: str, variables: tuple[str, ...]
 ) -> None:
     assert code not in CONDITIONAL_DRAFT_CODES
     entries = [entry for entry in iter_seed_entries() if entry.code == code]
     assert len(entries) == 1
     assert entries[0].status == "APPROVED"
-    assert entries[0].version == 1
+    assert entries[0].version == (2 if code == "RESP-ACCOMMODATION-ROMANTIC-001" else 1)
     assert set(entries[0].allowed_variables) == set(variables)
     assert "DRAFT" not in entries[0].answer_template
 
@@ -44,7 +44,7 @@ async def test_R_0037_backfill_and_clean_migrate_cycle(
     assert revision is not None, "Falta la única migración 20261028_0037_plan_overnight"
     assert revision.down_revision == "20261007_0036"
     assert "plan_overnight" in Path(revision.path).stem
-    assert scripts.get_heads() == ["20261028_0037"]
+    assert scripts.get_heads() == ["20261120_0039"]
     monkeypatch.setenv("LODGING_CHECKIN_FROM", checkin)
     monkeypatch.setenv("LODGING_CHECKOUT_TIME", checkout)
     url = configure_test_database(monkeypatch)

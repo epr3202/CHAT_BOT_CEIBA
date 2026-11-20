@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, time
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -15,6 +16,7 @@ from app.conversation.service import transition_conversation
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
 from app.handoff.models import Handoff
+from app.reservation.models import Reservation
 
 HANDOFF_REASONS = (
     "CUSTOMER_REQUEST",
@@ -139,10 +141,37 @@ async def build_deterministic_summary(
         f"Telefono: {customer.phone_number}",
         f"Conversacion: {conversation.id}",
         f"Motivo: {reason}" + (f" - {detail}" if detail else ""),
-        "Ultimos mensajes:",
     ]
+    if conversation.active_lead_id:
+        snapshot = await session.scalar(
+            select(Reservation.commercial_details)
+            .where(
+                Reservation.lead_id == conversation.active_lead_id,
+                Reservation.status.in_(("RESERVED", "PAYMENT_PENDING", "PAYMENT_REVIEW")),
+            )
+            .order_by(Reservation.created_at.desc())
+            .limit(1)
+        )
+        if snapshot:
+            lines.append(snapshot)
+        else:
+            from app.event.models import Event
+            from app.reservation.booking import commercial_snapshot
+
+            event = await session.scalar(
+                select(Event)
+                .where(Event.lead_id == conversation.active_lead_id)
+                .order_by(Event.created_at.desc())
+                .limit(1)
+            )
+            if event and (context := commercial_snapshot(event)):
+                lines.append(context)
+    lines.append("Ultimos mensajes:")
     for message in messages:
-        lines.append(f"- {message.direction}: {message_text(message.content)}")
+        body = message_text(message.content)
+        if "@" in body:
+            body = re.sub(r"[\w.%+\-]+@[\w.\-]+\.\w+", "[correo omitido]", body)
+        lines.append(f"- {message.direction}: {body}")
     return "\n".join(lines)
 
 

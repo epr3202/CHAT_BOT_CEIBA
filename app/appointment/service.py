@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
@@ -24,6 +25,7 @@ from app.calendar.adapter import (
     CalendarUnavailableError,
     EventNotFoundError,
 )
+from app.conversation.prefilled_form import customer_detail_lines
 from app.conversation.presentation import (
     event_type_display_name,
     format_date_natural,
@@ -31,7 +33,7 @@ from app.conversation.presentation import (
 )
 from app.conversation.states import ConversationState
 from app.customer.models import Customer
-from app.event.models import Event
+from app.event.models import Event, EventServiceRequest
 from app.event.validation import parse_customer_date_expression
 from app.scheduling.availability import AvailabilityService, slot_datetime
 
@@ -186,6 +188,7 @@ def build_visit_description(
     event_guest_count: int | None,
     visit_attendee_count: int | None,
     visit_reason: str | None,
+    extra_lines: Sequence[str] = (),
 ) -> str | None:
     lines: list[str] = []
     values: tuple[tuple[str, str | int | None], ...] = (
@@ -202,6 +205,7 @@ def build_visit_description(
         rendered = str(value).strip()
         if rendered:
             lines.append(f"{label}: {rendered}")
+    lines.extend(extra_lines)
     return "\n".join(lines) or None
 
 
@@ -210,13 +214,15 @@ def resolve_visit_date_text(
     *,
     today: date,
     require_absolute_confirmation: bool,
+    include_explicit_past: bool = False,
 ) -> VisitDateTextResult:
+    """Return historical dates only for callers that explicitly handle their rejection."""
     normalized = _normalize_spanish_text(message_text)
     absolute_match = _NUMERIC_VISIT_DATE.search(normalized) or _TEXTUAL_VISIT_DATE.search(
         normalized
     )
     absolute = _resolve_absolute_visit_date(normalized, today)
-    if absolute is not None:
+    if absolute is not None and (absolute >= today or include_explicit_past):
         contradicted = any(
             re.search(rf"\b{name}\b", normalized) and weekday != absolute.weekday()
             for name, weekday in SPANISH_WEEKDAYS.items()
@@ -389,7 +395,7 @@ def _future_date(
             candidate = date(year, month_value, day_value)
         except ValueError:
             continue
-        if candidate >= today:
+        if year_value is not None or candidate >= today:
             return candidate
     return None
 
@@ -936,6 +942,17 @@ class VisitSchedulingService:
                 if lead_id is not None
                 else None
             )
+            services = (
+                list(
+                    await session.scalars(
+                        select(EventServiceRequest.service_name)
+                        .where(EventServiceRequest.event_id == event.event_id)
+                        .order_by(EventServiceRequest.created_at, EventServiceRequest.position)
+                    )
+                )
+                if event is not None
+                else []
+            )
         return build_visit_description(
             customer_name=customer.full_name if customer is not None else None,
             phone_number=customer.phone_number if customer is not None else None,
@@ -943,6 +960,11 @@ class VisitSchedulingService:
             event_guest_count=event.guest_count if event is not None else None,
             visit_attendee_count=attendee_count,
             visit_reason=visit_reason,
+            extra_lines=customer_detail_lines(
+                customer.email if customer is not None else None,
+                services,
+                event.special_requests if event is not None else None,
+            ),
         )
 
     async def _mark_appointment_for_reconciliation(self, appointment_id: UUID) -> None:
