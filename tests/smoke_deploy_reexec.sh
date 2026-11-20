@@ -102,3 +102,42 @@ archive=$(find "$DEPLOY_BACKUP_DIR" -type f -name '*.dump' -print -quit)
 ./deploy.sh "$compatible"
 [[ "$(git rev-parse HEAD)" == "$compatible" ]]
 echo "PASS previous=$original failed=$broken explicit_target=$compatible schema=$rev price=$price backup_mode=600"
+
+# Activation after app/worker startup must NEVER restore a snapshot that predates
+# writes performed by the new release. Inject one transient admin start failure.
+sql 'CREATE TABLE activation_write_marker (id integer PRIMARY KEY)' >/dev/null
+git commit -qm 'synthetic activation target' --allow-empty
+activated=$(git rev-parse HEAD)
+real_docker=$(command -v docker)
+mkdir -p "$sandbox/test-bin"
+cat > "$sandbox/test-bin/docker" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == "compose up -d --no-deps --force-recreate admin" &&
+      -f "${ACTIVATION_FAIL_ONCE:-/dev/null}" ]]; then
+  rm -f -- "$ACTIVATION_FAIL_ONCE"
+  "$REAL_DOCKER" compose exec -T db psql -X -v ON_ERROR_STOP=1 -U ceiba -d ceiba \
+    -c 'INSERT INTO activation_write_marker (id) VALUES (1)' >/dev/null
+  echo 'Synthetic admin activation failure after a committed write' >&2
+  exit 72
+fi
+exec "$REAL_DOCKER" "$@"
+SH
+chmod 0700 "$sandbox/test-bin/docker"
+touch "$sandbox/activation-fail-once"
+if REAL_DOCKER="$real_docker" ACTIVATION_FAIL_ONCE="$sandbox/activation-fail-once" \
+   PATH="$sandbox/test-bin:$PATH" ./deploy.sh "$activated"; then
+  echo 'The interrupted activation unexpectedly reported success' >&2
+  exit 1
+fi
+[[ ! -e "$sandbox/activation-fail-once" ]]
+[[ "$(git rev-parse HEAD)" == "$activated" ]]
+[[ "$(sql 'SELECT COUNT(*) FROM activation_write_marker')" == 1 ]]
+[[ "$(sql 'SELECT version_num FROM alembic_version')" == "$rev" ]]
+[[ "$(sql "SELECT price_cop FROM plan WHERE code='ROMANCE_COPAS'")" == "$price" ]]
+for service in app worker admin; do
+  [[ "$(docker inspect -f '{{.State.Running}}' "$(docker compose ps -q "$service")")" == true ]]
+done
+docker compose exec -T app python -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8000/ready').status == 200"
+docker compose exec -T admin node -e "fetch('http://127.0.0.1:5173').then(r=>process.exit(r.ok?0:1))"
+echo "PASS activation_failure_retains_committed_write=1 checkout=$activated schema=$rev services=running"

@@ -79,7 +79,16 @@ recover() {
   trap - EXIT INT TERM
   (( status != 0 )) || return 0
   if (( released )); then
-    echo "Release activated before failure. Preserve new writes; inspect $target and $backup_file." >&2
+    # Activation may already have accepted new messages. Never restore the pre-deploy
+    # dump or switch back to the previous schema once writers have been started.
+    echo "Activation failed at $target; preserving the database and new writes." >&2
+    if docker compose up -d --no-deps app worker &&
+       docker compose up -d --no-deps --force-recreate admin &&
+       check_services; then
+      echo "Services recovered at $target without database rollback. Deployment still failed ($status); review logs before retrying." >&2
+    else
+      echo "CRITICAL: service recovery failed at $target. Database and checkout retained; operator action required. Backup: $backup_file" >&2
+    fi
     return "$status"
   fi
   if (( restore_required )); then

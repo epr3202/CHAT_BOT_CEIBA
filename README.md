@@ -66,7 +66,7 @@ handoffs, agentes, mensajes y auditoría del entorno local.
 
 ## Despliegue continuo
 
-Las solicitudes de incorporación ejecutan los jobs Python y Playwright. Un push a main ejecuta ambos y, si pasan, invoca el despliegue por SSH con el SHA completo probado. El script exige ese argumento y serializa las operaciones con flock.
+Las solicitudes de incorporación ejecutan los jobs Python, Playwright y un ensayo Docker de recuperación. Un push a main despliega por SSH el SHA completo probado solo si los tres jobs pasan. El script exige ese argumento y serializa las operaciones con flock.
 
 El despliegue detiene los tres servicios, crea un respaldo PostgreSQL de formato personalizado con permisos 0600, valida el índice del archivo y ejecuta migraciones y seeds. Antes de abrir el servicio valida el arranque y la revisión de Alembic. Tras activar comprueba la respuesta de la aplicación y del panel y el estado del worker.
 
@@ -102,9 +102,9 @@ Para regresar a una versión con esquema compatible, ejecutar desde el checkout 
 
     ./deploy.sh "$SHA_COMPATIBLE"
 
-Para cruzar una revisión de esquema, ensayar primero restauración y compatibilidad en una copia desechable de PostgreSQL. Verificar posibles pérdidas de las columnas nuevas, preservar las escrituras posteriores y acordar la ventana de mantenimiento antes de ejecutar cualquier downgrade. Después de activar listeners o worker, atender un fallo de salud conservando las escrituras recientes.
+Para cruzar una revisión de esquema, ensayar primero restauración y compatibilidad en una copia desechable de PostgreSQL. Verificar posibles pérdidas de las columnas nuevas, preservar las escrituras posteriores y acordar la ventana de mantenimiento antes de ejecutar cualquier downgrade. Después de activar listeners o worker, un fallo de arranque o salud **nunca restaura automáticamente la base anterior**: el script intenta reactivar app, worker y panel en el SHA destino, sin revertir el esquema ni sus escrituras. Aunque recupere los servicios, devuelve error y requiere revisar los logs y la entrega antes de volver a ejecutar un despliegue. Si no logra recuperar los servicios, informa una intervención manual obligatoria.
 
-El ensayo local crea un repositorio y un proyecto Docker Compose temporales, introduce un fallo con cambios de datos confirmados y comprueba la restauración de precio, revisión, servicios, permisos, SHA anterior y despliegue a un SHA explícito.
+El ensayo local crea un repositorio y un proyecto Docker Compose temporales. Primero comprueba la restauración tras fallar un seed, incluyendo precio, revisión, servicios, permisos y SHA. Después inyecta un fallo de arranque del panel tras iniciar app/worker y registrar una escritura nueva: exige que esa escritura y el esquema se conserven y que los servicios se recuperen sin rollback.
 
     bash tests/smoke_deploy_reexec.sh
 
