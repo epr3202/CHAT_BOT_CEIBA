@@ -177,9 +177,17 @@ async def test_R_final_check_blocks_reservation_confirmed_after_proposal(harness
     await assert_blocked(harness, row)
 
 
-@pytest.mark.parametrize("case", ["adjacent_hour", "other_customer", "other_plan"])
+async def test_reserved_plan_is_unavailable_for_another_customer(harness: Harness) -> None:
+    await existing_booking(harness, other_customer=True)
+    await send(harness, "Quiero reservar Ritual del Corazón el 7 de noviembre de 2026 a las 3 pm")
+    assert harness.codes == ["RESP-BOOKING-UNAVAILABLE-001"]
+    assert len(await harness.rows(Reservation)) == 1
+    assert not any(a.action == "BOOKING_DUPLICATE_BLOCKED" for a in await harness.rows(AuditEvent))
+
+
+@pytest.mark.parametrize("case", ["adjacent_hour", "other_plan"])
 async def test_V_nonduplicates_continue_normally(harness: Harness, case: str) -> None:
-    await existing_booking(harness, other_customer=case == "other_customer")
+    await existing_booking(harness)
     plan = "Romance entre Copas" if case == "other_plan" else "Ritual del Corazón"
     hour = "6 pm" if case == "adjacent_hour" else "3 pm"
     await send(harness, f"Quiero reservar {plan} el 7 de noviembre de 2026 a las {hour}")

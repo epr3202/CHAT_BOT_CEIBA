@@ -44,6 +44,7 @@ test("C-2 disponibilidad ocupada conserva bloqueadores legibles", async ({ page 
   await expect(form).toBeVisible();
   await fillManual(form);
   await form.getByRole("button", { name: "Verificar disponibilidad", exact: true }).click();
+  await expect(page.locator("#manualReservationFeedback")).toContainText("No disponible.");
   await expect(page.locator("#manualReservationFeedback")).toContainText("Franja ocupada: Evento exclusivo en calendario");
 });
 

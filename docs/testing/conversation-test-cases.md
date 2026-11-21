@@ -4401,7 +4401,7 @@ tests/frontend/test_f2_failed_evidence.spec.mjs y tests/payment_prereview/.
 | PR49-R2 | Franja parcialmente solapada con la reserva propia | Presenta la hora existente, no la hora pedida |
 | PR49-R3 | La reserva se confirma después de ofrecer la nueva propuesta | Guard final impide crear la segunda solicitud |
 | PR49-V1 | Mismo cliente, hora adyacente sin solape | CONFIRM → PAYMENT_PENDING normal |
-| PR49-V2 | Otro cliente, misma franja, plan no exclusivo | Flujo normal y coexistencia |
+| PR49-V2 | Otro cliente, misma franja y mismo plan no exclusivo confirmado | Franja ocupada; el bot solicita otra fecha u hora |
 | PR49-V3 | Mismo cliente, otro plan no exclusivo | Flujo normal |
 | PR49-V4 | PAYMENT_PENDING/PAYMENT_REVIEW previo | Conserva guard global y handoff pendiente |
 | PR49-R4 | Nueva respuesta ausente/no aprobada | Respaldo de handoff PENDING sin crear reserva |

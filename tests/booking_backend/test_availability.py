@@ -159,6 +159,7 @@ def test_extra_request_does_not_set_calendar_exclusivity(confirmed_schedule: boo
         starts_at=START,
         ends_at=START + timedelta(hours=3),
         commercial_details=snapshot,
+        plan_id=selected.plan_id,
     )
     row.plan = selected
     row.external_calendar_id = row.reservation_id.hex
@@ -174,7 +175,7 @@ def test_extra_request_does_not_set_calendar_exclusivity(confirmed_schedule: boo
         row.ends_at,
     )
     check = evaluate_booking_availability(
-        plan=selected,
+        plan=plan(code="OTRO_PLAN_COMPARTIDO"),
         starts_at=START,
         ends_at=row.ends_at,
         calendar_events=[event],

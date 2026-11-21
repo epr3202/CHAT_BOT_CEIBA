@@ -821,7 +821,6 @@ async def check_fresh_booking(
     starts_at: datetime,
     ends_at: datetime,
     *,
-    customer_id: int,
     exclude: UUID | None = None,
 ) -> None:
     from sqlalchemy.orm import joinedload
@@ -846,7 +845,6 @@ async def check_fresh_booking(
         ends_at=ends_at,
         reservations=rows,
         calendar_events=[],
-        customer_id=customer_id,
         exclusivity_keyword=get_settings().booking_exclusivity_keyword,
     )
     if not availability.available:
@@ -871,7 +869,7 @@ async def create_manual_reservation(
             customer = Customer(phone_number=phone, full_name=body.full_name)
             session.add(customer)
             await session.flush()
-        await check_fresh_booking(session, plan, body.starts_at, ends_at, customer_id=customer.id)
+        await check_fresh_booking(session, plan, body.starts_at, ends_at)
         conversation = await session.scalar(
             select(Conversation)
             .where(
@@ -938,8 +936,7 @@ async def schedule_reservation(
         if row.status in {"EXPIRED", "CANCELLED"}:
             raise HTTPException(409, "La reserva está vencida o cancelada.")
         await check_fresh_booking(
-            session, plan, body.starts_at, ends_at,
-            customer_id=row.customer_id, exclude=reservation_id,
+            session, plan, body.starts_at, ends_at, exclude=reservation_id,
         )
         old_start, old_end = row.starts_at, row.ends_at
         old_due, old_overdue = row.balance_due_at, row.balance_overdue_at

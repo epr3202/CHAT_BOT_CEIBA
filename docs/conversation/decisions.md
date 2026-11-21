@@ -21,10 +21,10 @@ activas protegidas y el guard sin autoservicio mantienen sus exclusiones.
   ROMANTIC_DINNER/PROPOSAL. Es una lectura del backend, sin reservar, cobrar ni
   crear eventos en Calendar. Bodas y eventos grandes siguen fuera del alcance:
   faltan recursos y franjas de montaje, según `scope.md` §13.9 y §29.
-* El modelo de recursos suite/terraza/mesa queda en backlog §29. La regla mínima
-  bloquea un plan exclusivo o con pernoctación frente a una reserva RESERVED
-  con pernoctación solapada (`RESERVED_OVERNIGHT`). Un plan compartido conserva
-  su convivencia salvo otros bloqueos ya existentes, como exclusividad.
+* El modelo de recursos suite/terraza/mesa queda en backlog §29. Desde el 21 de noviembre,
+  una reserva RESERVED con pernoctación bloquea el mismo plan y cualquier
+  solicitud exclusiva hasta el checkout (`RESERVED_OVERNIGHT`). Dos planes
+  diferentes no exclusivos pueden coincidir, incluso si incluyen hospedaje.
 * REFUGIO_DOS es el plan del catálogo productivo que incluye pernoctación. La
   migración conserva duration_minutes y fija entrada/salida iniciales desde
   LODGING_CHECKIN_FROM/LODGING_CHECKOUT_TIME (15:00/11:00). Luego manda la fila

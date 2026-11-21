@@ -1433,7 +1433,7 @@ async function verifyManualReservation() {
       const result = await managementRequest(`/api/admin/reservations/availability?${params}`);
       if (!current()) return;
       const message = result.available ? `Disponible. Anticipo: ${formatCOP(result.deposit_amount_cop)}.`
-        : [labels.bookingWindow[result.window?.reason], bookingBlockersText(result.blockers),
+        : ["No disponible.", labels.bookingWindow[result.window?.reason], bookingBlockersText(result.blockers),
           `Anticipo: ${formatCOP(result.deposit_amount_cop)}.`].filter(Boolean).join("\n");
       managementFeedback("manualReservationFeedback", message, !result.available);
     }, "No se pudo verificar la disponibilidad");
