@@ -67,7 +67,7 @@ _NUMERIC_VISIT_DATE = re.compile(
     r"\b(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{2,4}))?\b",
 )
 _TEXTUAL_VISIT_DATE = re.compile(
-    rf"\b(\d{{1,2}})\s+(?:de\s+)?({'|'.join(SPANISH_MONTHS)})(?:\s+de\s+(\d{{4}}))?\b",
+    rf"\b(\d{{1,2}})\s*(?:de\s*)?({'|'.join(SPANISH_MONTHS)})(?:\s*(?:de\s*)?(\d{{4}}))?\b",
 )
 _DAY_ONLY_VISIT_DATE = re.compile(r"\b(?:el|dia)\s+(\d{1,2})\b")
 SPANISH_WEEKDAYS = {

@@ -5,6 +5,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import httpx
@@ -133,12 +134,27 @@ class OpenRouterIntentClient(OpenRouterHTTPClient):
         *,
         request_id: uuid.UUID | None,
         external_message_id: str | None = None,
+        booking_date_reference: date | None = None,
     ) -> IntentClassification:
+        instruction = "Clasifica el siguiente mensaje."
+        if booking_date_reference is not None:
+            instruction = (
+                f"Hoy en Bogotá es {booking_date_reference.isoformat()}. Interpreta solo "
+                "la expresión de fecha del cliente. Si determina un único día, devuelve una "
+                "entidad event_date en extracted_entities con raw_value igual al texto recibido y "
+                "normalized_value "
+                "como fecha ISO YYYY-MM-DD. Respeta el año incluso si ya pasó. Si hay varias "
+                "opciones, datos insuficientes o una fecha imposible, omite la entidad."
+            )
         result = await self._execute_task(
             task=INTENT_CLASSIFICATION_FUNCTION,
-            prompt_version=self._prompt.version,
+            prompt_version=(
+                f"{self._prompt.version}-booking-date-v1"
+                if booking_date_reference
+                else self._prompt.version
+            ),
             system_prompt=self._prompt.content,
-            instruction="Clasifica el siguiente mensaje.",
+            instruction=instruction,
             message_text=message_text,
             context=context,
             conversation_id=conversation_id,

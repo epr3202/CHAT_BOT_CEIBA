@@ -72,6 +72,7 @@ class PrefilledForm:
     email: str | None = None
     email_rejected: bool = False
     persons: int | None = None
+    desired_date: str | None = None
     schedule_text: str | None = None
     estimated_date: str | None = None
     wedding_visit: bool = False
@@ -146,6 +147,7 @@ def parse_prefilled_form(text: str, *, booking_active: bool = False) -> Prefille
     return PrefilledForm(
         email_rejected=refused,
         persons=int(persons[1]) if persons and "plan_base" in fields else None,
+        desired_date=fields.get("desired_date", ("", None))[1],
         schedule_text=schedule or None,
         estimated_date=fields.get("estimated_date", ("", None))[1],
         wedding_visit=wedding,

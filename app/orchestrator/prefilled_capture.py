@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import re
+import uuid
+from datetime import date
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.ai.client import OpenRouterIntentClient
+from app.ai.errors import AIUnavailable
 from app.ai.schemas import ExtractedEntity
+from app.appointment.service import resolve_visit_date_text
+from app.config.settings import Settings
 from app.conversation.models import Conversation
 from app.conversation.prefilled_form import PrefilledForm, parse_prefilled_form
 from app.customer.models import Customer
@@ -179,3 +187,71 @@ async def apply_prefilled_form(
             request_id,
         )
     return form
+
+
+async def suggest_booking_date(
+    message_text: str,
+    *,
+    waiting_for_date: bool,
+    conversation_id: int,
+    external_message_id: str,
+    today: date,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    request_id: uuid.UUID | None,
+    settings: Settings,
+) -> date | None:
+    raw = parse_prefilled_form(message_text).desired_date
+    if not raw and waiting_for_date:
+        reply = message_text.strip()
+        # Only interpret short date replies. Other booking steps retain their own routing.
+        if re.fullmatch(r"[\w\s.,/-]{3,100}", reply) and re.search(
+            r"\b(?:mes|d[ií]a|semana|enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
+            r"septiembre|octubre|noviembre|diciembre)\b",
+            reply,
+            re.I,
+        ):
+            raw = reply
+    if not raw or len(raw) > 200:
+        return None
+    if (
+        resolve_visit_date_text(
+            raw, today=today, require_absolute_confirmation=True, include_explicit_past=True
+        ).resolved_date
+        is not None
+    ):
+        return None
+    async with OpenRouterIntentClient(settings, sessionmaker) as client:
+        try:
+            interpretation = await client.classify_intent(
+                raw,
+                context={},
+                conversation_id=conversation_id,
+                external_message_id=external_message_id,
+                request_id=request_id,
+                booking_date_reference=today,
+            )
+        except AIUnavailable:
+            return None
+    dates = [e for e in interpretation.extracted_entities if e.entity == "event_date"]
+    if len(dates) != 1:
+        return None
+    entity = dates[0]
+    value = entity.normalized_value
+    if (
+        entity.quality_status not in {"PROVIDED", "CORRECTED"}
+        or entity.validation_errors
+        or entity.confidence < settings.ai_confidence_safe
+        or entity.raw_value.strip(" .").casefold() != raw.strip(" .").casefold()
+        or not isinstance(value, str)
+        or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)
+    ):
+        return None
+    try:
+        candidate = date.fromisoformat(value)
+    except ValueError:
+        return None
+    day = re.match(r"(?:el\s+)?(\d{1,2})\s+de\s+", raw, re.I)
+    if day and candidate.day != int(day[1]):
+        return None
+    years = re.findall(r"(?<!\d)\d{4}(?!\d)", raw)
+    return candidate if all(int(year) == candidate.year for year in years) else None

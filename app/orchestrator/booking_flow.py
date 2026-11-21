@@ -316,6 +316,7 @@ def consume_date_time(
     )
     recognized = decision.resolved_date is not None
     if recognized:
+        draft.pop("suggested_date", None)
         draft["date"] = decision.resolved_date.isoformat()
         draft["date_confirmation"] = decision.needs_confirmation
     clock = resolve_booking_clock(
@@ -385,7 +386,7 @@ async def block_confirmed_duplicate(
     template = await get_latest_response(sm, response_code)
     if template is not None and template.status == "APPROVED":
         draft = dict(turn.conversation.booking_draft or {})
-        for field in ("date", "time", "date_confirmation", "checkout"):
+        for field in ("date", "time", "suggested_date", "date_confirmation", "checkout"):
             draft.pop(field, None)
         turn.conversation.booking_draft = draft
         turn.conversation.pending_action = "SELECT_BOOKING_DATETIME"
@@ -478,6 +479,8 @@ async def handle_booking_start(
         core.current_bogota_datetime().date(),
         settings=settings,
     )
+    if turn.suggested_booking_date and not draft.get("date"):
+        draft["suggested_date"] = turn.suggested_booking_date.isoformat()
     turn.conversation.booking_draft = draft
     turn.conversation.failed_understanding_count = 0
     turn.conversation.pending_fields = []
@@ -586,7 +589,7 @@ async def reject_booking_date(
             "min_days": days,
             "earliest_date": date.fromordinal(min(date.max.toordinal(), today.toordinal() + days)),
         }
-    for field in ("date", "time", "date_confirmation", "checkout"):
+    for field in ("date", "time", "suggested_date", "date_confirmation", "checkout"):
         draft.pop(field, None)
     turn.conversation.booking_draft = draft
     turn.conversation.pending_action = "SELECT_BOOKING_DATETIME"
@@ -613,7 +616,7 @@ async def continue_slots(
     conversation.booking_draft = draft
     if await reject_booking_date(session, settings, sm, turn, plan):
         return
-    if draft.get("date_confirmation"):
+    if draft.get("date_confirmation") or draft.get("suggested_date"):
         conversation.pending_action = "SELECT_BOOKING_DATETIME"
         try:
             await core.enqueue_template(
@@ -623,7 +626,7 @@ async def continue_slots(
                 turn.customer,
                 turn.inbound_message,
                 "RESP-EVENT-DATA-003",
-                {"resolved_date": date.fromisoformat(draft["date"])},
+                {"resolved_date": date.fromisoformat(draft.get("suggested_date") or draft["date"])},
                 strict=True,
                 request_id=str(turn.request_id) if turn.request_id is not None else None,
             )
@@ -815,7 +818,7 @@ async def ask_booking_datetime(
     response_kind: str = "DATETIME",
 ) -> None:
     draft = dict(turn.conversation.booking_draft or {})
-    for field in ("date", "time", "date_confirmation"):
+    for field in ("date", "time", "suggested_date", "date_confirmation"):
         draft.pop(field, None)
     turn.conversation.booking_draft = draft
     turn.conversation.pending_action = "SELECT_BOOKING_DATETIME"
@@ -1081,6 +1084,22 @@ async def handle_booking_step(
             else:
                 await not_understood(session, settings, sm, turn, plan)
                 return
+        elif turn.suggested_booking_date and action == "SELECT_BOOKING_DATETIME":
+            draft.pop("date", None)
+            draft.pop("date_confirmation", None)
+            draft["suggested_date"] = turn.suggested_booking_date.isoformat()
+            clock = resolve_booking_clock(
+                turn.message_text,
+                only_time_expected=False,
+                hours_start=settings.booking_hours_start,
+                latest_start=settings.booking_latest_start,
+            )
+            if clock is not None:
+                draft["time"] = clock.strftime("%H:%M")
+        elif draft.get("suggested_date") and normalized in AFFIRMATIONS:
+            draft["date"] = draft.pop("suggested_date")
+        elif draft.get("suggested_date") and normalized in DENIALS:
+            draft.pop("suggested_date")
         elif draft.get("date_confirmation") and normalized in AFFIRMATIONS:
             draft["date_confirmation"] = False
         elif draft.get("date_confirmation") and normalized in DENIALS:
