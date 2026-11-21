@@ -297,6 +297,7 @@ async def apply_turn(
                         confidence_entity_rescued=turn.confidence_entity_rescued if turn else False,
                         input_origin=claim.persisted.input_origin,
                         transcription_id=claim.persisted.context.get("transcription_id"),
+                        suggested_booking_date=turn.suggested_booking_date if turn else None,
                     ),
                     classification=turn.classification if turn else None,
                     ai_error_reason=turn.ai_error_reason if turn else None,

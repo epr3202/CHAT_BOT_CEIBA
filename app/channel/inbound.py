@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Literal
 
 import structlog
@@ -23,6 +23,10 @@ from app.channel.states import Channel
 from app.config.settings import Settings, get_settings
 from app.conversation.confirmation import resolve_contextual_confirmation
 from app.conversation.explicit_human import EXPLICIT_HUMAN_REASON, is_explicit_human_request
+from app.conversation.fixed_price_booking import (
+    AVAILABILITY_INQUIRY_REASON,
+    SELF_SERVICE_BOOKING_REASON,
+)
 from app.conversation.models import Conversation
 from app.conversation.service import transition_conversation
 from app.conversation.services_catalog import match_requested_services
@@ -32,9 +36,11 @@ from app.customer.phone import normalize_phone_number
 from app.event.event_type import normalize_event_type
 from app.handoff.models import Handoff
 from app.handoff.service import create_handoff
+from app.orchestrator.prefilled_capture import suggest_booking_date
 from app.orchestrator.service import (
     SENSITIVE_HANDOFF_INTENTS,
     VISIT_INTENTS,
+    current_bogota_datetime,
     deterministic_booking_or_catalog_classification,
     enqueue_template,
 )
@@ -222,6 +228,7 @@ class ClassifiedTurn:
     services_resolution_failed: bool
     confidence_entity_rescued: bool
     input_origin: Literal["TEXT", "AUDIO_TRANSCRIPT"] = "TEXT"
+    suggested_booking_date: date | None = None
 
 
 async def classify_and_orchestrate_phase_b_c(
@@ -389,6 +396,29 @@ async def classify_message(
         confidence_entity_rescued = rescued_classification is not classification
         classification = rescued_classification
 
+    suggested_date = None
+    if (
+        decision_source == "DETERMINISTIC"
+        and classification
+        and (
+            classification.reasoning_code
+            in {AVAILABILITY_INQUIRY_REASON, SELF_SERVICE_BOOKING_REASON}
+            or (
+                classification.reasoning_code == "BOOKING_STEP"
+                and persisted.context.get("pending_action") == "SELECT_BOOKING_DATETIME"
+            )
+        )
+    ):
+        suggested_date = await suggest_booking_date(
+            persisted.message_text,
+            waiting_for_date=persisted.context.get("pending_action") == "SELECT_BOOKING_DATETIME",
+            today=current_bogota_datetime().date(),
+            sessionmaker=sessionmaker,
+            settings=settings,
+            request_id=request_id,
+            conversation_id=persisted.conversation_id,
+            external_message_id=persisted.external_message_id,
+        )
     return ClassifiedTurn(
         classification,
         ai_error_reason,
@@ -397,6 +427,7 @@ async def classify_message(
         services_resolution_failed,
         confidence_entity_rescued,
         persisted.input_origin,
+        suggested_date,
     )
 
 

@@ -207,6 +207,7 @@ class OrchestrationInput:
     prefilled_schedule: str | None = None
     extra_followup: bool = False
     prefilled_visit_reason: str | None = None
+    suggested_booking_date: date | None = None
 
 
 @dataclass(frozen=True)

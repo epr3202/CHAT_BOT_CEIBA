@@ -2744,3 +2744,10 @@ La anticipación se cuenta por días calendario en America/Bogota. Cada plan adm
 El formulario identifica la fecha de visita por separado de la fecha del evento, y los invitados del evento por separado de los asistentes a la visita. Una fecha con año explícito en el pasado requiere una nueva fecha. La fecha y el presupuesto originales del formulario quedan identificados en los datos informados por el cliente. El presupuesto por rango conserva ambos límites en el texto y usa el inferior en el campo numérico.
 
 El importe oficial se toma del plan al crear la solicitud. Los adicionales de texto libre y sus importes declarados llegan al asesor y a la descripción de Calendar, pendientes de cotización. Los cambios de catálogo no alteran el precio histórico. La reentrega usa la identidad del mensaje del canal. El rechazo del correo impide utilizarlo como dato de contacto. Los mensajes recibidos mantienen su historial append-only.
+
+En reservas de planes, una fecha explícita conserva su año aunque falten espacios
+entre el día, el mes y «de». Si el backend no reconoce la fecha deseada del
+formulario o una respuesta breve de fecha en el paso correspondiente, OpenRouter
+puede proponer un día. El cliente debe ratificar la propuesta antes de consultar
+disponibilidad. Si la interpretación falla o contradice el año escrito, el bot
+vuelve a pedir la fecha. La anticipación y los horarios los valida el backend.
