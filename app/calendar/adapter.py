@@ -238,6 +238,8 @@ class FakeCalendarAdapter:
 
 
 def get_calendar_adapter(settings: Settings) -> CalendarAdapter:
+    if settings.environment == "production" and settings.calendar_adapter != "google":
+        raise CalendarUnavailableError("Production scheduling requires Google Calendar")
     return _calendar_adapter_for_configuration(
         settings.calendar_adapter,
         settings.google_calendar_id,

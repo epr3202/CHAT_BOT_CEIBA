@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 from uuid import UUID
@@ -24,7 +24,7 @@ from app.appointment.service import (
     validate_visit_attendees,
 )
 from app.audit.models import AuditEvent
-from app.calendar.adapter import get_calendar_adapter
+from app.calendar.adapter import CalendarUnavailableError, get_calendar_adapter
 from app.catalog.models import CatalogSend
 from app.catalog.service import (
     CatalogCaptionTooLong,
@@ -123,7 +123,7 @@ from app.payment.models import PaymentEvidence
 from app.payment.service import create_payment_evidence
 from app.plan.models import Plan
 from app.quote.models import QuoteRequest
-from app.scheduling.availability import AvailabilityService
+from app.scheduling.availability import AvailabilityResult, AvailabilityService
 
 logger = structlog.get_logger(__name__)
 _decision_source: ContextVar[Literal["DETERMINISTIC", "LLM", "FALLBACK"]] = ContextVar(
@@ -204,6 +204,9 @@ class OrchestrationInput:
     confidence_entity_rescued: bool = False
     input_origin: Literal["TEXT", "AUDIO_TRANSCRIPT"] = "TEXT"
     transcription_id: int | None = None
+    prefilled_schedule: str | None = None
+    extra_followup: bool = False
+    prefilled_visit_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -309,6 +312,15 @@ async def _orchestrate_inbound_message(
     inbound_message = orchestration_input.inbound_message
     conversation.last_message_at = inbound_message.created_at
 
+    from app.conversation.prefilled_form import rejects_email
+
+    if customer.email and rejects_email(orchestration_input.message_text):
+        customer.email = None
+        audit_domain_change(
+            session, "CUSTOMER_EMAIL_WITHDRAWN", "customer", {"had_email": True},
+            {"customer_id": customer.id, "had_email": False}, "Contacto rechazado por cliente",
+            orchestration_input.request_id,
+        )
     state = ConversationState(conversation.state)
     if state == ConversationState.CLOSED:
         audit_orchestrator_event(
@@ -369,6 +381,35 @@ async def _orchestrate_inbound_message(
                 reason="AUDIO_CONFIRMATION_REQUIRES_TEXT",
                 request_id=orchestration_input.request_id,
             )
+        )
+        return
+
+    from app.orchestrator.prefilled_capture import apply_prefilled_form
+
+    form = await apply_prefilled_form(
+        session,
+        conversation,
+        customer,
+        orchestration_input.message_text,
+        orchestration_input.request_id,
+    )
+    if not form.is_empty:
+        orchestration_input = replace(
+            orchestration_input,
+            prefilled_visit_reason=form.visit_reason,
+            prefilled_schedule=form.schedule_text,
+            extra_followup=form.extra_followup,
+        )
+
+    if form.extra_followup and not conversation.booking_draft:
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            customer,
+            inbound_message,
+            "RESP-SERVICES-003",
+            {"service_name": ", ".join(form.extras)},
         )
         return
 
@@ -718,6 +759,26 @@ def deterministic_booking_or_catalog_classification(
         context.get("bot_enabled", True),
         self_service=self_service,
     )
+    if (
+        context.get("bot_enabled", True)
+        and context.get("state") in {"NEW", "BOT_ACTIVE", "ANSWERING_INFORMATION"}
+        and context.get("pending_action") in {None, "CLASSIFY_MESSAGE"}
+        and not context.get("pending_confirmation")
+        and is_explicit_visit_request(message_text)
+        and re.search(r"\bvisita\s+solicitada\s*:", message_text, re.I)
+        and not is_explicit_human_request(message_text)
+    ):
+        return IntentClassification(
+            primary_intent="SCHEDULE_VISIT",
+            confidence=1.0,
+            needs_confirmation=False,
+            needs_human=False,
+            sub_intent=None,
+            requested_action=None,
+            handoff_reason=None,
+            priority="NORMAL",
+            reasoning_code="PREFILLED_VISIT_REQUEST",
+        )
     if eligible and is_explicit_visit_request(message_text):
         return None
     # A personal advisor request with a purpose must also reach the classifier.
@@ -777,6 +838,7 @@ def deterministic_booking_or_catalog_classification(
             message_text,
             today=current_bogota_datetime().date(),
             require_absolute_confirmation=True,
+            include_explicit_past=True,
         )
         if self_service and (facts.get("catalog_sent") == "yes" or catalog_followup)
         else None
@@ -1490,6 +1552,8 @@ async def start_visit_scheduling(
     existing_draft = dict(conversation.visit_draft or {})
     resume = existing_draft.get("resume") or capture_resume_marker(conversation)
     conversation.visit_draft = {"mode": "SCHEDULE", "resume": resume}
+    if orchestration_input.prefilled_visit_reason:
+        conversation.visit_draft["visit_reason"] = orchestration_input.prefilled_visit_reason
     await move_to_appointment_date(session, conversation)
     set_pending_action(conversation, "SELECT_VISIT_DATE")
     if not restart:
@@ -1538,6 +1602,7 @@ async def handle_appointment_flow_state(
             orchestration_input.message_text,
             today=current_bogota_datetime().date(),
             require_absolute_confirmation=True,
+            include_explicit_past=True,
         )
         if date_decision.interpretation != "NO_INTERPRETABLE":
             await handle_waiting_for_appointment_date(
@@ -1646,9 +1711,10 @@ async def handle_waiting_for_appointment_date(
 ) -> None:
     conversation = orchestration_input.conversation
     decision = resolve_visit_date_text(
-        orchestration_input.message_text,
+        orchestration_input.prefilled_schedule or orchestration_input.message_text,
         today=current_bogota_datetime().date(),
         require_absolute_confirmation=True,
+        include_explicit_past=True,
     )
     resolved_date = decision.resolved_date
     date_to_confirm = resolved_date if decision.inferred_month else None
@@ -1687,6 +1753,18 @@ async def handle_waiting_for_appointment_date(
             conversation.visit_draft = draft
             set_pending_action(conversation, "SELECT_VISIT_DATE")
 
+    if resolved_date is not None and resolved_date < current_bogota_datetime().date():
+        set_pending_action(conversation, "SELECT_VISIT_DATE")
+        await enqueue_template(
+            session,
+            knowledge_sessionmaker,
+            conversation,
+            orchestration_input.customer,
+            orchestration_input.inbound_message,
+            "RESP-DATE-PAST-001",
+            {"date": resolved_date},
+        )
+        return
     if date_to_confirm is not None:
         draft = require_visit_draft(conversation)
         draft["candidate_visit_date"] = date_to_confirm.isoformat()
@@ -1728,11 +1806,14 @@ async def handle_waiting_for_appointment_date(
         )
         return
 
-    availability = await availability_service(settings, knowledge_sessionmaker).available_slots(
-        resolved_date,
-        today=current_bogota_datetime().date(),
-        request_id=orchestration_input.request_id,
-    )
+    try:
+        availability = await availability_service(settings, knowledge_sessionmaker).available_slots(
+            resolved_date,
+            today=current_bogota_datetime().date(),
+            request_id=orchestration_input.request_id,
+        )
+    except CalendarUnavailableError:
+        availability = AvailabilityResult(resolved_date, [], "RESP-CALENDAR-ERROR-001", True)
     if availability.requires_review:
         await create_handoff_and_pause(
             session,
@@ -1771,7 +1852,7 @@ async def handle_waiting_for_appointment_date(
     )
     set_pending_action(conversation, "SELECT_VISIT_TIME")
     selected = interpret_visit_time(
-        orchestration_input.message_text,
+        orchestration_input.prefilled_schedule or orchestration_input.message_text,
         [slot.start_time for slot in availability.slots],
         require_explicit=True,
     )
@@ -1815,6 +1896,29 @@ async def handle_waiting_for_appointment_selection(
         offered_slots = [time.fromisoformat(value) for value in draft.get("offered_slots", [])]
         result = interpret_visit_time(orchestration_input.message_text, offered_slots)
         if not result.accepted or result.preferred_visit_time is None:
+            if result.response_code == "RESP-VISIT-TIME-002":
+                await enqueue_template(
+                    session,
+                    knowledge_sessionmaker,
+                    conversation,
+                    orchestration_input.customer,
+                    orchestration_input.inbound_message,
+                    "RESP-VISIT-001",
+                    {},
+                )
+                await enqueue_template(
+                    session,
+                    knowledge_sessionmaker,
+                    conversation,
+                    orchestration_input.customer,
+                    orchestration_input.inbound_message,
+                    "RESP-VISIT-TIME-001",
+                    {
+                        "visit_date": format_date_natural(date.fromisoformat(draft["visit_date"])),
+                        "appointment_options": format_appointment_options(offered_slots),
+                    },
+                )
+                return
             variables = (
                 {"appointment_options": format_appointment_options(offered_slots)}
                 if result.response_code == "RESP-VISIT-TIME-003"
@@ -1896,6 +2000,15 @@ async def handle_waiting_for_appointment_selection(
             return
         draft["attendee_count"] = attendee_count
         conversation.visit_draft = draft
+        if draft.get("visit_reason"):
+            await ask_name_or_confirm_visit(
+                session,
+                settings,
+                knowledge_sessionmaker,
+                orchestration_input,
+                classification,
+            )
+            return
         set_pending_action(conversation, "COLLECT_VISIT_REASON")
         await enqueue_template(
             session,
@@ -2012,6 +2125,36 @@ async def handle_waiting_for_appointment_selection(
 
     draft["visit_reason"] = orchestration_input.message_text
     conversation.visit_draft = draft
+    await ask_name_or_confirm_visit(
+        session,
+        settings,
+        knowledge_sessionmaker,
+        orchestration_input,
+        classification,
+    )
+
+
+async def ask_name_or_confirm_visit(
+    session: AsyncSession,
+    settings: Settings,
+    knowledge_sessionmaker: Any,
+    orchestration_input: OrchestrationInput,
+    classification: IntentClassification,
+) -> None:
+    """Pide el nombre si el cliente aún no lo dio; si ya se conoce, prepara el resumen de la visita.
+
+    Args:
+        session: sesión de la transacción del turno.
+        settings: configuración vigente.
+        knowledge_sessionmaker: fábrica de sesiones para plantillas.
+        orchestration_input: datos del turno.
+        classification: clasificación del mensaje.
+
+    Returns:
+        None.
+    """
+    conversation = orchestration_input.conversation
+    draft = require_visit_draft(conversation)
     if not (orchestration_input.customer.full_name or "").strip():
         draft["return_to"] = "VISIT_CONFIRMATION_SUMMARY"
         conversation.visit_draft = draft
@@ -2947,6 +3090,7 @@ async def handle_general_information(
                 orchestration_input.message_text,
                 today=current_bogota_datetime().date(),
                 require_absolute_confirmation=True,
+                include_explicit_past=True,
             )
             if candidate.resolved_date is not None:
                 conversation.booking_draft = {

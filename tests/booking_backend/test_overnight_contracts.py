@@ -23,7 +23,7 @@ async def test_0037_downgrade_rejects_active_pending_without_mutation(
         async with engine.begin() as connection:
             await connection.execute(text("DROP SCHEMA public CASCADE"))
             await connection.execute(text("CREATE SCHEMA public"))
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20261028_0037")
         async with engine.begin() as connection:
             customer_id = await connection.scalar(
                 text("INSERT INTO customer (phone_number) VALUES ('+573000003737') RETURNING id")

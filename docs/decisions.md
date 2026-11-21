@@ -475,3 +475,7 @@ de `ai_execution`. El downgrade elimina la tabla y restaura el CHECK anterior;
 si existen ejecuciones `AUDIO_TRANSCRIPTION`, falla a propósito para preservar
 los eventos append-only. Deben resolverse mediante una estrategia de reversión
 explícita, sin borrar ni modificar esas ejecuciones.
+
+## Anticipación y plantillas · 20 de noviembre de 2026
+
+Se conserva el mínimo global como valor heredado y se permite editarlo por plan. Las visitas mantienen su regla independiente. Se aprobaron los dos textos de fecha y el retiro del plazo fijo de la plantilla de hospedaje. Los adicionales siguen pendientes de validación comercial.

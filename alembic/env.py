@@ -12,7 +12,7 @@ from app.config.settings import get_settings
 
 config = context.config
 
-if config.config_file_name is not None:
+if config.config_file_name is not None and "connection" not in config.attributes:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
@@ -57,7 +57,10 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    if connection := config.attributes.get("connection"):
+        do_run_migrations(connection)
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

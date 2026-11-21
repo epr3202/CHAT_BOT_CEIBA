@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
@@ -51,6 +51,7 @@ class Reservation(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PAYMENT_PENDING")
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    commercial_details: Mapped[str | None] = mapped_column(Text)
     price_cop: Mapped[int] = mapped_column(Integer, nullable=False)
     amount_paid_cop: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     payment_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)

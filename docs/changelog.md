@@ -80,3 +80,7 @@ y U12c siguen abiertos. Sin migraciones ni activacion.
 Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
 
 R9 candidato implementa procedencia de servidor, período durable y admisión por intento; migración aditiva 20260910_0027. La validación remota y el informe final post-CI siguen separados; sin activación ni cierre de H03/H11 agregados.
+
+## Estabilización de reservas, formularios y despliegue · 20 de noviembre de 2026
+
+Candidato con protección de duplicados, retiro de avisos obsoletos, validación de FreeBusy y persistencia de formularios y adicionales. Las migraciones 0038 y 0039 incorporan correo opcional, anticipación por plan y descripción comercial. El procedimiento de restauración y el ensayo en PostgreSQL están en README.md.

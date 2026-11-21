@@ -148,5 +148,5 @@ def test_leandro_approval_record_matches_seed_and_literal_variables() -> None:
     assert set(recorded) == {LODGING, "RESP-AVAILABILITY-AVAILABLE-001", AGENDA_ERROR}
     for code, entry in recorded.items():
         assert seeded[code].answer_template == entry.answer_template
-        assert seeded[code].version == 1
+        assert seeded[code].version == (2 if code == LODGING else 1)
         assert seeded[code].status == "APPROVED"

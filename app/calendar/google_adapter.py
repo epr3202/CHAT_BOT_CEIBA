@@ -117,8 +117,11 @@ class GoogleCalendarAdapter:
             "items": [{"id": calendar_id} for calendar_id in requested_calendar_ids],
         }
         response = await self._request("POST", f"{GOOGLE_CALENDAR_API_BASE_URL}/freeBusy", payload)
-        data = response.json()
-        calendars = data.get("calendars", {})
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise CalendarUnavailableError("Malformed Google freebusy JSON") from exc
+        calendars = data.get("calendars") if isinstance(data, dict) else None
         if not isinstance(calendars, dict):
             raise CalendarUnavailableError("Google Calendar freebusy response is malformed")
 
@@ -133,19 +136,20 @@ class GoogleCalendarAdapter:
                 raise CalendarUnavailableError(
                     f"Google Calendar freebusy error for calendar: {calendar_id}"
                 )
-            busy_items = calendar_data.get("busy", [])
-            if not isinstance(busy_items, list):
+            busy_items = calendar_data.get("busy")
+            try:
+                if not isinstance(busy_items, list):
+                    raise ValueError("Missing busy array")
+                for item in busy_items:
+                    start = datetime.fromisoformat(item["start"])
+                    end = datetime.fromisoformat(item["end"])
+                    if start.utcoffset() is None or end.utcoffset() is None or end <= start:
+                        raise ValueError("Invalid busy interval")
+                    intervals.append(BusyInterval(start.astimezone(BOGOTA), end.astimezone(BOGOTA)))
+            except (KeyError, TypeError, ValueError) as exc:
                 raise CalendarUnavailableError(
                     f"Google Calendar freebusy response malformed for calendar: {calendar_id}"
-                )
-            intervals.extend(
-                BusyInterval(
-                    start=_parse_google_datetime(item["start"]),
-                    end=_parse_google_datetime(item["end"]),
-                )
-                for item in busy_items
-                if isinstance(item, dict) and "start" in item and "end" in item
-            )
+                ) from exc
         return intervals
 
     async def create_event(

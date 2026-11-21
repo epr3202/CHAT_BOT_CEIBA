@@ -310,6 +310,12 @@ async def test_g2_catalog_day_without_month_survives_until_plan_confirmation(
     assert draft_of(conversation).get("date_confirmation") is True
     await send(harness, INCIDENT_T2)
     await assert_selected_plan(harness, "CONFESION_LUNA")
+    if candidate == today:
+        assert harness.codes == ["RESP-BOOKING-NOTICE-001"]
+        assert (await current_conversation(harness)).pending_action == "SELECT_BOOKING_DATETIME"
+        assert "date" not in draft_of(await current_conversation(harness))
+        await assert_no_ai_or_handoff(harness)
+        return
     assert draft_of(await current_conversation(harness))["date"] == candidate.isoformat()
     assert harness.codes == ["RESP-EVENT-DATA-003"]
     assert (await text_bodies(harness))[-1] == await render_response(

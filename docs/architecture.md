@@ -76,3 +76,7 @@ y U12c siguen abiertos. Sin migraciones ni activacion.
 Contrato previo y RED sobre BASE R8 `068815555a266b784bafc8dd521ca618eabbf30a`: origen, invalidación durable y admisión local del Outbox ante pausa. [Diseño R9](remediation/r9-u12c-outbox-pause-2026-09-10/README.md). Validación remota pendiente; H03/H11 agregados permanecen abiertos. Sin activación.
 
 R9 candidato implementa procedencia de servidor, período durable y admisión por intento; migración aditiva 20260910_0027. La validación remota y el informe final post-CI siguen separados; sin activación ni cierre de H03/H11 agregados.
+
+## Captura comercial y agenda · 20 de noviembre de 2026
+
+El orquestador aplica los campos declarados antes de avanzar el turno. La solicitud conserva el precio oficial y la descripción comercial al crearse. Panel, transferencia y sincronización de Calendar consumen esa descripción. Las visitas tratan una respuesta FreeBusy incompleta como fallo de consulta.

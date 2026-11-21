@@ -125,9 +125,17 @@ jobs:
       - name: Frontend regression
         run: npm --prefix tests/frontend test
 
+  deployment-recovery-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify recovery before and after writer activation
+        run: bash tests/smoke_deploy_reexec.sh
+
   deploy:
     runs-on: ubuntu-latest
-    needs: [test, frontend]
+    needs: [test, frontend, deployment-recovery-smoke]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     concurrency:
       group: deploy-production

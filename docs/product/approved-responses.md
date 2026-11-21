@@ -7,9 +7,9 @@ archivo conserva el registro de la autorización. Un test comprueba su igualdad.
 
 ## RESP-ACCOMMODATION-ROMANTIC-001 — Experiencia romántica con alojamiento
 
-Estado: **APPROVED**, versión v1. Variables: `plan_name`.
+Estado: **APPROVED**, versión v2. El responsable comercial aprobó retirar el plazo fijo el 20 de noviembre de 2026. Variables: `plan_name`.
 
-> No somos hotel, pero tenemos una experiencia romántica que incluye alojamiento para la pareja: {plan_name}. Te comparto el catálogo con todos nuestros planes; cuéntame cuál te gusta y qué fecha tienes en mente, y reviso la disponibilidad. Las experiencias se reservan con mínimo un día de anticipación.
+> No somos hotel, pero tenemos una experiencia romántica que incluye alojamiento para la pareja: {plan_name}. Te comparto el catálogo con todos nuestros planes; cuéntame cuál te gusta y qué fecha tienes en mente, y reviso la disponibilidad.
 
 ## RESP-AVAILABILITY-AVAILABLE-001 — Consulta de disponibilidad favorable
 

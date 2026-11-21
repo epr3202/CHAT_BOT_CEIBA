@@ -2908,6 +2908,27 @@ Estado: **APPROVED**. Aprobado por Leandro el 2026-10-02; versión productiva v2
 
 ---
 
+## RESP-DATE-PAST-001 — Fecha solicitada anterior a hoy
+
+> La fecha que indicaste, {date}, ya pasó. ¿Qué nueva fecha te gustaría revisar?
+
+## RESP-BOOKING-NOTICE-001 — Anticipación de la experiencia
+
+> Para {plan_name} necesitamos al menos {min_days} días calendario de anticipación. Podemos consultar desde el {earliest_date}. ¿Qué fecha te gustaría revisar?
+
+## RESP-BOOKING-DUPLICATE-001 — Reserva confirmada duplicada
+
+Estado: **APPROVED**, versión v1. Aprobación de Leandro confirmada expresamente
+por Emerson el 2026-10-30 para PR #49. Variables: `plan_name`, `date`, `time`,
+tomadas del plan y la entrada de la reserva existente en America/Bogota.
+El aviso no crea otra reserva ni pausa el bot; solicita otra fecha/hora.
+Si falta una versión aprobada/renderizable, se conserva el handoff de respaldo
+con RESP-HANDOFF-001 o RESP-HANDOFF-002.
+
+> Ya tienes confirmada {plan_name} para el {date} a las {time}. Si quieres reservar otra fecha u hora, cuéntame cuál y la reviso.
+
+---
+
 ## RESP-BOOKING-PAYMENT-001 — Payment de reserva
 
 Estado: **APPROVED**, versión v3, publicada mediante PR #43 el 2026-10-07
@@ -3012,10 +3033,10 @@ Registro de aprobación: `docs/product/approved-responses.md`.
 
 ## RESP-ACCOMMODATION-ROMANTIC-001 — Experiencia romántica con alojamiento
 
-Estado: **APPROVED**, versión v1. Variables: `plan_name`, presentado desde el
+Estado: **APPROVED**, versión v2. El 20 de noviembre de 2026 se aprobó retirar la frase de anticipación fija. Variables: `plan_name`, presentado desde el
 Plan activo identificado por `LODGING_PLAN_CODE`.
 
-> No somos hotel, pero tenemos una experiencia romántica que incluye alojamiento para la pareja: {plan_name}. Te comparto el catálogo con todos nuestros planes; cuéntame cuál te gusta y qué fecha tienes en mente, y reviso la disponibilidad. Las experiencias se reservan con mínimo un día de anticipación.
+> No somos hotel, pero tenemos una experiencia romántica que incluye alojamiento para la pareja: {plan_name}. Te comparto el catálogo con todos nuestros planes; cuéntame cuál te gusta y qué fecha tienes en mente, y reviso la disponibilidad.
 
 ---
 

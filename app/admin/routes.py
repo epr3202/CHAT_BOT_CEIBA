@@ -25,7 +25,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import cast, func, or_, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
@@ -193,6 +193,7 @@ class PlanPatchRequest(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=180)
     price_cop: int | None = Field(None, gt=0, le=2147483647)
+    min_lead_days: int | None = Field(None, ge=0, le=2147483647)
     duration_minutes: int | None = Field(None, gt=0, le=2147483647)
     exclusive: bool | None = None
     weekend_only: bool | None = None
@@ -232,6 +233,7 @@ class PlanPayload(BaseModel):
     event_type: Literal["ROMANTIC_DINNER", "PROPOSAL"]
     price_cop: int
     duration_minutes: int
+    min_lead_days: int
     exclusive: bool
     weekend_only: bool
     overnight: bool
@@ -241,6 +243,11 @@ class PlanPayload(BaseModel):
     sort_order: int
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("min_lead_days", mode="before")
+    @classmethod
+    def inherit_notice(cls, value: int | None) -> int:
+        return get_settings().booking_min_lead_days if value is None else value
 
 
 ReservationStatus = Literal["PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED", "EXPIRED", "CANCELLED"]
@@ -257,6 +264,7 @@ class ReservationPayload(BaseModel):
     customer_id: int
     plan_name: str | None = None
     customer_name: str | None = None
+    commercial_details: str | None = None
     customer_phone: str | None = None
     status: ReservationStatus
     starts_at: datetime
@@ -311,6 +319,7 @@ class ConversationPayload(BaseModel):
     last_intent: str | None
     pending_action: str | None
     booking_draft: dict[str, Any] | None = None
+    reservation_details: str | None = None
     bot_enabled: bool
     handoff_id: int | None
     handoff_status: str | None
@@ -786,13 +795,13 @@ async def check_fresh_booking(
     starts_at: datetime,
     ends_at: datetime,
     *,
+    customer_id: int,
     exclude: UUID | None = None,
 ) -> None:
     from sqlalchemy.orm import joinedload
 
     from app.reservation.availability import evaluate_booking_availability
 
-    await lock_booking_changes(session)
     rows = list(
         await session.scalars(
             select(Reservation)
@@ -811,6 +820,7 @@ async def check_fresh_booking(
         ends_at=ends_at,
         reservations=rows,
         calendar_events=[],
+        customer_id=customer_id,
         exclusivity_keyword=get_settings().booking_exclusivity_keyword,
     )
     if not availability.available:
@@ -829,12 +839,13 @@ async def create_manual_reservation(
     plan, ends_at, _ = await admin_booking_context(session, body.plan_id, body.starts_at)
     phone = "+" + body.phone.lstrip("+")
     async with session.begin():
-        await check_fresh_booking(session, plan, body.starts_at, ends_at)
+        await lock_booking_changes(session)
         customer = await session.scalar(select(Customer).where(Customer.phone_number == phone))
         if customer is None:
             customer = Customer(phone_number=phone, full_name=body.full_name)
             session.add(customer)
             await session.flush()
+        await check_fresh_booking(session, plan, body.starts_at, ends_at, customer_id=customer.id)
         conversation = await session.scalar(
             select(Conversation)
             .where(
@@ -900,7 +911,10 @@ async def schedule_reservation(
         row = await session.get(Reservation, reservation_id, with_for_update=True)
         if row.status in {"EXPIRED", "CANCELLED"}:
             raise HTTPException(409, "La reserva está vencida o cancelada.")
-        await check_fresh_booking(session, plan, body.starts_at, ends_at, exclude=reservation_id)
+        await check_fresh_booking(
+            session, plan, body.starts_at, ends_at,
+            customer_id=row.customer_id, exclude=reservation_id,
+        )
         old_start, old_end = row.starts_at, row.ends_at
         old_due, old_overdue = row.balance_due_at, row.balance_overdue_at
         row.starts_at, row.ends_at = body.starts_at.astimezone(UTC), ends_at.astimezone(UTC)
@@ -2289,8 +2303,18 @@ async def list_conversations(
     if assigned_to_me:
         filters.append(Conversation.assigned_agent_id == agent.id)
 
+    latest_details = (
+        select(Reservation.commercial_details)
+        .where(
+            Reservation.conversation_id == Conversation.id,
+            Reservation.status.in_(("RESERVED", "PAYMENT_PENDING", "PAYMENT_REVIEW")),
+        )
+        .order_by(Reservation.created_at.desc(), Reservation.reservation_id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
     statement = (
-        select(Conversation, Customer, Agent)
+        select(Conversation, Customer, Agent, latest_details)
         .join(Customer, Conversation.customer_id == Customer.id)
         .outerjoin(Agent, Conversation.assigned_agent_id == Agent.id)
         .order_by(Conversation.last_message_at.desc().nullslast(), Conversation.id.desc())
@@ -2302,7 +2326,7 @@ async def list_conversations(
     result = await session.execute(statement)
     conversations = result.all()
     payloads: list[ConversationPayload] = []
-    for conversation, customer, assigned_agent in conversations:
+    for conversation, customer, assigned_agent, reservation_details in conversations:
         handoff = await latest_handoff_for_conversation(session, conversation.id)
         latest_message = await latest_message_for_conversation(session, conversation.id)
         latest_body = message_body(latest_message) if latest_message is not None else None
@@ -2316,6 +2340,7 @@ async def list_conversations(
                 last_intent=conversation.last_intent,
                 pending_action=conversation.pending_action,
                 booking_draft=conversation.booking_draft,
+                reservation_details=reservation_details,
                 bot_enabled=conversation.bot_enabled,
                 handoff_id=handoff.id if handoff is not None else None,
                 handoff_status=handoff.status if handoff is not None else None,

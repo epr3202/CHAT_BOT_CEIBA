@@ -81,18 +81,28 @@ def evaluate_booking_availability(
     calendar_events: list[CalendarEvent],
     reservations: list[Reservation],
     exclusivity_keyword: str,
+    customer_id: int | None = None,
 ) -> BookingAvailability:
     """Pure D3 intersection with exclusive ends; reservation.plan must be loaded."""
     keyword = _normalized(exclusivity_keyword)
     if not keyword:
         raise ValueError("The booking exclusivity keyword must not be empty")
-    blockers = [
-        BookingBlocker("CALENDAR_EXCLUSIVE", event.event_id)
-        for event in calendar_events
-        if event.start < ends_at
-        and starts_at < event.end
-        and keyword in _normalized(f"{event.summary} {event.description or ''}")
-    ]
+    # Calendar also contains free-text details quoted from the customer. Only the
+    # business-owned part of a synchronized event can declare exclusivity.
+    commercial_notes = {
+        row.external_calendar_id: row.commercial_details
+        for row in reservations
+        if row.external_calendar_id and row.commercial_details
+    }
+    blockers = []
+    for event in calendar_events:
+        if event.start >= ends_at or starts_at >= event.end:
+            continue
+        description = event.description or ""
+        if snapshot := commercial_notes.get(event.event_id):
+            description = description.replace(snapshot, "", 1)
+        if keyword in _normalized(f"{event.summary} {description}"):
+            blockers.append(BookingBlocker("CALENDAR_EXCLUSIVE", event.event_id))
     for reservation in reservations:
         if (
             reservation.status != "RESERVED"
@@ -104,9 +114,20 @@ def evaluate_booking_availability(
             blockers.append(BookingBlocker("RESERVED_OVERNIGHT", str(reservation.reservation_id)))
         elif reservation.plan.exclusive:
             blockers.append(BookingBlocker("RESERVED_EXCLUSIVE", str(reservation.reservation_id)))
-        elif plan.exclusive:
+        elif plan.exclusive or (
+            customer_id is not None and reservation.customer_id == customer_id
+            and reservation.plan_id == plan.plan_id
+        ):
             blockers.append(BookingBlocker("RESERVED_CONFLICT", str(reservation.reservation_id)))
     return BookingAvailability(not blockers, blockers)
+
+
+def minimum_notice_days(plan: Plan | None, settings: Settings) -> int:
+    return (
+        plan.min_lead_days
+        if plan is not None and plan.min_lead_days is not None
+        else settings.booking_min_lead_days
+    )
 
 
 def validate_booking_window(
@@ -151,7 +172,7 @@ def validate_booking_window(
     elif end > allowed_end:
         return BookingWindow(False, "OUTSIDE_HOURS")
     today = today if today is not None else datetime.now(BOGOTA).date()
-    if start.date() < today + timedelta(days=settings.booking_min_lead_days):
+    if (start.date() - today).days < minimum_notice_days(plan, settings):
         return BookingWindow(False, "MIN_LEAD_DAYS")
     return BookingWindow(True)
 

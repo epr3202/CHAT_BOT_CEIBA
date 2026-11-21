@@ -139,3 +139,37 @@ def test_r2_default_clock_uses_bogota(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(MODULE + ".datetime", Clock)
     assert validate(START, START + timedelta(hours=3), settings()).ok
     assert START.astimezone(BOGOTA).date() == date(2030, 10, 10)
+
+
+def test_extra_request_does_not_set_calendar_exclusivity() -> None:
+    from app.calendar.adapter import CalendarEvent
+    from app.reservation.availability import evaluate_booking_availability
+
+    selected = plan()
+    snapshot = "Datos informados por el cliente:\nAdicional por cotizar: consultar exclusividad"
+    row = Reservation(
+        reservation_id=uuid4(),
+        status="RESERVED",
+        starts_at=START,
+        ends_at=START + timedelta(hours=3),
+        commercial_details=snapshot,
+    )
+    row.plan = selected
+    row.external_calendar_id = row.reservation_id.hex
+    event = CalendarEvent(
+        row.external_calendar_id,
+        "a",
+        selected.name,
+        f"{snapshot}\nreservation_id: {row.reservation_id}",
+        START,
+        row.ends_at,
+    )
+    check = evaluate_booking_availability(
+        plan=selected,
+        starts_at=START,
+        ends_at=row.ends_at,
+        calendar_events=[event],
+        reservations=[row],
+        exclusivity_keyword="exclusividad",
+    )
+    assert check.available and not check.blockers

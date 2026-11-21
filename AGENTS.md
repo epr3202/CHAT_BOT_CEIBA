@@ -73,6 +73,8 @@ Las tareas específicas llegan por prompt; estas reglas aplican SIEMPRE.
   tras un borrado.
 - **Festivos de visitas:** runtime lee exclusivamente la tabla `holiday`. La dependencia
   `holidays` solo puede usarse en scripts de seed, nunca dentro del motor de disponibilidad.
+- **Anticipación de planes:** el valor por plan se cuenta en días calendario de Bogotá. Un valor sin configurar hereda el mínimo global. Revalidar la anticipación y la ocupación al confirmar la solicitud.
+- **Datos comerciales:** mantener separados precio oficial histórico, subtotal declarado y adicionales pedidos. El asesor valida los adicionales. Una fecha corregida o la reentrega de un webhook conservan los detalles de la solicitud.
 - **Transiciones de cita:** siempre `PENDING_CONFIRMATION → CONFIRMED`. Nunca crear
   directamente en `CONFIRMED`.
 - **Pagos:** el bot solo registra y escala (`PAYMENT_REVIEW`). La confirmación es
