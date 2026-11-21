@@ -739,9 +739,14 @@ def deterministic_booking_or_catalog_classification(
             context.get("pending_action") == "CONFIRM_AVAILABILITY_BOOKING"
             and normalize_confirmation_text(message_text) not in AFFIRMATIONS
         ):
-            # Classify a declined/corrected inquiry before opening the apply transaction.
-            # handle_booking_step clears that pending and reuses this normal-route result.
-            return None
+            from app.orchestrator.booking_flow import inquiry_schedule_reply
+
+            # A date/time correction rechecks this plan. Classify other replies
+            # before opening the apply transaction for their normal route.
+            if settings is None or not inquiry_schedule_reply(
+                message_text, current_bogota_datetime().date(), settings
+            ):
+                return None
         return IntentClassification(
             primary_intent="UNKNOWN",
             sub_intent=None,
