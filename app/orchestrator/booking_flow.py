@@ -330,6 +330,67 @@ def consume_date_time(
     return recognized or clock is not None
 
 
+def inquiry_schedule_reply(message: str, today: date, settings: Settings) -> dict[str, Any]:
+    """Accept a date/time reply only when it accounts for the whole message."""
+    message = message.strip(" ¿?¡!.,")
+    fields: dict[str, Any] = {}
+    decision = resolve_visit_date_text(
+        message, today=today, require_absolute_confirmation=True, include_explicit_past=True
+    )
+    remainder = message
+    if decision.resolved_date and decision.matched_text:
+        before, _, remainder = message.partition(decision.matched_text)
+        if normalize_catalog_event_type_label(before) not in {"", "el", "para el"}:
+            return {}
+        fields.update(
+            date=decision.resolved_date.isoformat(), date_confirmation=decision.needs_confirmation
+        )
+        remainder = remainder.strip(" ,")
+    if remainder:
+        if not re.fullmatch(
+            r"(?:a las\s+)?\d{1,2}(?::\d{2})?"
+            r"(?:\s*(?:[ap]\.?\s*m\.?|de la (?:tarde|noche|mañana)))?",
+            remainder,
+            re.I,
+        ):
+            return {}
+        clock = resolve_booking_clock(
+            remainder,
+            only_time_expected=False,
+            hours_start=settings.booking_hours_start,
+            latest_start=settings.booking_latest_start,
+        )
+        if clock is None:
+            return {}
+        fields["time"] = clock.strftime("%H:%M")
+    return fields
+
+
+def alternative_schedule_text(message: str, plan: Plan) -> str | None:
+    """Return the original scheduling suffix only for a positive catalog choice."""
+    message = re.sub(
+        r"^[\s¿¡]*(?:(?:y mejor|mejor|y|qu[eé] tal)\s+)?"
+        r"(?:(?:hay cupo para|hay disponibilidad para)\s+)?(?:(?:el plan|el)\s+)?",
+        "",
+        message,
+        flags=re.I,
+    )
+    name = normalize_catalog_event_type_label(plan.name)
+    words = list(re.finditer(r"\w+", message))
+    count = len(name.split())
+    if not count or len(words) < count:
+        return None
+    end = words[count - 1].end()
+    if normalize_catalog_event_type_label(message[:end]) != name:
+        return None
+    suffix = message[end:].strip(" ,¿?¡!.")
+    if re.search(r"\b(?:no|tampoco|excepto)\b", suffix, re.I):
+        return None
+    if normalize_catalog_event_type_label(suffix) in {"a la misma hora", "en ese horario"}:
+        return ""
+    return suffix
+
+
 async def has_pending_request(session: AsyncSession, customer_id: int) -> bool:
     existing = await session.scalar(
         select(Reservation.reservation_id)
@@ -818,6 +879,10 @@ async def ask_booking_datetime(
     response_kind: str = "DATETIME",
 ) -> None:
     draft = dict(turn.conversation.booking_draft or {})
+    if response_kind == "UNAVAILABLE" and draft.get("date") and draft.get("time"):
+        draft["unavailable_slot"] = {"date": draft["date"], "time": draft["time"]}
+    else:
+        draft.pop("unavailable_slot", None)
     for field in ("date", "time", "suggested_date", "date_confirmation"):
         draft.pop(field, None)
     turn.conversation.booking_draft = draft
@@ -881,15 +946,56 @@ async def handle_booking_step(
         if plan is not None and plan.active:
             await continue_slots(session, settings, sm, turn, plan)
             return
+    plans = await plans_for_turn(session, turn)
+    today = core.current_bogota_datetime().date()
+    if action == "SELECT_BOOKING_DATETIME" and not (
+        draft.get("date") or draft.get("suggested_date")
+    ):
+        normalized = " " + normalize_catalog_event_type_label(turn.message_text) + " "
+        mentioned = [
+            p for p in plans if f" {normalize_catalog_event_type_label(p.name)} " in normalized
+        ]
+        if any(str(p.plan_id) != draft.get("plan_id") for p in mentioned):
+            plan = mentioned[0]
+            suffix = (
+                alternative_schedule_text(turn.message_text, plan) if len(mentioned) == 1 else None
+            )
+            if suffix is None:
+                # Never apply a date from an ambiguous or negated choice to the old plan.
+                await send(session, settings, sm, turn, "DATETIME")
+                return
+            supplied = inquiry_schedule_reply(suffix, today, settings)
+            previous = draft.pop("unavailable_slot", {})
+            for field in (
+                "price_cop",
+                "duration_minutes",
+                "checkout",
+                "suggested_date",
+                "date_confirmation",
+                "time",
+            ):
+                draft.pop(field, None)
+            if not suffix or supplied:
+                draft.update(previous, **supplied)
+            draft.update(plan_id=str(plan.plan_id), plan_code=plan.code, inquiry_only=True)
+            conversation.booking_draft = draft
+            conversation.failed_understanding_count = 0
+            await continue_slots(session, settings, sm, turn, plan)
+            return
     if (
         action == "CONFIRM_AVAILABILITY_BOOKING"
         and normalize_confirmation_text(turn.message_text) not in AFFIRMATIONS
     ):
+        supplied = inquiry_schedule_reply(turn.message_text, today, settings)
+        plan = next((p for p in plans if str(p.plan_id) == draft.get("plan_id")), None)
+        if supplied and plan is not None:
+            conversation.booking_draft = {**draft, **supplied}
+            await continue_slots(session, settings, sm, turn, plan)
+            return
         draft.pop("inquiry_only", None)
         conversation.booking_draft = draft
         conversation.pending_action = None
         return False
-    plans = await plans_for_turn(session, turn)
     if action == "SELECT_BOOKING_PLAN":
         normalized = normalize_catalog_event_type_label(turn.message_text)
         named = match_booking_plan(
@@ -1113,6 +1219,7 @@ async def handle_booking_step(
         ):
             await not_understood(session, settings, sm, turn, plan)
             return
+    draft.pop("unavailable_slot", None)
     conversation.failed_understanding_count = 0
     conversation.booking_draft = draft
     await continue_slots(session, settings, sm, turn, plan)

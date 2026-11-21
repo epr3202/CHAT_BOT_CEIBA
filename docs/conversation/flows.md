@@ -2916,7 +2916,13 @@ Si cambió la agenda repregunta con UNAVAILABLE; si falla aplica C1; si sigue
 libre comprueba solicitudes PAYMENT_PENDING/PAYMENT_REVIEW del customer antes
 de avanzar a nombre o confirmación ordinaria. El guard inicial se exceptúa
 solo para la consulta, como el followup de catálogo; el guard final permanece.
-Negativo u otra respuesta limpia la marca y el pending, preserva el borrador
+Después de UNAVAILABLE, la franja rechazada queda como referencia. Si el
+cliente propone por nombre otro plan activo de la misma categoría, el backend
+consulta ese plan en la misma fecha y hora, incorporando cualquier cambio
+explícito de fecha u hora. Con un borrador antiguo sin esa referencia, conserva
+el nuevo plan y pide los datos que faltan. Después de una consulta favorable,
+repetir o corregir la fecha u hora vuelve a consultar la agenda del plan.
+Una negativa u otra respuesta ajena a la franja limpia la marca y el pending, preserva el borrador
 y reutiliza la clasificación normal obtenida fuera de transacción. Las
 auditorías AVAILABILITY_INQUIRY_ANSWERED/CONVERTED registran la decisión.
 
