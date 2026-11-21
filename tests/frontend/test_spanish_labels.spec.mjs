@@ -45,18 +45,18 @@ test("cinco vistas en español con datos sembrados y valores API intactos", asyn
   await page.locator("#conversationStateFilter").selectOption("");
   const pending = page.locator(".caseRow").filter({ hasText: "María del Carmen" });
   await expect(pending).toContainText("Revisión de comprobante");
-  await pending.getByRole("button", { name: "Ver resumen" }).click();
+  await pending.getByRole("button", { name: "Abrir conversación de María del Carmen" }).click();
+  await page.locator("#chatSummary").click();
   await expect(page.locator("#summaryModalBody")).toContainText("Motivo: Revisión de comprobante");
   await expect(page.locator("#summaryModalBody")).toContainText("Recibido: Adjunto el comprobante.");
   await expectSpanish(page);
   await page.locator("#closeSummaryModal").click();
 
-  await page.locator('[data-view="handoffs"]').click();
-  await expect(page.locator("#handoffList")).toContainText("Revisión de comprobante");
-  await expect(page.locator("#handoffList")).toContainText("Pendiente");
-  await expect(page.locator("#handoffList")).toContainText("Urgente");
-  await expect(page.locator(".chatMeta").last()).toContainText("Suprimido");
-  await capture(page, testInfo, "handoffs");
+  await expect(pending).toContainText("Revisión de comprobante");
+  await expect(pending).toContainText("Pendiente");
+  await expect(pending).toContainText("Urgente");
+  await expect(page.locator("#activeHistory")).toContainText("Suprimido");
+  await capture(page, testInfo, "conversacion-pendiente");
 
   await page.locator('[data-view="agents"]').click();
   await page.locator("#agentStatusFilter").selectOption("inactive");

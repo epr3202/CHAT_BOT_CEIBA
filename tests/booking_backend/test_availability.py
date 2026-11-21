@@ -141,12 +141,18 @@ def test_r2_default_clock_uses_bogota(monkeypatch: pytest.MonkeyPatch) -> None:
     assert START.astimezone(BOGOTA).date() == date(2030, 10, 10)
 
 
-def test_extra_request_does_not_set_calendar_exclusivity() -> None:
+@pytest.mark.parametrize("confirmed_schedule", [False, True])
+def test_extra_request_does_not_set_calendar_exclusivity(confirmed_schedule: bool) -> None:
     from app.calendar.adapter import CalendarEvent
     from app.reservation.availability import evaluate_booking_availability
 
     selected = plan()
-    snapshot = "Datos informados por el cliente:\nAdicional por cotizar: consultar exclusividad"
+    from app.reservation.calendar_description import reservation_calendar_description
+
+    snapshot = (
+        "Datos informados por el cliente:\nFecha deseada: 99 de enero\n"
+        "Adicional por cotizar: consultar exclusividad"
+    )
     row = Reservation(
         reservation_id=uuid4(),
         status="RESERVED",
@@ -156,11 +162,14 @@ def test_extra_request_does_not_set_calendar_exclusivity() -> None:
     )
     row.plan = selected
     row.external_calendar_id = row.reservation_id.hex
+    description = f"{snapshot}\nreservation_id: {row.reservation_id}"
+    if confirmed_schedule:
+        description = reservation_calendar_description(description, START, row.ends_at)
     event = CalendarEvent(
         row.external_calendar_id,
         "a",
         selected.name,
-        f"{snapshot}\nreservation_id: {row.reservation_id}",
+        description,
         START,
         row.ends_at,
     )

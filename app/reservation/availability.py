@@ -14,6 +14,7 @@ from sqlalchemy.orm import joinedload
 from app.calendar.adapter import CalendarAdapter, CalendarEvent, CalendarUnavailableError
 from app.config.settings import Settings
 from app.plan.models import Plan
+from app.reservation.calendar_description import without_request_schedule
 from app.reservation.models import Reservation
 
 BOGOTA = ZoneInfo("America/Bogota")
@@ -100,7 +101,10 @@ def evaluate_booking_availability(
             continue
         description = event.description or ""
         if snapshot := commercial_notes.get(event.event_id):
-            description = description.replace(snapshot, "", 1)
+            # Historical events contain the original snapshot. New events omit provisional dates.
+            notes = snapshot if snapshot in description else without_request_schedule(snapshot)
+            if notes:
+                description = description.replace(notes, "", 1)
         if keyword in _normalized(f"{event.summary} {description}"):
             blockers.append(BookingBlocker("CALENDAR_EXCLUSIVE", event.event_id))
     for reservation in reservations:

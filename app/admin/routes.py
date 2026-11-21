@@ -93,6 +93,7 @@ from app.reservation.availability import (
     validate_booking_window,
 )
 from app.reservation.booking import create_pending_reservation, deposit_amount
+from app.reservation.calendar_description import reservation_calendar_description
 from app.reservation.models import Reservation
 from app.reservation.service import InvalidReservationTransition, transition_reservation
 from app.reservation.settlement import (
@@ -131,12 +132,6 @@ class ResetConversationRequest(BaseModel):
     phone_number: str
     dry_run: bool = True
     reason: str | None = Field(None, max_length=300)
-
-    @model_validator(mode="after")
-    def require_reason_for_execution(self) -> ResetConversationRequest:
-        if not self.dry_run and not (self.reason and self.reason.strip()):
-            raise ValueError("Reason is required for a reset")
-        return self
 
 
 class AgentMessageRequest(BaseModel):
@@ -307,6 +302,7 @@ class OpenMessagesRequest(BaseModel):
 
 
 class AgendaEventPayload(BaseModel):
+    kind: Literal["reservation", "visit", "event"] = "event"
     title: str
     description: str | None
     start: datetime
@@ -328,6 +324,16 @@ class ConversationMessagePayload(BaseModel):
     created_at: datetime
 
 
+class ConversationReservationContext(BaseModel):
+    plan_name: str
+    status: str
+    starts_at: datetime
+    ends_at: datetime
+    guest_count: int | None
+    event_type: str | None
+    special_requests: str | None
+
+
 class ConversationPayload(BaseModel):
     unopened_count: int = 0
     id: int
@@ -339,6 +345,7 @@ class ConversationPayload(BaseModel):
     pending_action: str | None
     booking_draft: dict[str, Any] | None = None
     reservation_details: str | None = None
+    reservation_context: ConversationReservationContext | None = None
     bot_enabled: bool
     handoff_id: int | None
     handoff_status: str | None
@@ -1620,20 +1627,60 @@ async def list_calendar_events(
         )
     except CalendarUnavailableError as exc:
         raise HTTPException(503, "No se pudo consultar la agenda completa.") from exc
-    return [
-        AgendaEventPayload(
-            title=event.summary or "Ocupado",
-            description=event.description,
-            start=event.start,
-            end=event.end,
-            all_day=event.all_day,
-            start_date=event.start.date()
-            if event.all_day
-            else event.start.astimezone(bogota).date(),
-            end_date=event.end.date() if event.all_day else event.end.astimezone(bogota).date(),
+    # Provider IDs are scoped to a calendar. Never enrich an unrelated calendar's event.
+    primary = settings.google_calendar_id.strip()
+    event_ids = {event.event_id for event in events if event.calendar_id == primary}
+    reservations = {}
+    visits = set()
+    if event_ids:
+        reservations = dict(
+            (
+                await session.execute(
+                    select(Reservation.external_calendar_id, Reservation.reservation_id).where(
+                        Reservation.external_calendar_id.in_(event_ids),
+                        Reservation.status == "RESERVED",
+                    )
+                )
+            ).all()
         )
-        for event in events
-    ]
+        visits = set(
+            await session.scalars(
+                select(Appointment.external_calendar_id).where(
+                    Appointment.external_calendar_id.in_(event_ids)
+                )
+            )
+        )
+    result = []
+    for event in events:
+        kind: Literal["reservation", "visit", "event"] = "event"
+        description = event.description
+        if event.calendar_id == primary:
+            if reservation_id := reservations.get(event.event_id):
+                kind = "reservation"
+                if not event.all_day:
+                    notes = (
+                        (description or "")
+                        .removesuffix(f"reservation_id: {reservation_id}")
+                        .rstrip()
+                    )
+                    description = reservation_calendar_description(notes, event.start, event.end)
+            elif event.event_id in visits:
+                kind = "visit"
+        result.append(
+            AgendaEventPayload(
+                kind=kind,
+                title=event.summary or "Ocupado",
+                description=description,
+                start=event.start,
+                end=event.end,
+                all_day=event.all_day,
+                start_date=event.start.date()
+                if event.all_day
+                else event.start.astimezone(bogota).date(),
+                end_date=event.end.date() if event.all_day else event.end.astimezone(bogota).date(),
+            )
+        )
+    return result
 
 
 @router.get("/appointments")
@@ -2336,7 +2383,8 @@ async def reset_conversation(
             raw_phone_number=body.phone_number,
             dry_run=body.dry_run,
             actor=admin_name,
-            reason=body.reason,
+            reason=(body.reason or "").strip()
+            or "Reinicio manual de conversación por el administrador",
             request_id=request_id,
         )
     return {**asdict(summary), "request_id": request_id}
@@ -2369,14 +2417,15 @@ async def list_conversations(
     if assigned_to_me:
         filters.append(Conversation.assigned_agent_id == agent.id)
 
-    latest_details = (
-        select(Reservation.commercial_details)
+    latest_reservation_id = (
+        select(Reservation.reservation_id)
         .where(
             Reservation.conversation_id == Conversation.id,
             Reservation.status.in_(("RESERVED", "PAYMENT_PENDING", "PAYMENT_REVIEW")),
         )
         .order_by(Reservation.created_at.desc(), Reservation.reservation_id.desc())
         .limit(1)
+        .correlate(Conversation)
         .scalar_subquery()
     )
     opened = select(AgentMessageOpen.message_id).where(AgentMessageOpen.agent_id == agent.id)
@@ -2424,7 +2473,23 @@ async def list_conversations(
             )
         )
     statement = (
-        select(Conversation, Customer, Agent, latest_details, unopened, Handoff, Message)
+        select(
+            Conversation,
+            Customer,
+            Agent,
+            Reservation,
+            Plan.name,
+            Event.guest_count,
+            Event.event_type,
+            Event.special_requests,
+            unopened,
+            Handoff,
+            Message,
+        )
+        .select_from(Conversation)
+        .outerjoin(Reservation, Reservation.reservation_id == latest_reservation_id)
+        .outerjoin(Plan, Plan.plan_id == Reservation.plan_id)
+        .outerjoin(Event, Event.event_id == Reservation.event_id)
         .join(Customer, Conversation.customer_id == Customer.id)
         .outerjoin(Agent, Conversation.assigned_agent_id == Agent.id)
         .outerjoin(Handoff, Handoff.id == last_handoff_id)
@@ -2442,7 +2507,11 @@ async def list_conversations(
         conversation,
         customer,
         assigned_agent,
-        reservation_details,
+        reservation,
+        plan_name,
+        guest_count,
+        event_type,
+        special_requests,
         unopened_count,
         handoff,
         latest_message,
@@ -2458,7 +2527,19 @@ async def list_conversations(
                 last_intent=conversation.last_intent,
                 pending_action=conversation.pending_action,
                 booking_draft=conversation.booking_draft,
-                reservation_details=reservation_details,
+                reservation_details=reservation.commercial_details if reservation else None,
+                reservation_context=(
+                    ConversationReservationContext(
+                        plan_name=plan_name,
+                        status=reservation.status,
+                        starts_at=reservation.starts_at,
+                        ends_at=reservation.ends_at,
+                        guest_count=guest_count,
+                        event_type=event_type,
+                        special_requests=special_requests,
+                    )
+                    if reservation else None
+                ),
                 unopened_count=unopened_count,
                 bot_enabled=conversation.bot_enabled,
                 handoff_id=handoff.id if handoff is not None else None,

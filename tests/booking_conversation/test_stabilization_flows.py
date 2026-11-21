@@ -119,6 +119,11 @@ async def test_form_replay_payment_panel_calendar_and_history(
     agent_headers = await login_headers(api, "80000111")
     cases = await api.get("/admin/conversations", headers=agent_headers)
     assert cases.status_code == 200 and cases.json()[0]["reservation_details"] == snapshot
+    context = cases.json()[0]["reservation_context"]
+    assert context["plan_name"] == "Romance entre Copas"
+    assert context["status"] == "PAYMENT_PENDING"
+    assert context["starts_at"] == detail["starts_at"] and context["ends_at"] == detail["ends_at"]
+    assert "price_cop" not in context and "amount_paid_cop" not in context
     assert detail["price_cop"] == 400000 and detail["status"] == "PAYMENT_PENDING"
     async with harness.db.begin() as session:
         conversation = await harness.conversation()
@@ -158,7 +163,13 @@ async def test_form_replay_payment_panel_calendar_and_history(
     )
     assert accepted.status_code == 200, accepted.text
     calendar_event = await harness.calendar.get_event(reservation.reservation_id.hex)
-    assert snapshot in calendar_event.description
+    assert "Fecha confirmada: 08/11/2026" in calendar_event.description
+    assert "Horario confirmado: 19:00 – 22:00" in calendar_event.description
+    assert "Fecha deseada:" not in calendar_event.description
+    assert "Horario preferido:" not in calendar_event.description
+    for line in snapshot.splitlines():
+        if not line.startswith(("Fecha deseada:", "Horario preferido:")):
+            assert line in calendar_event.description
     assert (
         await api.patch(url, headers=headers, json={"price_cop": 450000, "min_lead_days": 20})
     ).status_code == 200

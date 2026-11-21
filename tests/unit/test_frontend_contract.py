@@ -118,7 +118,7 @@ def test_frontend_server_keeps_webhook_secret_out_of_logs() -> None:
 def test_conversations_require_operation_token_before_fetching() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
     function_start = app_js.index("async function loadAllAdminCases(")
-    function_end = app_js.index("function caseFromHandoff", function_start)
+    function_end = app_js.index("function caseFromConversation", function_start)
     function_body = app_js[function_start:function_end]
 
     assert "hasOperationToken()" in function_body
@@ -165,10 +165,10 @@ def test_handoff_chat_uses_ajax_polling() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
     index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
 
-    assert 'class="chatThread"' in index_html
-    assert "/api/admin/conversations/${conversationId}/messages" in app_js
-    assert "setInterval(refreshVisibleHandoffMessages, state.chatPollIntervalMs)" in app_js
-    assert "function renderChatThread" in app_js
+    inbox = FRONTEND.joinpath("inbox.mjs").read_text()
+    assert 'id="activeHistory"' in index_html
+    assert "/api/admin/conversations/${active.conversationId}/messages" in inbox
+    assert "setInterval(inbox.load, state.chatPollIntervalMs)" in app_js
 
 
 def test_admin_cases_list_conversations_and_can_take_any_chat() -> None:
@@ -176,8 +176,9 @@ def test_admin_cases_list_conversations_and_can_take_any_chat() -> None:
     server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
 
     assert "requestJson(`/api/admin/conversations?${params.toString()}`" in app_js
-    assert "function takeConversation" in app_js
-    assert "/api/admin/conversations/${conversationId}/take" in app_js
+    inbox = FRONTEND.joinpath("inbox.mjs").read_text()
+    assert "/api/admin/conversations/${id}/take" in inbox
+    assert "/api/admin/handoffs/${item.id}/take" in inbox
     assert 'path === "/api/admin/conversations"' in server
     assert 'path === "/api/admin/agents"' in server
 
@@ -188,14 +189,15 @@ def test_frontend_has_conversation_filters_and_direct_take_uses_agent_token() ->
 
     assert 'id="conversationStateFilter"' in index_html
     assert 'id="assignedToMeFilter"' in index_html
-    assert 'if (state.assignedToMe) params.set("assigned_to_me", "true")' in app_js
     assert 'params.set("assigned_to_me", "true")' in app_js
-    function_start = app_js.index("async function takeConversation")
-    function_end = app_js.index("function openFromHandoff", function_start)
-    function_body = app_js[function_start:function_end]
-    assert "headers: sessionHeaders()" in function_body
-    assert "await resolveAgentIdentity()" in function_body
-    assert 'options.body = JSON.stringify({ agent: "ADMIN" })' not in function_body
+    assert 'params.set("handoff_status", "TAKEN")' in app_js
+    assert "headers: operationHeaders()" in app_js
+    assert "api: panelApi" in app_js
+    assert "return sessionHeaders();" in app_js
+    inbox = FRONTEND.joinpath("inbox.mjs").read_text()
+    assert 'const options = { method: "POST" };' in inbox
+    assert "const handoff = await api(url, options);" in inbox
+    assert 'agent: "ADMIN"' not in inbox
     assert "prompt(" not in app_js
     assert "alert(" not in app_js
 
@@ -221,13 +223,13 @@ def test_frontend_summary_button_opens_modal() -> None:
     index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
     styles = FRONTEND.joinpath("styles.css").read_text(encoding="utf-8")
 
-    assert 'id="summaryModal"' in index_html
+    assert '<dialog id="summaryModal"' in index_html
     assert 'id="summaryModalBody"' in index_html
     assert "function showSummary" in app_js
-    assert '$("#summaryModal").hidden = false' in app_js
-    assert "function closeSummaryModal" in app_js
+    assert '$("#summaryModal").showModal()' in app_js
+    assert '$("#summaryModal").close()' in app_js
     assert "conversation.handoff_summary" in app_js
-    assert ".modalBackdrop" in styles
+    assert "dialog::backdrop" in styles
 
 
 def test_frontend_persists_followup_bandeja_state() -> None:
@@ -237,7 +239,7 @@ def test_frontend_persists_followup_bandeja_state() -> None:
     assert 'const assignedToMeStorageKey = "ceiba.assignedToMe"' in app_js
     assert "function persistViewState" in app_js
     assert "localStorage.getItem(currentStatusStorageKey)" in app_js
-    assert "localStorage.setItem(currentStatusStorageKey, state.currentStatus)" in app_js
+    assert "localStorage.setItem(assignedToMeStorageKey, String(state.assignedToMe))" in app_js
 
 
 def test_frontend_has_catalogs_by_category_module_and_direct_upload() -> None:

@@ -2,10 +2,17 @@
 export function createInbox({
   api,
   getAgent,
+  ownedByMe,
+  onTaken,
+  onReturned,
   meta,
   updateCount,
   onClose,
   refreshCases,
+  canTake,
+  showSummary,
+  renderContext,
+  openReassign,
 }) {
   const box = document.querySelector("#activeChat");
   const $ = (selector) => box.querySelector(selector);
@@ -18,19 +25,33 @@ export function createInbox({
   const send = $("#replySend");
   const drafts = new Map();
   const sending = new Map();
+  const assignments = new Map();
   let active = null,
     generation = 0,
     fetching = false,
     marking = false,
     snapshot = "";
   const isCurrent = (version) => active && generation === version;
-  const owner = () =>
-    active?.handoffStatus === "TAKEN" && active.ownerId === getAgent()?.id;
+  const owner = () => active && ownedByMe(active);
   function compose() {
-    $("#replyForm").hidden = !owner();
-    input.readOnly = sending.has(active?.conversationId);
+    const mine = owner();
+    const busy = assignments.has(active?.conversationId);
+    $("#replyForm").hidden = !mine;
+    $("#chatTake").hidden = !active || !canTake(active);
+    $("#chatTake").disabled = busy;
+    $("#chatTake").textContent = busy ? "Tomando…" : "Tomar para responder";
+    $("#chatReturn").hidden = !mine;
+    $("#chatReturn").disabled = busy || sending.has(active?.conversationId);
+    $("#chatReassign").hidden = active?.handoffStatus !== "TAKEN" || getAgent()?.role !== "ADMIN";
+    $("#chatReassign").disabled = busy || sending.has(active?.conversationId);
+    $("#replyRestriction").textContent = mine ? ""
+      : active?.handoffStatus === "TAKEN" ? (active.ownerId != null
+        ? "Solo " + active.assignedTo + " puede responder en este chat." : "Actualiza la bandeja para consultar el responsable.")
+      : active && canTake(active) ? "Toma esta conversación para habilitar tu respuesta."
+      : "Esta conversación está disponible para consulta.";
+    input.readOnly = busy || sending.has(active?.conversationId);
     send.disabled = input.readOnly || !input.value.trim();
-    send.textContent = input.readOnly ? "Enviando…" : "Enviar";
+    send.textContent = sending.has(active?.conversationId) ? "Enviando…" : "Enviar";
   }
   function close(notify = true) {
     generation++;
@@ -40,6 +61,8 @@ export function createInbox({
     snapshot = "";
     box.hidden = true;
     history.replaceChildren();
+    $("#caseFacts").replaceChildren();
+    $("#caseBooking").replaceChildren();
     input.value = "";
     $("#replyStatus").textContent = "";
     document.querySelector("#admin").classList.remove("chatOpen");
@@ -52,12 +75,10 @@ export function createInbox({
     box.hidden = false;
     document.querySelector("#admin").classList.add("chatOpen");
     $("#chatContact").textContent = item.customerName;
-    $("#chatContext").textContent = [item.phone, item.assignedTo]
+    $("#chatContext").textContent = [item.phone, owner() ? "Asignada a ti" : item.assignedTo]
       .filter(Boolean)
       .join(" · ");
-    $("#replyRestriction").textContent = owner()
-      ? ""
-      : "Para responder, el caso debe estar asignado a ti.";
+    renderContext(item);
     if (change) {
       history.textContent = "Cargando mensajes…";
       input.value = drafts.get(item.conversationId) || "";
@@ -71,8 +92,8 @@ export function createInbox({
       !active ||
       document.hidden ||
       marking ||
-      box.closest("[hidden]") ||
-      document.querySelector("dialog[open], #summaryModal:not([hidden])")
+      (!box.getClientRects().length || box.closest("[hidden]")) ||
+      document.querySelector("dialog[open]")
     )
       return;
     const viewport = history.getBoundingClientRect();
@@ -117,7 +138,7 @@ export function createInbox({
       fetching ||
       marking ||
       document.hidden ||
-      box.closest("[hidden]")
+      (!box.getClientRects().length || box.closest("[hidden]"))
     )
       return;
     const version = generation;
@@ -224,7 +245,11 @@ export function createInbox({
         await load();
       }
     } catch (error) {
-      if (viewing()) $("#replyStatus").textContent = error.message;
+      if (viewing()) {
+        $("#replyStatus").textContent = error.message;
+        if (error.status === 403) open({ ...active, ownerId: null, assignedTo: "Asignación por verificar" });
+        if (error.status === 403 || error.status === 409) await refreshCases();
+      }
     } finally {
       if (currentUser()) {
         sending.delete(id);
@@ -240,45 +265,73 @@ export function createInbox({
   };
   $("#chatBack").onclick = () => close();
   $("#chatRefresh").onclick = load;
-  $("#chatTake").onclick = async () => {
-    if (!active) return;
-    const item = active,
-      version = generation,
-      btn = $("#chatTake");
-    btn.disabled = true;
+  function applyAssignment(handoff) {
+    if (!active || active.conversationId !== handoff.conversation_id) return;
+    const returned = handoff.status === "RETURNED";
+    open({
+      ...active,
+      id: handoff.id,
+      status: returned ? "BOT_ACTIVE" : "HUMAN_ACTIVE",
+      handoffStatus: handoff.status,
+      ownerId: handoff.assigned_agent?.id,
+      assignedTo: handoff.assigned_agent?.name || handoff.assigned_to || (returned ? "Bot activo" : "Sin asignar"),
+      summary: handoff.summary ?? active.summary,
+      priority: handoff.priority ?? active.priority,
+      reason: handoff.reason ?? active.reason,
+      reasonKind: handoff.reason ? "handoffReason" : active.reasonKind,
+    });
+  }
+  async function changeAssignment(returning) {
+    const item = active;
+    if (!item || assignments.has(item.conversationId)) return;
+    if (returning) {
+      if (!owner() || sending.has(item.conversationId) || !window.confirm("¿Devolver este caso al bot?")) return;
+    } else if (!canTake(item)) return;
+    const id = item.conversationId, request = Symbol();
+    const current = () => assignments.get(id) === request;
+    assignments.set(id, request);
+    compose();
+    $("#replyStatus").textContent = returning ? "Devolviendo al bot…" : "Asignando conversación…";
     try {
-      const url =
-        item.handoffStatus === "PENDING"
-          ? `/api/admin/handoffs/${item.id}/take`
-          : `/api/admin/conversations/${item.conversationId}/take`;
-      const handoff = await api(url, { method: "POST" });
-      if (isCurrent(version)) {
-        open({
-          ...item,
-          id: handoff.id,
-          status: "HUMAN_ACTIVE",
-          handoffStatus: handoff.status,
-          ownerId: handoff.assigned_agent?.id,
-          assignedTo: handoff.assigned_to,
-        });
-        btn.hidden = true;
-        $("#replyStatus").textContent = "Caso asignado a ti.";
-        await refreshCases();
+      const url = returning ? `/api/admin/handoffs/${item.id}/return`
+        : item.handoffStatus === "PENDING" ? `/api/admin/handoffs/${item.id}/take`
+        : `/api/admin/conversations/${id}/take`;
+      const options = { method: "POST" };
+      if (returning) options.body = JSON.stringify({ resolution: "Cliente atendido y devuelto al bot." });
+      const handoff = await api(url, options);
+      if (!current()) return;
+      applyAssignment(handoff);
+      if (active?.conversationId === id) {
+        $("#replyStatus").textContent = returning ? "Caso devuelto al bot." : "Caso asignado a ti.";
+        if (returning) onReturned();
+        else {
+          onTaken();
+          input.focus();
+        }
       }
+      await refreshCases(!returning && active?.conversationId === id ? id : null);
     } catch (error) {
-      if (isCurrent(version)) $("#replyStatus").textContent = error.message;
+      if (current() && active?.conversationId === id) {
+        $("#replyStatus").textContent = error.message;
+        if (error.status === 403 || error.status === 409) await refreshCases();
+      }
     } finally {
-      btn.disabled = false;
+      if (current()) {
+        assignments.delete(id);
+        if (active?.conversationId === id) compose();
+      }
     }
-  };
+  }
+  $("#chatTake").onclick = () => changeAssignment(false);
+  $("#chatReturn").onclick = () => changeAssignment(true);
+  $("#chatReassign").onclick = () => { if (active) openReassign(active); };
+  $("#chatSummary").onclick = () => { if (active) showSummary(active); };
   history.addEventListener("scroll", markVisible);
   window.addEventListener("resize", markVisible);
   document.addEventListener("visibilitychange", load);
   return {
-    open(item, canTake) {
-      open(item);
-      $("#chatTake").hidden = !canTake;
-    },
+    open,
+    applyAssignment,
     close,
     load,
     selected: () => active?.conversationId,
@@ -286,6 +339,7 @@ export function createInbox({
       close(false);
       drafts.clear();
       sending.clear();
+      assignments.clear();
     },
   };
 }

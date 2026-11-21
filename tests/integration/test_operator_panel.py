@@ -166,3 +166,43 @@ async def test_search_finds_contact_beyond_first_page(client: AsyncClient) -> No
     result = await client.get(url, headers=headers, params={"q": "histórico"})
     assert result.status_code == 200
     assert [r["customer_name"] for r in result.json()] == ["Contacto histórico"]
+
+
+async def test_agenda_normalizes_only_linked_reservations(client: AsyncClient, monkeypatch) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.calendar.adapter import CalendarEvent
+    from app.reservation.models import Reservation
+    from tests.integration.test_b1a_plan_reservation_admin import seed_reservation
+
+    start = datetime(2027, 1, 4, 1, tzinfo=UTC)
+    end = datetime(2027, 1, 4, 6, tzinfo=UTC)
+    row = await seed_reservation("RESERVED", starts_at=start, ends_at=end)
+    external_id = row.reservation_id.hex
+    async with app.state.db_sessionmaker.begin() as session:
+        saved = await session.get(Reservation, row.reservation_id)
+        saved.external_calendar_id = external_id
+    old = (
+        "Fecha deseada: 44 de enero de 2027\nHorario preferido: Noche (por confirmar)\n"
+        "Ocasión: Aniversario"
+    )
+    primary = CalendarEvent(external_id, "principal", "Cena", old, start, end)
+    other = CalendarEvent(external_id, "externo", "Cena externa", old, start, end)
+    adapter = FakeCalendarAdapter()
+    monkeypatch.setattr(adapter, "list_events", AsyncMock(return_value=[primary, other]))
+    monkeypatch.setattr("app.admin.routes.get_calendar_adapter", lambda settings: adapter)
+    monkeypatch.setattr(app.state.settings, "google_calendar_id", "principal")
+    monkeypatch.setattr(app.state.settings, "google_agenda_calendar_ids", "principal,externo")
+    response = await client.get(
+        "/admin/calendar/events?start=2027-01-01&end=2027-02-01",
+        headers=await login_headers(client),
+    )
+    assert response.status_code == 200
+    reservation, external = response.json()
+    assert reservation["kind"] == "reservation"
+    assert "Fecha confirmada: 03/01/2027" in reservation["description"]
+    assert "20:00 – 04/01/2027 01:00" in reservation["description"]
+    assert "Ocasión: Aniversario" in reservation["description"]
+    assert "44 de enero" not in reservation["description"]
+    assert "por confirmar" not in reservation["description"]
+    assert external["kind"] == "event" and external["description"] == old
