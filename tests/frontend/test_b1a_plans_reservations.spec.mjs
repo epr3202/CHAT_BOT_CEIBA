@@ -287,3 +287,29 @@ test("Anticipación por plan persiste al recargar contra la API y PostgreSQL", a
   await row.getByRole("button", {name:"Guardar"}).click();
   await expect(page.locator("#plansFeedback")).toHaveText("Plan guardado.");
 });
+
+test("Una lectura anterior no borra la anticipación que el asesor está editando", async ({page}) => {
+  const data = await panel(page);
+  await openPlans(page);
+  const row = page.locator("#planRows tr").first();
+  const control = row.getByLabel("Anticipación mínima (días calendario)");
+  await expect(control).toHaveValue("1");
+  let release;
+  const editing = new Promise(resolve => { release = resolve; });
+  await page.route("**/api/admin/plans", async route => {
+    const snapshot = { ...data.plan };
+    await editing;
+    await route.fulfill({ json: [snapshot] });
+  });
+  const requested = page.waitForRequest("**/api/admin/plans");
+  await page.locator("#refreshPlans").click();
+  await requested;
+  await control.fill("3");
+  const finished = page.waitForEvent("requestfinished", req => req.url().endsWith("/api/admin/plans"));
+  release();
+  await finished;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await row.getByRole("button", {name: "Guardar"}).click();
+  await expect(page.locator("#plansFeedback")).toHaveText("Plan guardado.");
+  expect(data.writes.at(-1).min_lead_days).toBe(3);
+});

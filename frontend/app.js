@@ -52,6 +52,7 @@ const state = {
   agents: [],
   plans: [],
   planWrites: new Set(),
+  planListRequest: 0,
   reservations: [],
   reservationDetail: null,
   reservationListRequest: 0,
@@ -668,6 +669,7 @@ function clearSession() {
   state.agents = [];
   state.plans = [];
   state.planWrites = new Set();
+  state.planListRequest++;
   state.reservations = [];
   state.reservationDetail = null;
   state.reservationListRequest += 1;
@@ -1431,18 +1433,20 @@ async function createManualReservation(event) {
     }, "No se pudo crear la reserva");
 }
 
-async function loadPlans() {
+async function loadPlans({discardEdits = false} = {}) {
   if (state.agent?.role !== "ADMIN" || state.planWrites.size) return;
+  if (!discardEdits && $("#planRows tr[data-edited]")) return;
+  const request = ++state.planListRequest;
   const token = state.sessionToken;
   managementFeedback("plansFeedback", "Cargando planes…");
   try {
     const plans = await managementRequest("/api/admin/plans");
-    if (token !== state.sessionToken) return;
+    if (request !== state.planListRequest || token !== state.sessionToken) return;
     state.plans = plans;
     renderPlans();
     managementFeedback("plansFeedback", "");
   } catch (error) {
-    if (token === state.sessionToken) {
+    if (request === state.planListRequest && token === state.sessionToken) {
       managementFeedback("plansFeedback", `No se pudieron cargar los planes: ${error.message}`, true);
     }
   }
@@ -1466,6 +1470,11 @@ function renderPlans() {
   ];
   for (const plan of state.plans) {
     const row = document.createElement("tr");
+    row.addEventListener("input", () => {
+      row.dataset.edited = "true";
+      state.planListRequest++;
+      managementFeedback("plansFeedback", "");
+    });
     const controls = {};
     for (const [field, title, type] of fields) {
       const cell = document.createElement("td");
@@ -1515,6 +1524,7 @@ async function savePlan(plan, controls, button) {
   }
   const writes = state.planWrites;
   const token = state.sessionToken;
+  state.planListRequest++;
   writes.add(plan.plan_id);
   button.disabled = true;
   button.textContent = "Guardando…";
@@ -1527,6 +1537,7 @@ async function savePlan(plan, controls, button) {
     });
     if (token !== state.sessionToken) return;
     Object.assign(plan, updated);
+    delete button.closest("tr").dataset.edited;
     for (const [field, input] of Object.entries(controls)) {
       if (input.type === "checkbox") input.checked = updated[field];
       else input.value = input.type === "time" ? (updated[field]?.slice(0, 5) || "") : updated[field];
@@ -2281,7 +2292,7 @@ function bindUi() {
     login();
   });
   $("#refreshAgents").addEventListener("click", loadAgents);
-  $("#refreshPlans").addEventListener("click", loadPlans);
+  $("#refreshPlans").addEventListener("click", () => loadPlans({discardEdits: true}));
   $("#refreshStaffNotifications").addEventListener("click", loadStaffNotifications);
   $("#notificationRecipientForm").addEventListener("submit", saveNotificationRecipient);
   $("#cancelRecipientEdit").addEventListener("click", resetRecipientForm);
