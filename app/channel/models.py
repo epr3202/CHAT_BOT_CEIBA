@@ -58,6 +58,14 @@ class Message(Base):
         return Channel(channel).value
 
 
+class AgentMessageOpen(Base):
+    __tablename__ = "agent_message_open"
+
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agent.id"), primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("message.id"), primary_key=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Outbox(Base):
     __tablename__ = "outbox"
     __table_args__ = (

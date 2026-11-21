@@ -119,6 +119,7 @@ class Settings(BaseSettings):
         default="google/gemini-2.5-flash-lite", alias="OPENROUTER_MODEL_VISION", min_length=1
     )
     google_calendar_id: str = Field(default="", alias="GOOGLE_CALENDAR_ID")
+    google_agenda_calendar_ids: str = Field(default="", alias="GOOGLE_AGENDA_CALENDAR_IDS")
     google_freebusy_calendar_ids: str = Field(default="", alias="GOOGLE_FREEBUSY_CALENDAR_IDS")
     calendar_adapter: Literal["fake", "google"] = Field(default="fake", alias="CALENDAR_ADAPTER")
     google_service_account_file: str = Field(default="", alias="GOOGLE_SERVICE_ACCOUNT_FILE")

@@ -48,6 +48,7 @@ class CalendarEvent:
     description: str | None
     start: datetime
     end: datetime
+    all_day: bool = False
 
 
 class CalendarAdapter(Protocol):

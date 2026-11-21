@@ -295,7 +295,9 @@ def _listed_event(data: dict[str, Any], calendar_id: str, timezone: str) -> Cale
     start, end = boundary("start"), boundary("end")
     if end <= start:
         raise ValueError("Invalid calendar event interval")
-    return CalendarEvent(event_id, calendar_id, summary, description, start, end)
+    return CalendarEvent(
+        event_id, calendar_id, summary, description, start, end, "date" in data["start"]
+    )
 
 
 def _validate_event_id(event_id: str) -> None:

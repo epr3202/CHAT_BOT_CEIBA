@@ -45,6 +45,7 @@ async def test_r3_google_pagination_each_calendar_and_query() -> None:
     respx.get(f"{BASE_URL}/calendars/b/events").respond(200, json={"items": [payload("three")]})
     end = START + timedelta(hours=3)
     events = await google.list_events(START, end, iter(["a", "b"]))
+    assert all(not event.all_day for event in events)
     assert {(e.event_id, e.calendar_id) for e in events} == {
         ("one", "a"),
         ("two", "a"),

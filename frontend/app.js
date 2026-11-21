@@ -3,6 +3,10 @@ import {
   bookingBlockersText, backendErrorText,
 } from "./labels.mjs";
 
+import { createInbox } from "./inbox.mjs";
+import { createAgenda } from "./agenda.mjs";
+import { viewProof } from "./proof.mjs";
+
 const sessionTokenStorageKey = "ceiba.sessionToken";
 const legacyAdminTokenStorageKey = "ceiba.adminToken";
 const legacyAgentDocumentIdStorageKey = "ceiba.agentDocumentId";
@@ -43,6 +47,8 @@ const state = {
   conversationState: localStorage.getItem(conversationStateStorageKey) || "",
   assignedToMe: localStorage.getItem(assignedToMeStorageKey) === "true",
   adminCases: [],
+  caseRequest: 0,
+  caseOffset: 0,
   catalogCategories: [],
   unassignedCatalogs: [],
   catalogEditor: null,
@@ -67,6 +73,43 @@ const state = {
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+const panelApi = (url, options = {}) => requestJson(url, { ...options, headers: operationHeaders() });
+const agenda = createAgenda(panelApi);
+let lastChatId = null;
+const inbox = createInbox({
+  api: panelApi,
+  getAgent: () => state.agent,
+  meta: chatMetaText,
+  refreshCases: loadAllAdminCases,
+  onClose: () => {
+    $("#chatEmpty").hidden = false;
+    document.querySelector(`[data-open-chat="${lastChatId}"]`)?.focus();
+    $$(".caseRow[aria-current]").forEach((row) => row.removeAttribute("aria-current"));
+  },
+  updateCount: (id, unopened) => {
+    const item = state.adminCases.find((c) => c.conversationId === id);
+    if (item) {
+      item.unopened = unopened;
+      const badge = document.querySelector(`[data-unopened-count="${id}"]`);
+      if (badge) badge.textContent = item.unopened ? item.unopened + " sin abrir" : "Al día";
+    }
+  }
+});
+function initials(name) {
+  return name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0]).join("").toUpperCase();
+}
+function openChat(item) {
+  $("#chatAvatar").textContent = initials(item.customerName);
+  lastChatId = item.conversationId;
+  $("#chatEmpty").hidden = true;
+  $$(".caseRow[aria-current]").forEach((row) => row.removeAttribute("aria-current"));
+  document
+    .querySelector(`[data-open-chat="${lastChatId}"]`)
+    ?.closest(".caseRow")
+    ?.setAttribute("aria-current", "true");
+  inbox.open(item, directTakeEligibleStates.has(item.status) || item.handoffStatus === "PENDING");
+}
 
 function setText(id, value) {
   const node = document.getElementById(id);
@@ -172,19 +215,29 @@ function renderAuthState() {
     view.hidden = !visible;
     view.classList.toggle("active", visible);
   });
-  $$(".navItem").forEach((button) =>
-    button.classList.toggle("active", authenticated && button.dataset.view === state.currentView)
-  );
+  $$(".navItem").forEach((button) => {
+    const active = authenticated && button.dataset.view === state.currentView;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+    if (active) setText("pageTitle", button.title);
+  });
 }
 
 function selectView(view) {
   const button = $$(".navItem").find((item) => item.dataset.view === view);
   if (!state.agent || !state.sessionToken || !button || button.hidden) return;
+  if (view !== "admin" && inbox.selected()) inbox.close();
+  document.body.classList.remove("navOpen");
+  $("#navToggle").setAttribute("aria-expanded","false");
   state.currentView = view;
   localStorage.setItem("ceiba.currentView", view);
   applyAuthState();
+  if (view === "admin") loadAllAdminCases();
+  if (view === "handoffs") refreshVisibleHandoffMessages();
   if (view === "catalogsModule") loadCatalogCategories();
   if (view === "paymentEvidence") loadPaymentEvidence();
+  if (view === "calendar") agenda.open();
   if (view === "agents") loadAgents();
   if (view === "staffNotifications") loadStaffNotifications();
   if (view === "plans") loadPlans();
@@ -193,6 +246,7 @@ function selectView(view) {
 }
 
 async function requestJson(path, options = {}) {
+  const token = state.sessionToken;
   const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
@@ -211,7 +265,7 @@ async function requestJson(path, options = {}) {
       if (Array.isArray(detail)) detail = detail.map(item => item.msg || JSON.stringify(item)).join("; ");
       if (detail && typeof detail === "object") detail = JSON.stringify(detail);
     }
-    if (response.status === 401) {
+    if (response.status === 401 && token === state.sessionToken) {
       clearSession();
       applyAuthState();
     }
@@ -652,6 +706,19 @@ async function login() {
 }
 
 function clearSession() {
+  state.caseRequest++;
+  $("#agentFields").replaceChildren();
+  caseFeedback("");
+  $("#moreCases").hidden = true;
+  inbox.reset();
+  agenda.reset();
+  closeSummaryModal();
+  $("#summaryModalBody").replaceChildren();
+  $("#summaryModalDetails").replaceChildren();
+  $("#chatEmpty").hidden = false;
+  for (const dialog of $$("dialog[open]")) dialog.close();
+  $("#assignAgent").replaceChildren();
+  $("#assignReason").value = "";
   state.sessionToken = "";
   state.agent = null;
   sessionStorage.removeItem(sessionTokenStorageKey);
@@ -815,7 +882,9 @@ async function loadHandoffs(status = state.currentStatus) {
   }
 }
 
-async function loadAllAdminCases() {
+async function loadAllAdminCases(append = false) {
+  const request = ++state.caseRequest, token = state.sessionToken;
+  const offset = append === true ? state.caseOffset : 0;
   if (!hasOperationToken()) {
     renderAdminTokenRequired();
     return;
@@ -825,18 +894,32 @@ async function loadAllAdminCases() {
     if (state.sessionToken && !state.agent) {
       await resolveAgentIdentity();
     }
-    const params = new URLSearchParams({ limit: "200", offset: "0" });
+    const params = new URLSearchParams({ limit: "200", offset: String(offset) });
+    const term = $("#caseSearch").value.trim().toLowerCase();
+    if (term) {
+      params.set("q", term);
+      const codes = Object.entries({ ...labels.intent, ...labels.handoffReason })
+        .filter(([, name]) => name.toLowerCase().includes(term))
+        .map(([code]) => code);
+      if (codes.length) params.set("reason_codes", codes.join(","));
+    }
+    if (state.caseStatus !== "ALL") params.set("handoff_status", state.caseStatus);
     if (state.conversationState) params.set("state", state.conversationState);
     if (state.assignedToMe) params.set("assigned_to_me", "true");
     const conversations = await requestJson(`/api/admin/conversations?${params.toString()}`, {
       headers: operationHeaders(),
     });
-    state.adminCases = conversations.map(caseFromConversation);
+    if (request !== state.caseRequest || token !== state.sessionToken) return;
+    const batch = conversations.map(caseFromConversation);
+    state.caseOffset = offset + conversations.length;
+    state.adminCases = offset ? [...new Map([...state.adminCases,...batch].map(row => [row.conversationId,row])).values()] : batch;
+    $("#moreCases").hidden = conversations.length < 200;
     setText("metricPending", String(state.adminCases.filter((item) => item.handoffStatus === "PENDING").length));
     setText("metricTaken", String(state.adminCases.filter((item) => item.handoffStatus === "TAKEN").length));
     setText("metricReturned", String(state.adminCases.filter((item) => item.handoffStatus === "RETURNED").length));
     renderAdminCases();
   } catch (error) {
+    if (request !== state.caseRequest || token !== state.sessionToken) return;
     state.adminCases = [];
     resetAdminMetrics();
     const container = $("#caseList");
@@ -884,6 +967,9 @@ function caseFromConversation(conversation) {
     resolvedAt: null,
     summary: conversation.handoff_summary || conversation.last_message_preview || conversation.last_message_body || "",
     lastMessageDirection: conversation.last_message_direction,
+    ownerId: conversation.assigned_agent?.id,
+    unopened: conversation.unopened_count || 0,
+    preview: conversation.last_message_preview || conversation.last_message_body || "",
     bookingDraft: conversation.booking_draft,
     reservationDetails: conversation.reservation_details,
   };
@@ -924,6 +1010,10 @@ function renderAdminCases() {
     return statusMatches && (!query || text.includes(query));
   });
 
+  if (inbox.selected()) {
+    const selected = cases.find((c) => c.conversationId === inbox.selected());
+    if (selected) openChat(selected);
+  }
   container.replaceChildren();
   if (!cases.length) {
     setEmpty(container, "No hay clientes para este filtro con la API actual.");
@@ -933,7 +1023,20 @@ function renderAdminCases() {
   const template = $("#caseTemplate");
   for (const item of cases) {
     const row = template.content.firstElementChild.cloneNode(true);
-    $(".caseClient", row).textContent = item.customerName;
+    $(".contactAvatar", row).textContent = initials(item.customerName);
+    const opener = actionButton(item.customerName, () => openChat(item), "contactOpen");
+    opener.dataset.openChat = item.conversationId;
+    opener.setAttribute("aria-label", "Abrir conversación de " + item.customerName);
+    if (inbox.selected() === item.conversationId) row.setAttribute("aria-current", "true");
+    $(".caseClient", row).replaceChildren(opener);
+    const preview = document.createElement("span");
+    preview.className = "messagePreview";
+    preview.textContent = item.preview;
+    const unread = document.createElement("span");
+    unread.className = "readBadge";
+    unread.dataset.unopenedCount = item.conversationId;
+    unread.textContent = item.unopened ? item.unopened + " sin abrir" : "Al día";
+    $(".clientCell", row).append(preview, unread);
     $(".casePhone", row).textContent = `${item.phone} · conversación ${item.conversationId}`;
     const status = $(".caseStatus", row);
     status.className = `caseStatus pill ${statusClass(item.handoffStatus)}`;
@@ -977,8 +1080,12 @@ function renderAdminCases() {
       actions.append(actionButton("Tomar caso", () => takeHandoff(item.id), "primary"));
     }
     if (item.handoffStatus === "TAKEN" && item.id !== null) {
-      actions.append(actionButton("Responder", () => openHandoffAndFocus(item.id)));
-      actions.append(actionButton("Devolver", () => returnHandoff(item.id), "danger"));
+      if (item.ownerId === state.agent?.id) {
+        actions.append(actionButton("Responder", () => openChat(item)));
+        actions.append(actionButton("Devolver", () => confirmReturn(item.id), "danger"));
+      }
+      if (state.agent?.role === "ADMIN")
+        actions.append(actionButton("Reasignar", () => openReassign(item)));
     } else if (item.id !== null) {
       actions.append(actionButton("Ver resumen", () => showSummary(item)));
     }
@@ -1029,13 +1136,67 @@ function assignmentText(item) {
   return `${item.assignedTo}\n${trail}`;
 }
 
-function openHandoffAndFocus(handoffId) {
-  const nav = $(`.navItem[data-view="handoffs"]`);
-  nav?.click();
-  loadHandoffs("TAKEN").then(() => {
-    const card = $(`[data-handoff-id="${handoffId}"]`);
-    card?.scrollIntoView({ behavior: "smooth", block: "center" });
-  });
+function caseFeedback(message) {
+  setText("caseFeedback", message);
+  setText("handoffFeedback", message);
+}
+function confirmReturn(id) {
+  if (window.confirm("¿Devolver este caso al bot?")) returnHandoff(id);
+}
+
+let assignmentRequest = 0;
+async function openReassign(item) {
+  const request = ++assignmentRequest;
+  const dialog = $("#assignDialog"),
+    select = $("#assignAgent"),
+    form = $("#assignForm");
+  const token = state.sessionToken;
+  dialog.dataset.caseId = String(item.conversationId);
+  const current = () =>
+    request === assignmentRequest &&
+    dialog.open &&
+    dialog.dataset.caseId === String(item.conversationId) &&
+    token === state.sessionToken;
+  select.replaceChildren();
+  form.reset();
+  $("#assignFeedback").textContent = "Cargando responsables…";
+  form.querySelector("[type=submit]").disabled = true;
+  dialog.showModal();
+  try {
+    const agents = await panelApi("/api/admin/agents");
+    if (!current()) return;
+    for (const agent of agents.filter((a) => a.active && a.id !== item.ownerId))
+      select.add(new Option(agent.name, String(agent.id)));
+    $("#assignFeedback").textContent = select.length ? "" : "No hay otro agente activo.";
+    form.querySelector("[type=submit]").disabled = !select.length;
+  } catch (error) {
+    if (current()) $("#assignFeedback").textContent = error.message;
+  }
+  if (!current()) return;
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!dialog.open || !select.value) return;
+    const btn = form.querySelector("[type=submit]");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      await panelApi(`/api/admin/conversations/${item.conversationId}/reassign`, {
+        method: "POST",
+        body: JSON.stringify({
+          agent_id: Number(select.value),
+          reason: $("#assignReason").value.trim()
+        })
+      });
+      if (current()) {
+        dialog.close();
+        await refreshAll();
+      }
+    } catch (error) {
+      if (current()) $("#assignFeedback").textContent = error.message;
+    } finally {
+      if (current()) btn.disabled = false;
+    }
+  };
 }
 
 function showSummary(item) {
@@ -1054,18 +1215,25 @@ function showSummary(item) {
   loadAssignmentHistory(item.conversationId);
 }
 
+let historyRequest = 0;
 async function loadAssignmentHistory(conversationId) {
+  const request = ++historyRequest;
+  const token = state.sessionToken;
+  const current = () => request === historyRequest && token === state.sessionToken && !$("#summaryModal").hidden;
   try {
     const history = await requestJson(`/api/admin/conversations/${conversationId}/history`, {
       headers: operationHeaders(),
     });
+    if (!current()) return;
     const lines = history.map((event) => {
+      if (event.action === "HANDOFF_REASSIGNED") return `${event.actor} reasignó el caso`;
       if (event.action === "HANDOFF_RETURNED") return `${event.actor} devolvió`;
       if (event.action === "CONVERSATION_MANUAL_TAKEOVER") return `${event.actor} tomó conversación`;
       return `${event.actor} tomó el caso`;
     });
     $("#summaryModalDetails").append(`\nHistorial: ${lines.join(" · ") || "Sin eventos"}`);
   } catch (error) {
+    if (!current()) return;
     $("#summaryModalDetails").append("\nHistorial: no disponible");
     logEvent(`Historial falló: ${error.message}`);
   }
@@ -1108,12 +1276,9 @@ function renderHandoffs(handoffs) {
     if (handoff.status === "PENDING") {
       actions.append(actionButton("Tomar", () => takeHandoff(handoff.id)));
     } else if (handoff.status === "TAKEN") {
-      const textarea = document.createElement("textarea");
-      textarea.placeholder = "Respuesta del asesor";
-      textarea.value = "Hola, soy del equipo de La Ceiba. Ya reviso tu solicitud.";
-      actions.append(textarea);
-      actions.append(actionButton("Enviar", () => sendAgentMessage(handoff.conversation_id, textarea.value)));
-      actions.append(actionButton("Devolver", () => returnHandoff(handoff.id), "danger"));
+      actions.append(actionButton("Abrir conversación",()=>openFromHandoff(handoff)));
+      if (handoff.assigned_agent?.id === state.agent?.id)
+        actions.append(actionButton("Devolver", () => confirmReturn(handoff.id), "danger"));
     } else {
       const button = actionButton("Ver pendientes", () => loadHandoffs("PENDING"));
       actions.append(button);
@@ -1145,10 +1310,12 @@ async function takeHandoff(handoffId) {
     await requestJson(`/api/admin/handoffs/${handoffId}/take`, {
       ...options,
     });
+    caseFeedback("Caso asignado a ti.");
     logEvent(`Caso ${handoffId} tomado.`);
     await refreshAll();
     await loadHandoffs("TAKEN");
   } catch (error) {
+    caseFeedback("No se pudo tomar el caso. "+error.message);
     logEvent(`No se pudo tomar el caso: ${error.message}`);
   }
 }
@@ -1177,32 +1344,33 @@ async function takeConversation(conversationId) {
     logEvent(`Conversación ${conversationId} tomada por ${state.agent.name}.`);
     await refreshAll();
     await loadHandoffs("TAKEN");
-    openHandoffAndFocus(handoff.id);
+    openFromHandoff(handoff);
   } catch (error) {
+    caseFeedback("No se pudo tomar la conversación. "+error.message);
     logEvent(`No se pudo tomar la conversación: ${error.message}`);
   }
 }
 
-async function sendAgentMessage(conversationId, text) {
-  if (!text.trim()) {
-    logEvent("La respuesta humana no puede estar vacía.");
-    return;
-  }
-  try {
-    await requestJson(`/api/admin/conversations/${conversationId}/messages`, {
-      method: "POST",
-      headers: operationHeaders(),
-      body: JSON.stringify({ text }),
-    });
-    logEvent(`Respuesta encolada para conversación ${conversationId}.`);
-    await refreshAll();
-    await refreshConversationMessages(conversationId);
-  } catch (error) {
-    logEvent(`No se pudo enviar la respuesta: ${error.message}`);
-  }
+function openFromHandoff(handoff) {
+  const existing = state.adminCases.find((c) => c.conversationId === handoff.conversation_id);
+  selectView("admin");
+  openChat({
+    ...existing,
+    conversationId: handoff.conversation_id,
+    id: handoff.id,
+    status: "HUMAN_ACTIVE",
+    handoffStatus: handoff.status,
+    ownerId: handoff.assigned_agent?.id,
+    assignedTo: handoff.assigned_to,
+    customerName: handoff.customer_name || existing?.customerName || "Contacto",
+    phone: handoff.customer_phone || existing?.phone
+  });
 }
 
 async function refreshVisibleHandoffMessages() {
+  if (document.hidden) return;
+  if (state.currentView==="admin") { await inbox.load(); return; }
+  if (state.currentView!=="handoffs") return;
   if (!hasOperationToken() || state.visibleConversationIds.size === 0) return;
   await Promise.all(
     Array.from(state.visibleConversationIds).map((conversationId) =>
@@ -1279,9 +1447,11 @@ async function returnHandoff(handoffId) {
       headers: operationHeaders(),
       body: JSON.stringify({ resolution }),
     });
+    caseFeedback("Caso devuelto al bot.");
     logEvent(`Caso ${handoffId} devuelto al bot.`);
     await refreshAll();
   } catch (error) {
+    caseFeedback("No se pudo devolver el caso. "+error.message);
     logEvent(`No se pudo devolver el caso: ${error.message}`);
   }
 }
@@ -1298,6 +1468,7 @@ async function refreshAll() {
   await loadHandoffs(state.currentStatus);
   if (state.agent?.role === "ADMIN") {
     await Promise.all([loadCatalogCategories(), loadPaymentEvidence()]);
+    if (state.currentView === "calendar") await agenda.open();
     if (state.currentView === "agents") await loadAgents();
     if (state.currentView === "plans") await loadPlans();
     if (state.currentView === "staffNotifications") await loadStaffNotifications();
@@ -1723,6 +1894,7 @@ function createEvidenceCard(evidence, feedbackId, review) {
   const actions = document.createElement("div");
   actions.className = "actions";
   if (evidence.download_status === "DOWNLOADED") {
+    actions.append(actionButton("Ver comprobante", event => downloadEvidence(evidence.id, event.currentTarget, card, feedbackId, true)));
     actions.append(actionButton("Descargar", event => downloadEvidence(evidence.id, event.currentTarget, card, feedbackId)));
   }
   if ((evidence.status || evidence.review_status) === "PENDING_REVIEW" && state.agent?.role === "ADMIN") {
@@ -1942,8 +2114,8 @@ async function retryReservationCalendar(event) {
   }, "No se pudo sincronizar el calendario");
 }
 
-async function downloadEvidence(id, button, card, feedbackId) {
-  await managementAction(button, card, "Descargando…", feedbackId, async current => {
+async function downloadEvidence(id, button, card, feedbackId, preview = false) {
+  await managementAction(button, card, preview ? "Abriendo…" : "Descargando…", feedbackId, async current => {
     const response = await fetch(`/api/admin/payment-evidence/${id}/download`, { headers: sessionHeaders() });
     if (!response.ok) {
       const payload = (response.headers.get("content-type") || "").includes("application/json") ? await response.json() : await response.text();
@@ -1951,12 +2123,13 @@ async function downloadEvidence(id, button, card, feedbackId) {
     }
     const blob = await response.blob();
     if (!current()) return;
+    if (preview) { await viewProof(blob); return; }
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url; link.download = `comprobante-${id}`;
     link.click();
     URL.revokeObjectURL(url);
-  }, "No se pudo descargar el comprobante");
+  }, preview ? "No se pudo abrir el comprobante" : "No se pudo descargar el comprobante");
 }
 
 async function cancelReservation(event) {
@@ -2005,6 +2178,37 @@ async function loadAgents() {
   }
 }
 
+async function showAgentDetails(id) {
+  const dialog = $("#agentDetail"),
+    fields = $("#agentFields"),
+    token = state.sessionToken;
+  dialog.dataset.agent = String(id);
+  const current = () =>
+    dialog.open && dialog.dataset.agent === String(id) && token === state.sessionToken;
+  fields.textContent = "Cargando agente…";
+  dialog.showModal();
+  try {
+    const agent = await panelApi(`/api/admin/agents/${id}`);
+    if (!current()) return;
+    fields.replaceChildren();
+    for (const [name, value] of [
+      ["Nombre", agent.name],
+      ["Rol", label("role", agent.role)],
+      ["Estado", label("active", agent.active)],
+      ["Documento", agent.has_credentials ? agent.document_id : "Sin credenciales"],
+      ["Fecha de alta", formatDate(agent.created_at)]
+    ]) {
+      const term = document.createElement("dt"),
+        detail = document.createElement("dd");
+      term.textContent = name;
+      detail.append(value);
+      fields.append(term, detail);
+    }
+  } catch (error) {
+    if (current()) fields.textContent = error.message;
+  }
+}
+
 function renderAgents() {
   const body = $("#agentRows");
   body.replaceChildren();
@@ -2026,6 +2230,7 @@ function renderAgents() {
     const actions = document.createElement("div");
     actions.className = "actions";
     actions.append(
+      actionButton("Ver ficha", () => showAgentDetails(agent.id)),
       actionButton("Editar", () => editAgent(agent)),
       actionButton("Credenciales", () => editAgentCredentials(agent)),
       actionButton(agent.active ? "Desactivar" : "Activar", (event) =>
@@ -2264,6 +2469,9 @@ async function executeReset(event) {
 }
 
 function bindUi() {
+  $("#moreCases").onclick=()=>loadAllAdminCases(true);
+  $("#navToggle").onclick=()=>$("#navToggle").setAttribute("aria-expanded",String(document.body.classList.toggle("navOpen")));
+  $("#cancelAssign").onclick=()=>$("#assignDialog").close();
   $$(".navItem").forEach((button) => {
     button.addEventListener("click", () => selectView(button.dataset.view));
   });
@@ -2284,6 +2492,7 @@ function bindUi() {
       $$(".caseFilter").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
       renderAdminCases();
+      loadAllAdminCases();
     });
   });
 
@@ -2291,6 +2500,7 @@ function bindUi() {
     event.preventDefault();
     login();
   });
+  $("#newAgent").onclick=()=>$("#agentCreateName").focus();
   $("#refreshAgents").addEventListener("click", loadAgents);
   $("#refreshPlans").addEventListener("click", () => loadPlans({discardEdits: true}));
   $("#refreshStaffNotifications").addEventListener("click", loadStaffNotifications);
@@ -2335,7 +2545,13 @@ function bindUi() {
   $("#logout").addEventListener("click", logout);
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);
-  $("#caseSearch").addEventListener("input", renderAdminCases);
+  let searchTimer;
+  $("#caseSearch").addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    state.caseRequest++;
+    renderAdminCases();
+    searchTimer = setTimeout(loadAllAdminCases, 225);
+  });
   $("#conversationStateFilter").addEventListener("change", (event) => {
     state.conversationState = event.target.value;
     persistViewState();

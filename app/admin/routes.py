@@ -26,8 +26,8 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import cast, func, or_, select, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import String, cast, func, or_, select, text
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,7 +58,7 @@ from app.calendar.adapter import CalendarUnavailableError, get_calendar_adapter
 from app.catalog.models import CATALOG_SEND_MODES, CatalogAsset, CatalogEventTypeMap
 from app.channel.delivery import human_context
 from app.channel.media import detect_pdf_mime_type, sha256_file
-from app.channel.models import Message, Outbox
+from app.channel.models import AgentMessageOpen, Message, MessageProviderStatus, Outbox
 from app.channel.states import Channel
 from app.config.settings import Settings, get_settings
 from app.conversation.knowledge import KnowledgeRenderError, variables_in_template
@@ -122,7 +122,9 @@ class ReturnHandoffRequest(BaseModel):
 
 
 class ReassignRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     agent_id: int
+    reason: str | None = Field(None, min_length=1, max_length=255)
 
 
 class ResetConversationRequest(BaseModel):
@@ -300,7 +302,23 @@ class AssignmentHistoryPayload(BaseModel):
     created_at: datetime
 
 
+class OpenMessagesRequest(BaseModel):
+    message_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class AgendaEventPayload(BaseModel):
+    title: str
+    description: str | None
+    start: datetime
+    end: datetime
+    all_day: bool
+    start_date: date
+    end_date: date
+
+
 class ConversationMessagePayload(BaseModel):
+    opened_by_me: bool | None = None
+    read_by_contact: bool | None = None
     id: str
     direction: Literal["INBOUND", "OUTBOUND"]
     body: str
@@ -311,6 +329,7 @@ class ConversationMessagePayload(BaseModel):
 
 
 class ConversationPayload(BaseModel):
+    unopened_count: int = 0
     id: int
     conversation_id: int
     customer_name: str | None
@@ -1573,6 +1592,50 @@ async def create_manual_holiday(
     return holiday_payload(holiday)
 
 
+@router.get("/calendar/events")
+async def list_calendar_events(
+    start: date,
+    end: date,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> list[AgendaEventPayload]:
+    await authenticated_admin(session, authorization)
+    if not 0 < (end - start).days <= 42:
+        raise HTTPException(422, "Selecciona un intervalo de hasta 42 días.")
+    settings = request.app.state.settings
+    visible_calendars = settings.google_agenda_calendar_ids.strip() or settings.google_calendar_id
+    ids = list(dict.fromkeys(i.strip() for i in visible_calendars.split(",") if i.strip()))
+    if not ids:
+        raise HTTPException(503, "No hay calendarios configurados.")
+    await session.rollback()
+    bogota = ZoneInfo("America/Bogota")
+    try:
+        try:
+            adapter = get_calendar_adapter(settings)
+        except ValueError as exc:
+            raise HTTPException(503, "La configuración de la agenda está incompleta.") from exc
+        events = await adapter.list_events(
+            datetime.combine(start, time.min, bogota), datetime.combine(end, time.min, bogota), ids
+        )
+    except CalendarUnavailableError as exc:
+        raise HTTPException(503, "No se pudo consultar la agenda completa.") from exc
+    return [
+        AgendaEventPayload(
+            title=event.summary or "Ocupado",
+            description=event.description,
+            start=event.start,
+            end=event.end,
+            all_day=event.all_day,
+            start_date=event.start.date()
+            if event.all_day
+            else event.start.astimezone(bogota).date(),
+            end_date=event.end.date() if event.all_day else event.end.astimezone(bogota).date(),
+        )
+        for event in events
+    ]
+
+
 @router.get("/appointments")
 async def list_appointments_for_day(
     appointment_date: date,
@@ -2284,6 +2347,9 @@ async def list_conversations(
     session: DbSession,
     state: str | None = Query(default=None),
     assigned_to_me: bool = Query(default=False),
+    q: str = Query(default="", max_length=128),
+    reason_codes: str = Query(default="", max_length=2048),
+    handoff_status: HandoffListStatus | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     authorization: Annotated[str | None, Header()] = None,
@@ -2313,10 +2379,56 @@ async def list_conversations(
         .limit(1)
         .scalar_subquery()
     )
+    opened = select(AgentMessageOpen.message_id).where(AgentMessageOpen.agent_id == agent.id)
+    unopened = (
+        select(func.count(Message.id))
+        .where(
+            Message.conversation_id == Conversation.id,
+            Message.direction == "INBOUND",
+            Message.id.not_in(opened),
+        )
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+    last_handoff_id = (
+        select(func.max(Handoff.id))
+        .where(Handoff.conversation_id == Conversation.id)
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+    last_message_id = (
+        select(func.max(Message.id))
+        .where(Message.conversation_id == Conversation.id)
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+    if handoff_status:
+        filters.append(Handoff.status == handoff_status)
+    if term := q.strip():
+        fields = (
+            Customer.full_name,
+            Customer.phone_number,
+            Agent.name,
+            Handoff.assigned_to,
+            cast(Conversation.id, String),
+            cast(Handoff.id, String),
+            Handoff.reason,
+            Conversation.last_intent,
+        )
+        codes = reason_codes.split(",") if reason_codes else []
+        filters.append(
+            or_(
+                *(field.icontains(term, autoescape=True) for field in fields),
+                Handoff.reason.in_(codes),
+                Conversation.last_intent.in_(codes),
+            )
+        )
     statement = (
-        select(Conversation, Customer, Agent, latest_details)
+        select(Conversation, Customer, Agent, latest_details, unopened, Handoff, Message)
         .join(Customer, Conversation.customer_id == Customer.id)
         .outerjoin(Agent, Conversation.assigned_agent_id == Agent.id)
+        .outerjoin(Handoff, Handoff.id == last_handoff_id)
+        .outerjoin(Message, Message.id == last_message_id)
         .order_by(Conversation.last_message_at.desc().nullslast(), Conversation.id.desc())
         .limit(limit)
         .offset(offset)
@@ -2326,9 +2438,15 @@ async def list_conversations(
     result = await session.execute(statement)
     conversations = result.all()
     payloads: list[ConversationPayload] = []
-    for conversation, customer, assigned_agent, reservation_details in conversations:
-        handoff = await latest_handoff_for_conversation(session, conversation.id)
-        latest_message = await latest_message_for_conversation(session, conversation.id)
+    for (
+        conversation,
+        customer,
+        assigned_agent,
+        reservation_details,
+        unopened_count,
+        handoff,
+        latest_message,
+    ) in conversations:
         latest_body = message_body(latest_message) if latest_message is not None else None
         payloads.append(
             ConversationPayload(
@@ -2341,6 +2459,7 @@ async def list_conversations(
                 pending_action=conversation.pending_action,
                 booking_draft=conversation.booking_draft,
                 reservation_details=reservation_details,
+                unopened_count=unopened_count,
                 bot_enabled=conversation.bot_enabled,
                 handoff_id=handoff.id if handoff is not None else None,
                 handoff_status=handoff.status if handoff is not None else None,
@@ -2613,7 +2732,7 @@ async def reassign_conversation(
                     "assigned_agent_id": target.id,
                     "assigned_to": target.name,
                 },
-                reason="Admin reassigned human case",
+                reason=body.reason or "Admin reassigned human case",
                 request_id=None,
             )
         )
@@ -2755,7 +2874,7 @@ async def list_conversation_messages(
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> list[ConversationMessagePayload]:
-    await authenticated_agent(session, authorization)
+    agent = await authenticated_agent(session, authorization)
     conversation = await session.get(Conversation, conversation_id)
     if conversation is None:
         raise HTTPException(
@@ -2763,8 +2882,20 @@ async def list_conversation_messages(
             detail="Conversation not found",
         )
 
-    message_rows = await session.scalars(
-        select(Message)
+    opened = (
+        select(AgentMessageOpen.message_id)
+        .where(AgentMessageOpen.agent_id == agent.id, AgentMessageOpen.message_id == Message.id)
+        .exists()
+    )
+    read_by_contact = (
+        select(MessageProviderStatus.id)
+        .where(
+            MessageProviderStatus.message_id == Message.id, MessageProviderStatus.status == "read"
+        )
+        .exists()
+    )
+    message_rows = await session.execute(
+        select(Message, opened, read_by_contact)
         .where(Message.conversation_id == conversation_id)
         .order_by(Message.created_at.asc(), Message.id.asc())
     )
@@ -2772,12 +2903,14 @@ async def list_conversation_messages(
         ConversationMessagePayload(
             id=f"message-{message.id}",
             direction=message_direction(message),
+            opened_by_me=was_opened if message.direction == "INBOUND" else None,
+            read_by_contact=was_read if message.direction == "OUTBOUND" else None,
             body=message_body(message),
             message_type=message.message_type,
             status=None,
             created_at=message.created_at,
         )
-        for message in message_rows.all()
+        for message, was_opened, was_read in message_rows
     ]
 
     pending_outbox_rows = await session.scalars(
@@ -2801,6 +2934,34 @@ async def list_conversation_messages(
         for outbox in pending_outbox_rows.all()
     )
     return sorted(messages, key=lambda message: (message.created_at, message.id))
+
+
+@router.post("/conversations/{conversation_id}/messages/opened", status_code=204)
+async def mark_messages_opened(
+    conversation_id: int,
+    body: OpenMessagesRequest,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    agent = await authenticated_agent(session, authorization)
+    ids = set(body.message_ids)
+    valid = set(
+        await session.scalars(
+            select(Message.id).where(
+                Message.conversation_id == conversation_id,
+                Message.direction == "INBOUND",
+                Message.id.in_(ids),
+            )
+        )
+    )
+    if valid != ids:
+        raise HTTPException(422, "Selecciona mensajes recibidos de esta conversación.")
+    await session.execute(
+        insert(AgentMessageOpen)
+        .values([{"agent_id": agent.id, "message_id": message_id} for message_id in sorted(ids)])
+        .on_conflict_do_nothing()
+    )
+    await session.commit()
 
 
 @router.get("/conversations/{conversation_id}/history")
@@ -2827,6 +2988,7 @@ async def list_conversation_assignment_history(
                 [
                     "HANDOFF_TAKEN",
                     "HANDOFF_RETURNED",
+                    "HANDOFF_REASSIGNED",
                     "CONVERSATION_MANUAL_TAKEOVER",
                 ]
             ),
@@ -2846,35 +3008,6 @@ async def list_conversation_assignment_history(
         )
         for event in events.all()
     ]
-
-
-async def latest_handoff_for_conversation(
-    session: AsyncSession,
-    conversation_id: int,
-    *,
-    locked: bool = False,
-) -> Handoff | None:
-    statement = (
-        select(Handoff)
-        .where(Handoff.conversation_id == conversation_id)
-        .order_by(Handoff.id.desc())
-        .limit(1)
-    )
-    if locked:
-        statement = statement.with_for_update()
-    return await session.scalar(statement)
-
-
-async def latest_message_for_conversation(
-    session: AsyncSession,
-    conversation_id: int,
-) -> Message | None:
-    return await session.scalar(
-        select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .order_by(Message.id.desc())
-        .limit(1)
-    )
 
 
 async def build_manual_takeover_summary(

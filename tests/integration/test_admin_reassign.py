@@ -66,6 +66,11 @@ async def test_admin_reassigns_taken_case_to_another_active_agent(db: Any, api: 
     }
     assert audits[0]["actor"] == "R8 ADMIN"
     assert audits[0]["reason"] == "Admin reassigned human case"
+    history = await client.get(
+        f"/admin/conversations/{conversation_id}/history", headers=actors["B"]["headers"]
+    )
+    assert history.status_code == 200
+    assert history.json()[-1]["action"] == "HANDOFF_REASSIGNED"
 
 
 async def test_new_owner_can_reply_and_old_owner_cannot(db: Any, api: Any) -> None:
