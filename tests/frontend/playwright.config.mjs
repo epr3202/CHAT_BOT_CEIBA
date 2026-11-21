@@ -22,7 +22,7 @@ export default defineConfig({
       url: "http://127.0.0.1:5199",
       env: {
         ENVIRONMENT: "production", NODE_ENV: "production",
-        FRONTEND_HOST: "0.0.0.0", FRONTEND_PORT: "5199",
+        FRONTEND_HOST: "127.0.0.1", FRONTEND_PORT: "5199",
         API_BASE_URL: "http://127.0.0.1:8000",
       },
       reuseExistingServer: false,

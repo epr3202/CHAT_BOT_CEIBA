@@ -17,9 +17,16 @@ def test_frontend_files_are_self_contained() -> None:
 
 
 def test_frontend_uses_only_current_backend_surfaces() -> None:
-    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
+    app_js = "\n".join(
+        FRONTEND.joinpath(module).read_text(encoding="utf-8")
+        for module in ("app.js", "agenda.mjs", "inbox.mjs", "proof.mjs")
+    )
     server = FRONTEND.joinpath("server.mjs").read_text(encoding="utf-8")
     allowed_paths = {
+        "/api/admin/calendar/events",
+        "/api/admin/blocked-dates",
+        "/api/admin/holidays",
+        "/api/admin/appointments",
         "/api/health",
         "/api/admin/handoffs",
         "/api/admin/handoffs/",
@@ -110,7 +117,7 @@ def test_frontend_server_keeps_webhook_secret_out_of_logs() -> None:
 
 def test_conversations_require_operation_token_before_fetching() -> None:
     app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
-    function_start = app_js.index("async function loadAllAdminCases()")
+    function_start = app_js.index("async function loadAllAdminCases(")
     function_end = app_js.index("function caseFromHandoff", function_start)
     function_body = app_js[function_start:function_end]
 
@@ -147,13 +154,11 @@ def test_login_uses_document_id_and_pin_without_auto_registration() -> None:
     assert "function ensureAgentRegistered" not in app_js
 
 
-def test_agent_message_refreshes_handoff_view() -> None:
-    app_js = FRONTEND.joinpath("app.js").read_text(encoding="utf-8")
-    function_start = app_js.index("async function sendAgentMessage")
-    function_end = app_js.index("async function returnHandoff", function_start)
-    function_body = app_js[function_start:function_end]
-
-    assert "await refreshAll();" in function_body
+def test_agent_message_refreshes_selected_conversation() -> None:
+    inbox = FRONTEND.joinpath("inbox.mjs").read_text()
+    assert "Respuesta en cola" in inbox
+    assert 'body: JSON.stringify({ text: value })' in inbox
+    assert "await load();" in inbox
 
 
 def test_handoff_chat_uses_ajax_polling() -> None:
@@ -186,7 +191,7 @@ def test_frontend_has_conversation_filters_and_direct_take_uses_agent_token() ->
     assert 'if (state.assignedToMe) params.set("assigned_to_me", "true")' in app_js
     assert 'params.set("assigned_to_me", "true")' in app_js
     function_start = app_js.index("async function takeConversation")
-    function_end = app_js.index("async function sendAgentMessage", function_start)
+    function_end = app_js.index("function openFromHandoff", function_start)
     function_body = app_js[function_start:function_end]
     assert "headers: sessionHeaders()" in function_body
     assert "await resolveAgentIdentity()" in function_body

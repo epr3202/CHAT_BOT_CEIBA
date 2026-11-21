@@ -23,6 +23,7 @@ const contentTypes = {
   ".mjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".wasm": "application/wasm",
 };
 
 function sendJson(response, status, payload) {
@@ -99,6 +100,7 @@ async function proxy(request, response, targetPath) {
   });
   const payload = Buffer.from(await upstream.arrayBuffer());
   const responseHeaders = {
+    "Cache-Control": "no-store",
     "Content-Type": upstream.headers.get("content-type") || "application/json; charset=utf-8",
   };
   const contentDisposition = upstream.headers.get("content-disposition");
@@ -160,7 +162,7 @@ async function serveStatic(request, response) {
     let content = await readFile(filePath);
     if (extname(filePath) === ".html") {
       // A cached pre-login bundle is incompatible with the dedicated login markup.
-      const assets = await Promise.all(["app.js", "labels.mjs", "styles.css"].map(name => readFile(join(frontendRoot, name))));
+      const assets = await Promise.all(["app.js", "labels.mjs", "inbox.mjs", "agenda.mjs", "proof.mjs", "styles.css"].map(name => readFile(join(frontendRoot, name))));
       const version = createHash("sha256").update(Buffer.concat(assets)).digest("hex").slice(0, 16);
       content = content.toString("utf8")
         .replace('src="/app.js"', `src="/app.js?v=${version}"`)
@@ -235,7 +237,9 @@ const server = createServer(async (request, response) => {
       await proxy(request, response, path.replace("/api", ""));
       return;
     }
-    if (path === "/api/admin/plans" || path.startsWith("/api/admin/plans/")
+    if (path === "/api/admin/calendar/events" || path === "/api/admin/appointments"
+        || path === "/api/admin/blocked-dates" || path.startsWith("/api/admin/blocked-dates/")
+        || path === "/api/admin/holidays" || path === "/api/admin/plans" || path.startsWith("/api/admin/plans/")
         || path === "/api/admin/notification-recipients" || path.startsWith("/api/admin/notification-recipients/")
         || path === "/api/admin/staff-notifications"
         || path === "/api/admin/reservations" || path.startsWith("/api/admin/reservations/")) {

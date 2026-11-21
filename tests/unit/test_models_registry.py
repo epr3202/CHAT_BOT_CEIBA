@@ -8,6 +8,7 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
     expected_tables = {
         "ai_execution",
         "agent",
+        "agent_message_open",
         "agent_session",
         "appointment",
         "appointment_change",

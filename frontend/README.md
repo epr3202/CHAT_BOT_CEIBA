@@ -1,7 +1,6 @@
 # Frontend operativo
 
-Panel local para operar las funcionalidades disponibles del MVP sin modificar el
-backend.
+Panel web de operación de La Ceiba Club House. El servidor Node sirve el frontend y transmite las solicitudes autenticadas a la API FastAPI.
 
 ## Ejecutar
 
@@ -44,7 +43,7 @@ solo las que ya tienen handoff:
 - prioridad;
 - motivo;
 - última actividad;
-- acción `Tomar` disponible para cualquier conversación.
+- acción `Tomar` según estado y asignación del caso;
 - filtro por estado conversacional;
 - filtro `Mis conversaciones` para la sesión autenticada.
 
@@ -85,7 +84,7 @@ Un `ADMIN` crea usuarios con `POST /admin/agents` y luego asigna o restablece
 credenciales con `POST /admin/agents/{id}/credentials`. El PIN mínimo es de 6
 caracteres y solo se conserva como bcrypt.
 
-El panel conserva en `localStorage` solo el estado de bandeja, filtros de
+El panel conserva en `localStorage` preferencias de vista, bandeja, filtros de
 conversaciones y `Mis conversaciones`. Reiniciar frontend, backend, worker o
 Cloudflare no debe sacar un caso tomado de la bandeja mientras la base Postgres se
 conserve.
@@ -107,7 +106,11 @@ general de operación:
 - el historial de tomas/devoluciones se carga al abrir el detalle del caso;
 - si la conversación está en `WAITING_FOR_HUMAN`, se debe tomar el handoff
   pendiente existente;
-- el botón `Responder` abre la bandeja `Asignado` y enfoca el handoff cuando aplica.
+- seleccionar el nombre abre el hilo. En móvil, **Volver** regresa a la lista y devuelve el foco al contacto;
+- el historial y la respuesta comparten una columna. Cada conversación conserva su borrador en memoria hasta cerrar sesión;
+- **Enviar** y Ctrl+Enter encolan la respuesta. El texto se conserva si la API devuelve error. Solo el responsable del caso tomado puede responder o devolverlo al bot;
+- la búsqueda y los filtros se aplican en la API antes de paginar. **Cargar más** continúa el listado. Los contadores corresponden a los casos cargados;
+- un administrador puede reasignar un caso tomado a otro agente activo y registrar el motivo.
 
 ### Handoffs
 
@@ -117,23 +120,33 @@ La bandeja humana mantiene las colas históricas por estado:
 - `Asignado`: conversaciones en atención humana;
 - `Devuelto`: casos que ya regresaron al bot.
 
-En `Asignado`, cada tarjeta muestra dos fuentes:
+El resumen de escalamiento y la acción para abrir la conversación siguen disponibles desde la bandeja. El historial abierto se actualiza cada tres segundos mientras la vista está visible.
 
-- resumen determinístico del momento de escalamiento o toma manual;
-- hilo de chat vivo consultado con `GET /admin/conversations/{conversation_id}/messages`.
+### Apertura y entrega de mensajes
 
-El hilo usa polling AJAX cada 3 segundos mediante `setInterval`. También se refresca
-después de presionar `Enviar`. Esto permite ver mensajes nuevos del cliente sin
-recargar la página mientras el bot permanece pausado.
+El indicador **Sin abrir** cuenta los entrantes que el asesor de la sesión todavía no ha visto. Al mostrarse una burbuja en el área visible del hilo se registra la primera apertura. La migración `20261120_0040` crea `agent_message_open` con clave compuesta de asesor y mensaje. Los mensajes anteriores empiezan sin una apertura acreditada. La lista, la simple consulta del historial por API o la lectura por otro asesor conservan el contador personal.
 
-Estados de mensajes salientes:
+Los salientes ya enviados muestran **Leído por el contacto** al recibir el acuse `read` del proveedor. En ausencia de acuse muestran **Sin confirmación de lectura**. El outbox conserva sus estados de pendiente, envío en curso, fallo, supresión, revisión y descarte.
 
-- mensajes ya materializados como `Message OUTBOUND` aparecen como burbujas
-  salientes sin estado adicional;
-- filas `outbox` todavía no enviadas aparecen como salientes con `Pendiente`,
-  `Enviando`, `Fallido`, `Suprimido`, `En revisión` o `Descartado`;
-- si el worker falla contra Meta, el hilo permite ver que el mensaje fue escrito,
-  aunque la investigación técnica se hace en `outbox.last_error`.
+### Calendario y comprobantes
+
+En **Calendario**, el administrador puede consultar el mes, abrir un día, leer títulos y descripciones, revisar las visitas locales y administrar bloqueos y festivos. Las horas se presentan en Bogotá. Las fechas de fin de los eventos de día completo son exclusivas. Una incidencia al leer los calendarios se muestra como error y permite reintentar con **Actualizar**.
+
+La API usa el adaptador existente. Con `CALENDAR_ADAPTER=google` se necesitan la cuenta de servicio y los permisos de lectura de eventos de los calendarios elegidos. `GOOGLE_AGENDA_CALENDAR_IDS` admite una lista separada por comas. Si está vacía se muestra el calendario principal `GOOGLE_CALENDAR_ID`. Un calendario configurado únicamente en `GOOGLE_FREEBUSY_CALENDAR_IDS` aporta ocupación y conserva la privacidad de sus títulos y descripciones. La vista consulta un máximo de 42 días por petición.
+
+**Ver comprobante** abre JPEG, PNG, WebP o PDF dentro del panel usando el mismo permiso administrativo que la descarga. En PDF hay controles de página. **Descargar**, pre-revisar, aceptar y rechazar siguen siendo acciones independientes. El visor sirve PDF.js desde `frontend/vendor/pdfjs`; la imagen o el documento se procesa en el navegador.
+
+### Gestión por entidad
+
+| Sección | Acciones del panel |
+|---|---|
+| Agentes | Crear, consultar ficha, editar nombre y rol, asignar o cambiar credenciales, activar y desactivar. El historial se conserva. |
+| Atención humana | Consultar colas, tomar un caso, responder, reasignar como administrador y devolver al bot. |
+| Comprobantes | Consultar y revisar evidencia, visualizar o descargar el archivo disponible y registrar la decisión humana. |
+| Planes y reservas | Editar planes existentes, consultar disponibilidad, crear manualmente, filtrar, ver detalle, reprogramar, cancelar y reintentar la sincronización elegible. |
+| Catálogos | Consultar categorías y archivos, cargar PDF y gestionar sus asociaciones y estado conforme al rol. |
+| Avisos a asesores | Consultar destinatarios y entregas, crear o editar destinatarios y solicitar prueba según permisos. |
+| Calendario | Leer eventos y visitas, crear/consultar/editar/retirar un bloqueo de fecha y registrar un festivo manual. |
 
 ### Simulador
 
@@ -160,3 +173,5 @@ audit_event
 
 Por eso un caso tomado sigue tomado después de reiniciar procesos, siempre que no se
 borre la base de datos.
+
+El [inventario del panel](../docs/testing/panel-operativo.md) relaciona los destinos de navegación con las operaciones HTTP y las comprobaciones del rediseño.

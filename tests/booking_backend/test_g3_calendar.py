@@ -31,6 +31,7 @@ async def test_g3_all_day_events_and_cancelled_instances() -> None:
     )
     events = await adapter().list_events(START, START + timedelta(hours=3), ["a"])
     assert len(events) == 1
+    assert events[0].all_day is True
     assert events[0].start == START.replace(hour=0)
     assert events[0].end == START.replace(hour=0) + timedelta(days=1)
 
