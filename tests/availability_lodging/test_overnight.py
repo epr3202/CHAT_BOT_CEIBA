@@ -81,7 +81,9 @@ def test_V_non_overnight_still_rejects_crossing_midnight() -> None:
     assert (result.ok, result.reason) == (False, "CROSSES_MIDNIGHT")
 
 
-def overnight_overlap(*, exclusive: bool, overnight: bool) -> BookingAvailability:
+def overnight_overlap(
+    *, exclusive: bool, overnight: bool, same_plan: bool = False
+) -> BookingAvailability:
     saturday = START + timedelta(days=4)
     assert saturday.weekday() == 5
     sunday = (saturday + timedelta(days=1)).replace(hour=9)
@@ -90,11 +92,12 @@ def overnight_overlap(*, exclusive: bool, overnight: bool) -> BookingAvailabilit
     reservation = Reservation(
         reservation_id=uuid4(),
         status="RESERVED",
+        plan_id=occupied.plan_id,
         starts_at=saturday,
         ends_at=sunday.replace(hour=11),
     )
     reservation.plan = occupied
-    candidate = pure_plan(code="CANDIDATE", exclusive=exclusive)
+    candidate = occupied if same_plan else pure_plan(code="CANDIDATE", exclusive=exclusive)
     candidate.overnight = overnight
     return evaluate_booking_availability(
         plan=candidate,
@@ -106,13 +109,20 @@ def overnight_overlap(*, exclusive: bool, overnight: bool) -> BookingAvailabilit
     )
 
 
-@pytest.mark.parametrize("exclusive,overnight", [(True, False), (False, True)])
-def test_R_reserved_overnight_blocks_exclusive_or_overnight(
-    exclusive: bool, overnight: bool
+@pytest.mark.parametrize(
+    ("exclusive", "same_plan", "blockers"),
+    [
+        (True, False, ["RESERVED_OVERNIGHT"]),
+        (False, True, ["RESERVED_OVERNIGHT"]),
+        (False, False, []),
+    ],
+)
+def test_reserved_overnight_blocks_its_plan_or_an_exclusive_plan(
+    exclusive: bool, same_plan: bool, blockers: list[str]
 ) -> None:
-    result = overnight_overlap(exclusive=exclusive, overnight=overnight)
-    assert result.available is False
-    assert [blocker.kind for blocker in result.blockers] == ["RESERVED_OVERNIGHT"]
+    result = overnight_overlap(exclusive=exclusive, overnight=True, same_plan=same_plan)
+    assert result.available is (not blockers)
+    assert [blocker.kind for blocker in result.blockers] == blockers
 
 
 def test_V_reserved_overnight_does_not_block_shared_plan() -> None:

@@ -2934,8 +2934,9 @@ booking_ends_at alimenta el flujo, las altas y la agenda del panel. Calendar
 usa el ends_at persistido al sincronizar. Los recordatorios conservan vencimiento
 antes de la entrada y auditan el intervalo persistido, incluido checkout.
 WEEKEND_ONLY pide fecha; los planes sin pernoctación siguen rechazando cruces
-de medianoche. RESERVED_OVERNIGHT añade el bloqueo mínimo frente a planes
-exclusivos o con pernoctación; el modelo de recursos queda en backlog §29.
+de medianoche. Una reserva de hospedaje bloquea el mismo plan hasta el checkout y toda
+solicitud exclusiva (RESERVED_OVERNIGHT). Dos hospedajes distintos no exclusivos
+pueden coincidir. El modelo de recursos queda en backlog §29.
 
 Adenda de Leandro autorizada por Emerson el 29-oct: las tres plantillas nuevas
 se publican APPROVED v1 con textos exactos; no pertenecen a CONDITIONAL_DRAFT_CODES.

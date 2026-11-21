@@ -1809,7 +1809,8 @@ El sistema deberá disponer de una fuente confiable o calendario configurado de 
 
 * centralizar el reloj de la app en un único proveedor inyectable (hoy hay al menos 3 fuentes de datetime.now).
 * modelar recursos de agenda (suite, terraza, mesa) antes de ampliar las reglas de
-  solapamiento de pernoctación; el bloqueo actual distingue exclusividad y pernoctación;
+  solapamiento de pernoctación. Hoy el bloqueo depende del plan y la exclusividad,
+  y el intervalo de hospedaje termina al checkout.
 * disponibilidad de eventos grandes: fuera del alcance actual porque no existe
   inventario de recursos, intervalos de montaje ni agenda de eventos completos.
 

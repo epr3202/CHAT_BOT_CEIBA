@@ -217,7 +217,6 @@ async def accept_payment(
             starts_at=reservation.starts_at,
             ends_at=reservation.ends_at,
             reservations=fresh,
-            customer_id=reservation.customer_id,
             calendar_events=[],
             exclusivity_keyword=get_settings().booking_exclusivity_keyword,
         )

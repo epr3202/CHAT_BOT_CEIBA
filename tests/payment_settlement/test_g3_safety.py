@@ -29,7 +29,9 @@ async def test_g3_positive_integer_amount_required(client: AsyncClient, amount: 
     assert response.status_code == 422
 
 
-async def test_g3_concurrent_exclusive_acceptance_serializes(
+@pytest.mark.parametrize("plans", ["exclusive", "mixed", "same_shared", "distinct_shared"])
+async def test_concurrent_acceptance_serializes_overlapping_reservations(
+    plans: str,
     client: AsyncClient,
     calendar: FakeCalendarAdapter,
     monkeypatch: pytest.MonkeyPatch,
@@ -41,8 +43,11 @@ async def test_g3_concurrent_exclusive_acceptance_serializes(
         for _ in range(2)
     ]
     async with app.state.db_sessionmaker.begin() as session:
-        for row in rows:
-            (await session.get(Plan, row.plan_id)).exclusive = True
+        if plans in {"exclusive", "mixed"}:
+            (await session.get(Plan, rows[0].plan_id)).exclusive = True
+            (await session.get(Plan, rows[1].plan_id)).exclusive = plans == "exclusive"
+        elif plans == "same_shared":
+            (await session.get(Reservation, rows[1].reservation_id)).plan_id = rows[0].plan_id
     evidences = [await seed_evidence(reservation_id=row.reservation_id) for row in rows]
     barrier = asyncio.Event()
     calls = 0
@@ -69,10 +74,11 @@ async def test_g3_concurrent_exclusive_acceptance_serializes(
         ]
     )
     assert all(r.status_code == 200 for r in responses)
-    assert {r.json()["result"] for r in responses} == {"RESERVED", "CONFLICT"}
+    expected = ["RESERVED", "RESERVED"] if plans == "distinct_shared" else ["CONFLICT", "RESERVED"]
+    assert sorted(r.json()["result"] for r in responses) == expected
     async with app.state.db_sessionmaker() as session:
         saved = list(await session.scalars(select(Reservation)))
-        assert sum(r.status == "RESERVED" for r in saved) == 1
+        assert sum(r.status == "RESERVED" for r in saved) == expected.count("RESERVED")
         assert all(r.amount_paid_cop == 125000 for r in saved)
 
 

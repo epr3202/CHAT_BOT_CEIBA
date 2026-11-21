@@ -50,6 +50,7 @@ export const labels = {
   bookingBlocker: {
     CALENDAR_EXCLUSIVE: "Evento exclusivo en calendario",
     RESERVED_EXCLUSIVE: "Reserva exclusiva confirmada", RESERVED_CONFLICT: "Reserva confirmada",
+    RESERVED_OVERNIGHT: "Reserva de hospedaje confirmada",
   },
   settlementResult: {
     RESERVED: "Reserva confirmada", PARTIAL: "Abono registrado",

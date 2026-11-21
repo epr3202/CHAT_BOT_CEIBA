@@ -395,7 +395,7 @@ acepta un comprobante con `amount_cop > 0` y nota opcional de hasta 255 caracter
 rechaza con nota obligatoria. Acumulado inferior al 50 % → PAYMENT_PENDING;
 alcanza el anticipo y D3 libre → RESERVED → Calendar después del commit. Calendar
 caído no revierte la reserva: reintento ADMIN en sync-calendar. Saldo un día antes,
-NULL para pago total. Dos planes no exclusivos pueden coincidir.
+NULL para pago total. Solo dos planes distintos y no exclusivos pueden coincidir.
 
 ADMIN y AGENT pueden crear solicitudes manuales por teléfono sin conversación;
 POST /admin/reservations recibe phone, plan_id, starts_at con zona, full_name y note

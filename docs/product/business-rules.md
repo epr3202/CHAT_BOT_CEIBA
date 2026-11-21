@@ -1653,9 +1653,11 @@ La intersección de intervalos usa fin exclusivo: `inicio_a < fin_b` y
   tildes. Su bloqueador es `CALENDAR_EXCLUSIVE`, con referencia al ID del evento.
 * Una reserva solapada solo cuenta si está `RESERVED`. Si su plan es exclusivo,
   bloquea cualquier plan (`RESERVED_EXCLUSIVE`). Si su plan no es exclusivo,
-  bloquea únicamente solicitudes de planes exclusivos (`RESERVED_CONFLICT`).
-  La referencia es el UUID de la reserva. Dos planes no exclusivos pueden
-  coincidir bajo D3; esta decisión requiere confirmación de Leandro.
+  bloquea el mismo plan para cualquier cliente y cualquier solicitud de plan
+  exclusivo (`RESERVED_CONFLICT`). Solo dos planes distintos y no exclusivos
+  pueden coincidir. En hospedaje el intervalo llega hasta el checkout, y el
+  bloqueo por el mismo hospedaje o una solicitud exclusiva se identifica como
+  `RESERVED_OVERNIGHT`. La referencia es el UUID de la reserva.
 * `PAYMENT_PENDING`, `PAYMENT_REVIEW`, `EXPIRED` y `CANCELLED` nunca bloquean.
 * Errores de Calendar, un calendario inaccesible o respuestas incompletas
   invalidan la consulta completa. Nunca se interpretan como disponibilidad.
@@ -2571,7 +2573,7 @@ Su aprobación implica que:
 
 La aceptación humana de un comprobante registra un monto COP positivo. Solo al
 alcanzar el anticipo del 50 % y revalidar D3 se confirma RESERVED; PAYMENT_PENDING
-y PAYMENT_REVIEW no bloquean ninguna franja. Dos planes no exclusivos pueden
+y PAYMENT_REVIEW no bloquean ninguna franja. Dos planes distintos no exclusivos pueden
 coincidir. Un conflicto conserva la revisión y el dinero registrado; requiere
 intervención humana. El rechazo o abono parcial regresa a PAYMENT_PENDING.
 
@@ -2714,9 +2716,9 @@ un humano; la IA no decide el saldo, el envío, el vencimiento ni la cancelació
 Además del guard global PAYMENT_PENDING/PAYMENT_REVIEW, una solicitud con plan
 e intervalo completos no puede duplicar una reserva RESERVED del mismo cliente
 y plan cuyo intervalo semiabierto [starts_at, ends_at) se solape. El control se
-aplica antes de ofrecer confirmación y de crear la solicitud. No modifica D3,
-la coexistencia de planes no exclusivos entre clientes ni solicitudes de otra
-franja/plan. Los pendientes conservan su guard y precedencia existentes.
+aplica antes de ofrecer confirmación y de crear la solicitud. Desde el 21 de
+noviembre de 2026, la regla de disponibilidad D3 también bloquea el mismo plan
+para otros clientes y permite dos planes distintos si ambos son no exclusivos. Los pendientes conservan su guard y precedencia existentes.
 
 Con RESP-BOOKING-DUPLICATE-001 aprobada, el backend presenta el plan y la entrada
 de la reserva existente en Bogotá, limpia fecha/hora/confirmación/checkout del

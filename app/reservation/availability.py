@@ -82,7 +82,6 @@ def evaluate_booking_availability(
     calendar_events: list[CalendarEvent],
     reservations: list[Reservation],
     exclusivity_keyword: str,
-    customer_id: int | None = None,
 ) -> BookingAvailability:
     """Pure D3 intersection with exclusive ends; reservation.plan must be loaded."""
     keyword = _normalized(exclusivity_keyword)
@@ -114,15 +113,16 @@ def evaluate_booking_availability(
             or starts_at >= reservation.ends_at
         ):
             continue
-        if reservation.plan.overnight and (plan.exclusive or plan.overnight):
-            blockers.append(BookingBlocker("RESERVED_OVERNIGHT", str(reservation.reservation_id)))
+        same_plan = reservation.plan_id == plan.plan_id
+        if reservation.plan.overnight and (plan.exclusive or same_plan):
+            kind = "RESERVED_OVERNIGHT"
         elif reservation.plan.exclusive:
-            blockers.append(BookingBlocker("RESERVED_EXCLUSIVE", str(reservation.reservation_id)))
-        elif plan.exclusive or (
-            customer_id is not None and reservation.customer_id == customer_id
-            and reservation.plan_id == plan.plan_id
-        ):
-            blockers.append(BookingBlocker("RESERVED_CONFLICT", str(reservation.reservation_id)))
+            kind = "RESERVED_EXCLUSIVE"
+        elif plan.exclusive or same_plan:
+            kind = "RESERVED_CONFLICT"
+        else:
+            continue
+        blockers.append(BookingBlocker(kind, str(reservation.reservation_id)))
     return BookingAvailability(not blockers, blockers)
 
 
