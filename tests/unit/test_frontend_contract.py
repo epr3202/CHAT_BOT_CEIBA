@@ -223,13 +223,13 @@ def test_frontend_summary_button_opens_modal() -> None:
     index_html = FRONTEND.joinpath("index.html").read_text(encoding="utf-8")
     styles = FRONTEND.joinpath("styles.css").read_text(encoding="utf-8")
 
-    assert 'id="summaryModal"' in index_html
+    assert '<dialog id="summaryModal"' in index_html
     assert 'id="summaryModalBody"' in index_html
     assert "function showSummary" in app_js
-    assert '$("#summaryModal").hidden = false' in app_js
-    assert "function closeSummaryModal" in app_js
+    assert '$("#summaryModal").showModal()' in app_js
+    assert '$("#summaryModal").close()' in app_js
     assert "conversation.handoff_summary" in app_js
-    assert ".modalBackdrop" in styles
+    assert "dialog::backdrop" in styles
 
 
 def test_frontend_persists_followup_bandeja_state() -> None:

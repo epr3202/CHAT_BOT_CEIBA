@@ -39,8 +39,12 @@ for (const width of [375, 768, 1024, 1440]) {
     await expect(reply).toBeVisible();
     await expect(reply).toHaveValue("¿Sigue en pie la decoración?");
     await page.locator("#chatSummary").click();
-    await expect(page.locator("#summaryModal")).toContainText("Violín en vivo");
-    await page.locator("#closeSummaryModal").click();
+    const card = page.getByRole("dialog", {name: "Marina Lago"});
+    await expect(card).toBeVisible();
+    await expect(card).toContainText("Violín en vivo");
+    await page.keyboard.press("Escape");
+    await expect(card).toBeHidden();
+    await expect(page.locator("#chatSummary")).toBeFocused();
     await list.click();
     await page.getByRole("button", {name: "Abrir conversación de Sol Río"}).click();
     await expect(context).toContainText("17:00");
