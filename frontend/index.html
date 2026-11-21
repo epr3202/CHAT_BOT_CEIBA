@@ -15,7 +15,7 @@
           <span>Club House</span>
         </div>
       </div>
-      <button id="navToggle" aria-expanded="false" aria-controls="mainNav">Menú</button>
+      <button type="button" id="navToggle" aria-controls="mainNav" aria-expanded="true"><svg class="panelIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m7-11-3 3 3 3"/></svg><span>Menú</span></button>
       <nav class="nav" id="mainNav" hidden>
         <div class="navGroup" role="group" aria-label="Atención"><span class="groupTitle" aria-hidden="true">Atención</span>
           <button class="navItem active" data-view="admin" title="Conversaciones">
@@ -118,7 +118,8 @@
 
         </details>
         <section class="panel inboxPanel">
-          <div class="operatorWorkspace"><div class="contactDirectory"><div class="inboxFilters">
+          <div class="directoryBar"><button id="directoryToggle" type="button" aria-controls="contactDirectory" aria-expanded="true"><svg class="panelIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m7-11-3 3 3 3"/></svg><span>Contraer lista de conversaciones</span></button></div>
+          <div class="operatorWorkspace"><div class="contactDirectory" id="contactDirectory"><div class="inboxFilters">
           <div class="panelHeader">
             <h2>Bandeja de conversaciones</h2>
             <div class="segmented caseFilters" role="group" aria-label="Filtrar conversaciones por atención">
@@ -152,10 +153,14 @@
           <section id="activeChat" hidden aria-labelledby="chatContact">
             <header class="chatHeader"><span id="chatAvatar" class="contactAvatar" aria-hidden="true"></span><button type="button" id="chatBack">Volver a la lista</button>
               <h3 id="chatContact" tabindex="-1"></h3><small id="chatContext"></small></header>
+            <section id="chatCaseContext" aria-label="Ficha de la conversación">
+              <dl id="caseFacts"></dl>
+              <div id="caseBooking" hidden></div>
+              <button type="button" id="chatSummary">Ver ficha completa</button>
+            </section>
             <div id="activeHistory" tabindex="0" aria-label="Historial de mensajes"></div>
             <div class="chatTools"><span id="historyStatus" role="status"></span><button type="button" id="chatRefresh">Actualizar historial</button></div>
             <div class="chatActions" role="group" aria-label="Acciones de atención">
-              <button type="button" id="chatSummary">Ver resumen</button>
               <button type="button" id="chatReassign" hidden>Reasignar</button>
               <button type="button" id="chatReturn" hidden>Devolver al bot</button>
             </div>
@@ -280,16 +285,18 @@
           <div class="panelHeader"><h2>Reiniciar conversación</h2></div>
           <p>Previsualiza los cambios para un teléfono antes de confirmar el reinicio. El historial se conserva.</p>
           <form id="resetPreviewForm" class="managementForm">
-            <label>Teléfono<input id="resetPhone" type="tel" placeholder="+573001112233" required autocomplete="off" /></label>
-            <div class="actions"><button type="submit" id="previewReset">Previsualizar</button></div>
+            <div class="phoneFields">
+              <div class="phoneCountry">
+                <label for="resetCountry">Indicativo</label>
+                <select id="resetCountry"><button><selectedcontent></selectedcontent></button></select>
+              </div>
+              <label>Teléfono<input id="resetPhone" type="tel" placeholder="300 123 4567" required autocomplete="off" /></label>
+            </div>
+            <div class="actions"><button type="submit" id="previewReset">Verificar</button></div>
           </form>
           <p id="resetFeedback" role="status" aria-live="polite"></p>
           <div id="resetSummary" aria-live="polite"></div>
           <form id="resetExecuteForm" class="managementForm">
-            <label>Motivo del reinicio<textarea id="resetReason" required maxlength="300" rows="2"></textarea></label>
-            <label>Escribe de nuevo el teléfono de la previsualización para confirmar
-              <input id="resetConfirmPhone" type="tel" required autocomplete="off" />
-            </label>
             <div class="actions"><button type="submit" id="executeReset" class="danger" disabled>Reiniciar</button></div>
           </form>
           <p id="resetRequestId"></p>
@@ -512,19 +519,28 @@
       </article>
     </template>
 
-    <div id="summaryModal" class="modalBackdrop" hidden>
-      <section class="summaryModal" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
+    <dialog id="confirmDialog" class="confirmDialog" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogDetail">
+      <h2 id="confirmDialogTitle">¿Reiniciar esta conversación?</h2>
+      <p id="confirmDialogDetail"></p>
+      <div class="actions">
+        <button type="button" id="confirmDialogAccept" class="danger"></button>
+        <button type="button" id="confirmDialogCancel" autofocus>Cancelar</button>
+      </div>
+    </dialog>
+
+    <dialog id="summaryModal" closedby="any" class="summaryModal" aria-labelledby="summaryModalTitle">
         <div class="panelHeader compact">
           <div>
             <h2 id="summaryModalTitle">Resumen</h2>
             <span id="summaryModalMeta"></span>
           </div>
-          <button id="closeSummaryModal" class="iconButton" type="button" title="Cerrar">×</button>
+          <button id="closeSummaryModal" class="iconButton" type="button" aria-label="Cerrar ficha" autofocus>×</button>
         </div>
+        <dl id="summaryBooking"></dl>
         <div id="summaryModalDetails" class="summaryDetails"></div>
+        <h3>Resumen registrado</h3>
         <pre id="summaryModalBody" class="summary"></pre>
-      </section>
-    </div>
+    </dialog>
 
     <dialog id="proofDialog" aria-labelledby="proofTitle"><header><h2 id="proofTitle">Vista del comprobante</h2><form method="dialog"><button>Cerrar</button></form></header><div id="proofMedia"></div></dialog>
     <dialog id="agentDetail" aria-labelledby="agentDetailTitle"><header><h2 id="agentDetailTitle">Ficha del agente</h2><form method="dialog"><button>Cerrar</button></form></header><dl id="agentFields"></dl></dialog>

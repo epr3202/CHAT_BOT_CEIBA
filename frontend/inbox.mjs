@@ -11,6 +11,7 @@ export function createInbox({
   refreshCases,
   canTake,
   showSummary,
+  renderContext,
   openReassign,
 }) {
   const box = document.querySelector("#activeChat");
@@ -60,6 +61,8 @@ export function createInbox({
     snapshot = "";
     box.hidden = true;
     history.replaceChildren();
+    $("#caseFacts").replaceChildren();
+    $("#caseBooking").replaceChildren();
     input.value = "";
     $("#replyStatus").textContent = "";
     document.querySelector("#admin").classList.remove("chatOpen");
@@ -75,6 +78,7 @@ export function createInbox({
     $("#chatContext").textContent = [item.phone, owner() ? "Asignada a ti" : item.assignedTo]
       .filter(Boolean)
       .join(" · ");
+    renderContext(item);
     if (change) {
       history.textContent = "Cargando mensajes…";
       input.value = drafts.get(item.conversationId) || "";
@@ -88,8 +92,8 @@ export function createInbox({
       !active ||
       document.hidden ||
       marking ||
-      box.closest("[hidden]") ||
-      document.querySelector("dialog[open], #summaryModal:not([hidden])")
+      (!box.getClientRects().length || box.closest("[hidden]")) ||
+      document.querySelector("dialog[open]")
     )
       return;
     const viewport = history.getBoundingClientRect();
@@ -134,7 +138,7 @@ export function createInbox({
       fetching ||
       marking ||
       document.hidden ||
-      box.closest("[hidden]")
+      (!box.getClientRects().length || box.closest("[hidden]"))
     )
       return;
     const version = generation;

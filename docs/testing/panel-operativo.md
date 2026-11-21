@@ -5,7 +5,7 @@ La integración parte de `1dcf000da37692f1b57395379cb8e856622f561c`. El censo ab
 | Destino | Trabajo del usuario |
 |---|---|
 | Acceso | Autenticar con documento y PIN, recuperar la sesión o cerrarla. |
-| Conversaciones | Buscar y paginar casos en Todas o Mis conversaciones. Desde el hilo se consulta el historial, se toma el caso, se responde, se devuelve al bot o se reasigna según el rol. Mis conversaciones muestra los casos tomados por el usuario de la sesión que continúan en atención. |
+| Conversaciones | Buscar y paginar casos en Todas o Mis conversaciones. Al abrir el chat se muestran responsable, estado, motivo y última reserva activa vinculada o solicitud en curso. La ficha completa incluye datos comerciales e historial de asignación. El menú y la lista se pliegan por separado y conservan el borrador. Desde el hilo se consulta el historial, se toma el caso, se responde, se devuelve al bot o se reasigna según el rol. Mis conversaciones muestra los casos tomados por el usuario de la sesión que continúan en atención. |
 | Comprobantes | Consultar evidencia y abrir el archivo. El monto COP propuesto se carga en el campo editable al abrir o completar la pre-revisión. El operador verifica el importe y confirma la decisión. El detalle de la reserva usa el mismo formulario. |
 | Calendario | Recorrer el mes con títulos por día y abrir el detalle desde la agenda del día. Las reservas vinculadas muestran la fecha y el horario confirmado en Bogotá, incluso cuando la descripción anterior conserva valores provisionales. Revisar citas locales, bloqueos y festivos. |
 | Catálogos | Consultar cobertura, cargar PDF, editar estado y gestionar asignaciones a tipos de evento. |
@@ -16,7 +16,7 @@ La integración parte de `1dcf000da37692f1b57395379cb8e856622f561c`. El censo ab
 | Avisos a asesores | Administrar destinatarios y consultar entregas y pruebas de aviso. |
 | Simulador | Simular y repetir un webhook en los entornos habilitados. |
 | Cobertura | Consultar el resumen funcional del producto. |
-| Herramientas | Acceder a utilidades administrativas y al reinicio con sus advertencias y permisos originales. |
+| Herramientas | Verificar el teléfono con indicativo, revisar las reservas vigentes y confirmar el reinicio una vez. La auditoría registra el administrador y el motivo automático. |
 
 ## Hallazgos y cambios
 

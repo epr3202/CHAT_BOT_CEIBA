@@ -1,3 +1,4 @@
+import { createWorkspace } from "./workspace.mjs";
 import {
   labels, label, formatDate, summaryContent, formatCOP, bogotaDateTimeToISO,
   bookingBlockersText, backendErrorText,
@@ -7,6 +8,8 @@ import { createInbox } from "./inbox.mjs";
 import { createAgenda } from "./agenda.mjs";
 import { viewProof } from "./proof.mjs";
 
+import { DEFAULT_REGION, countryOptions, isKnownRegion, splitInternational, toE164 } from "./phone.mjs";
+const phoneRegionStorageKey = "ceiba.phoneRegion";
 const sessionTokenStorageKey = "ceiba.sessionToken";
 const legacyAdminTokenStorageKey = "ceiba.adminToken";
 const legacyAgentDocumentIdStorageKey = "ceiba.agentDocumentId";
@@ -82,6 +85,7 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 
 const panelApi = (url, options = {}) => requestJson(url, { ...options, headers: operationHeaders() });
 const agenda = createAgenda(panelApi);
+const workspace = createWorkspace();
 let lastChatId = null;
 const inbox = createInbox({
   api: panelApi,
@@ -93,6 +97,7 @@ const inbox = createInbox({
     ? item.id != null && item.status === "WAITING_FOR_HUMAN"
     : item.handoffStatus !== "TAKEN" && directTakeEligibleStates.has(item.status),
   showSummary,
+  renderContext: renderChatContext,
   openReassign,
   onReturned: () => setText("caseFeedback", "Conversación devuelta al bot."),
   onTaken: () => {
@@ -103,6 +108,7 @@ const inbox = createInbox({
     persistViewState();
   },
   onClose: () => {
+    workspace.showList();
     $("#chatEmpty").hidden = false;
     (document.querySelector(`[data-open-chat="${lastChatId}"]`) || $(".caseFilter.active")).focus();
     $$(".caseRow[aria-current]").forEach((row) => row.removeAttribute("aria-current"));
@@ -119,7 +125,8 @@ const inbox = createInbox({
 function initials(name) {
   return name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0]).join("").toUpperCase();
 }
-function openChat(item) {
+function openChat(item, reveal = true) {
+  if (reveal) workspace.showChat();
   $("#chatAvatar").textContent = initials(item.customerName);
   lastChatId = item.conversationId;
   $("#chatEmpty").hidden = true;
@@ -129,6 +136,7 @@ function openChat(item) {
     ?.closest(".caseRow")
     ?.setAttribute("aria-current", "true");
   inbox.open(item);
+  workspace.render();
 }
 
 function setText(id, value) {
@@ -248,8 +256,7 @@ function selectView(view) {
   const button = $$(".navItem").find((item) => item.dataset.view === view);
   if (!state.agent || !state.sessionToken || !button || button.hidden) return;
   if (view !== "admin" && inbox.selected()) inbox.close();
-  document.body.classList.remove("navOpen");
-  $("#navToggle").setAttribute("aria-expanded","false");
+  workspace.closeMenu();
   state.currentView = view;
   localStorage.setItem("ceiba.currentView", view);
   applyAuthState();
@@ -734,9 +741,12 @@ function clearSession() {
   setText("caseFeedback", "");
   $("#moreCases").hidden = true;
   inbox.reset();
+  workspace.closeMenu();
+  workspace.showList();
   agenda.reset();
   closeSummaryModal();
   $("#summaryModalBody").replaceChildren();
+  $("#summaryBooking").replaceChildren();
   $("#summaryModalDetails").replaceChildren();
   $("#chatEmpty").hidden = false;
   for (const dialog of $$("dialog[open]")) dialog.close();
@@ -783,6 +793,7 @@ function clearSession() {
   $("#agentEditForm").hidden = true;
   $("#agentCredentialsForm").hidden = true;
   $("#agentCredentialsForm").reset();
+  $("#resetPhone").value = "";
   $("#resetExecuteForm").reset();
   invalidateResetPreview();
   $("#pin").value = "";
@@ -965,6 +976,7 @@ function caseFromConversation(conversation) {
     preview: conversation.last_message_preview || conversation.last_message_body || "",
     bookingDraft: conversation.booking_draft,
     reservationDetails: conversation.reservation_details,
+    reservation: conversation.reservation_context,
   };
 }
 
@@ -993,7 +1005,7 @@ function renderAdminCases() {
 
   if (inbox.selected()) {
     const selected = cases.find((c) => c.conversationId === inbox.selected());
-    if (selected) openChat(selected);
+    if (selected) openChat(selected, false);
     else if (state.assignedToMe) inbox.close();
   }
   container.replaceChildren();
@@ -1163,6 +1175,54 @@ async function openReassign(item) {
   };
 }
 
+const bookingDay = new Intl.DateTimeFormat("es-CO", {
+  timeZone: "America/Bogota", day: "numeric", month: "short", year: "numeric",
+});
+const bookingClock = new Intl.DateTimeFormat("es-CO", {
+  timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+function bookingInterval(reservation) {
+  const start = new Date(reservation.starts_at), end = new Date(reservation.ends_at);
+  if (!Number.isFinite(+start) || !Number.isFinite(+end)) return "";
+  const startDay = bookingDay.format(start), endDay = bookingDay.format(end);
+  return `${startDay} · ${bookingClock.format(start)} – ${startDay === endDay ? "" : endDay + " · "}${bookingClock.format(end)} (Bogotá)`;
+}
+function fact(list, caption, value) {
+  if (!value) return;
+  const group = document.createElement("div"), term = document.createElement("dt"), detail = document.createElement("dd");
+  term.textContent = caption;
+  detail.append(value);
+  group.append(term, detail);
+  list.append(group);
+}
+function renderChatContext(item) {
+  const facts = $("#caseFacts"), booking = $("#caseBooking");
+  facts.replaceChildren();
+  fact(facts, "Estado", label("conversationState", item.status));
+  fact(facts, "Responsable", ownedByMe(item) ? `${item.assignedTo} (tú)` : item.assignedTo);
+  fact(facts, "Motivo", reasonLabel(item));
+  if (item.handoffStatus !== "SIN_HANDOFF") fact(facts, "Caso", label("handoffStatus", item.handoffStatus));
+  if (!item.reservation && !item.bookingDraft && item.createdAt) fact(facts, "Última actividad", activityText(item));
+  if (item.priority && item.priority !== "NORMAL") fact(facts, "Prioridad", label("priority", item.priority));
+  booking.replaceChildren();
+  const reservation = item.reservation, draft = item.bookingDraft;
+  booking.hidden = !reservation && !draft && !item.reservationDetails;
+  if (booking.hidden) return;
+  const title = document.createElement("strong"), info = document.createElement("span");
+  if (reservation) {
+    const status = reservation.status === "RESERVED" ? "Confirmada" : label("reservationStatus", reservation.status);
+    title.append("Reserva · ", status, " · ", reservation.plan_name);
+    info.textContent = [bookingInterval(reservation), reservation.guest_count && `${reservation.guest_count} ${reservation.guest_count === 1 ? "persona" : "personas"}`].filter(Boolean).join(" · ");
+  } else if (draft) {
+    title.textContent = "Solicitud en curso";
+    info.textContent = [draft.plan_name || draft.plan_code?.replaceAll("_", " "), draft.date, draft.time].filter(Boolean).join(" · ") || "Datos en recopilación";
+  } else {
+    title.textContent = "Datos de la reserva";
+    info.textContent = item.reservationDetails.split("\n").find(Boolean) || "";
+  }
+  booking.append(title, info);
+}
+
 function showSummary(item) {
   $("#summaryModalTitle").textContent = item.customerName;
   $("#summaryModalMeta").textContent = `${item.phone} · conversación ${item.conversationId}`;
@@ -1175,8 +1235,19 @@ function showSummary(item) {
     $("#summaryModalDetails").append("\nEstado del caso: ", label("handoffStatus", item.handoffStatus),
       "\nPrioridad: ", label("priority", item.priority));
   }
+  const booking = $("#caseBooking");
+  const extra = $("#summaryBooking");
+  extra.replaceChildren();
+  if (!booking.hidden) {
+    fact(extra, item.reservation ? "Última reserva activa" : "Solicitud", booking.innerText);
+  }
+  if (item.reservation?.event_type) fact(extra, "Tipo de evento", label("eventType", item.reservation.event_type));
+  if (item.reservation?.special_requests) fact(extra, "Solicitudes especiales", item.reservation.special_requests);
+  if (item.reservationDetails) fact(extra, "Datos comerciales de la solicitud original", item.reservationDetails);
+  if (item.bookingDraft?.checkout) fact(extra, "Salida solicitada", formatDate(item.bookingDraft.checkout));
+  if (item.bookingDraft?.duration_minutes) fact(extra, "Duración solicitada", item.bookingDraft.duration_minutes + " minutos");
   $("#summaryModalBody").replaceChildren(summaryContent(item.summary));
-  $("#summaryModal").hidden = false;
+  $("#summaryModal").showModal();
   loadAssignmentHistory(item.conversationId);
 }
 
@@ -1184,17 +1255,18 @@ let historyRequest = 0;
 async function loadAssignmentHistory(conversationId) {
   const request = ++historyRequest;
   const token = state.sessionToken;
-  const current = () => request === historyRequest && token === state.sessionToken && !$("#summaryModal").hidden;
+  const current = () => request === historyRequest && token === state.sessionToken && $("#summaryModal").open;
   try {
     const history = await requestJson(`/api/admin/conversations/${conversationId}/history`, {
       headers: operationHeaders(),
     });
     if (!current()) return;
     const lines = history.map((event) => {
-      if (event.action === "HANDOFF_REASSIGNED") return `${event.actor} reasignó el caso`;
-      if (event.action === "HANDOFF_RETURNED") return `${event.actor} devolvió`;
-      if (event.action === "CONVERSATION_MANUAL_TAKEOVER") return `${event.actor} tomó conversación`;
-      return `${event.actor} tomó el caso`;
+      const actor = event.created_at ? `${formatDate(event.created_at)} · ${event.actor}` : event.actor;
+      if (event.action === "HANDOFF_REASSIGNED") return `${actor} reasignó el caso`;
+      if (event.action === "HANDOFF_RETURNED") return `${actor} devolvió el caso`;
+      if (event.action === "CONVERSATION_MANUAL_TAKEOVER") return `${actor} tomó conversación`;
+      return `${actor} tomó el caso`;
     });
     $("#summaryModalDetails").append(`\nHistorial: ${lines.join(" · ") || "Sin eventos"}`);
   } catch (error) {
@@ -1205,7 +1277,7 @@ async function loadAssignmentHistory(conversationId) {
 }
 
 function closeSummaryModal() {
-  $("#summaryModal").hidden = true;
+  if ($("#summaryModal").open) $("#summaryModal").close();
 }
 
 function priorityClass(priority) {
@@ -2154,12 +2226,94 @@ async function toggleAgentActive(agent, button) {
   }
 }
 
+function preferredPhoneRegion() {
+  const stored = localStorage.getItem(phoneRegionStorageKey);
+  return isKnownRegion(stored) ? stored : DEFAULT_REGION;
+}
+
+/**
+ * Guarda la región elegida como preferencia de este navegador.
+ * @param {string} region código ISO 3166-1 alfa-2.
+ * @returns {void}
+ */
+function rememberPhoneRegion(region) {
+  localStorage.setItem(phoneRegionStorageKey, region);
+}
+
+/**
+ * Crea la opción de un país cuyo texto es "País (+código)"; el nombre va marcado para que el selector
+ * cerrado muestre solo el indicativo.
+ * @param {{region: string, name: string, code: string}} country región, nombre visible e indicativo.
+ * @returns {HTMLOptionElement} opción con valor igual a la región.
+ */
+function countryOption({ region, name, code }) {
+  const option = document.createElement("option");
+  option.value = region;
+  const nameStart = Object.assign(document.createElement("span"), { className: "countryName", textContent: `${name} (` });
+  const nameEnd = Object.assign(document.createElement("span"), { className: "countryName", textContent: ")" });
+  const text = document.createElement("span");
+  text.append(nameStart, `+${code}`, nameEnd);
+  option.append(text);
+  return option;
+}
+
+/**
+ * Llena un selector de indicativo con todos los países y selecciona la preferencia del navegador.
+ * @param {HTMLSelectElement} select selector a poblar.
+ * @returns {void}
+ */
+function populatePhoneRegionSelect(select) {
+  select.append(...countryOptions("es").map(countryOption));
+  select.value = preferredPhoneRegion();
+}
+
+/**
+ * Si el campo de teléfono empieza con un indicativo internacional, actualiza el selector, guarda la
+ * preferencia y deja en el campo solo el número nacional; además quita espacios iniciales.
+ * @param {HTMLInputElement} input campo de teléfono.
+ * @param {HTMLSelectElement} select selector de indicativo asociado.
+ * @returns {void}
+ */
+function applyTypedCountryCode(input, select) {
+  const split = splitInternational(input.value);
+  if (split) {
+    select.value = split.region;
+    rememberPhoneRegion(split.region);
+    input.value = split.national;
+  } else if (/^\s/.test(input.value)) {
+    input.value = input.value.trimStart();
+  }
+}
+
+/**
+ * Compone el teléfono del formulario de reinicio en formato internacional.
+ * @returns {string} número E.164 con el indicativo seleccionado.
+ */
+function resetPhoneNumber() {
+  return toE164($("#resetCountry").value, $("#resetPhone").value);
+}
+
+/**
+ * Abre el modal de confirmación de una operación destructiva y espera la decisión del usuario.
+ * @param {string} operation operación en infinitivo, por ejemplo "reiniciar la conversación".
+ * @param {string} detail efecto concreto de la operación, mostrado bajo la pregunta.
+ * @returns {Promise<boolean>} true si el usuario confirma; false si cancela, pulsa Escape o cierra el modal.
+ */
+function confirmDestructive(operation, detail) {
+  const dialog = $("#confirmDialog");
+  $("#confirmDialogAccept").textContent = `Sí, quiero ${operation}`;
+  setText("confirmDialogDetail", detail);
+  dialog.returnValue = "";
+  dialog.showModal();
+  return new Promise(resolve => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "accept"), { once: true });
+  });
+}
+
 function updateResetAvailability() {
   const preview = state.resetPreview;
   $("#executeReset").disabled = state.resetBusy || !preview
-    || $("#resetPhone").value.trim() !== preview.input
-    || !$("#resetReason").value.trim()
-    || $("#resetConfirmPhone").value.trim() !== preview.phone_number;
+    || preview.customer_id == null || resetPhoneNumber() !== preview.input;
 }
 
 function invalidateResetPreview() {
@@ -2167,7 +2321,6 @@ function invalidateResetPreview() {
   $("#resetSummary").replaceChildren();
   setText("resetRequestId", "");
   setText("resetFeedback", "");
-  $("#resetConfirmPhone").value = "";
   updateResetAvailability();
 }
 
@@ -2217,17 +2370,17 @@ async function previewReset(event) {
   invalidateResetPreview();
   state.resetBusy = true;
   $("#previewReset").disabled = true;
-  const input = $("#resetPhone").value.trim();
+  const input = resetPhoneNumber(), token = state.sessionToken;
   try {
     const summary = await requestJson("/api/admin/conversations/reset", {
       method: "POST", headers: sessionHeaders(), body: JSON.stringify({ phone_number: input, dry_run: true }),
     });
-    if ($("#resetPhone").value.trim() !== input || state.agent?.role !== "ADMIN") return;
+    if (resetPhoneNumber() !== input || state.agent?.role !== "ADMIN" || state.sessionToken !== token) return;
     state.resetPreview = { ...summary, input };
     renderResetSummary(summary);
-    feedback("resetFeedback", summary.customer_id === null ? "No existe un cliente con ese teléfono." : "Revisa los conteos, escribe el motivo y confirma el teléfono.");
+    feedback("resetFeedback", summary.customer_id === null ? "No existe un cliente con ese teléfono." : "Revisa los cambios antes de reiniciar la conversación.");
   } catch (error) {
-    feedback("resetFeedback", error.message, true);
+    if (state.sessionToken === token) feedback("resetFeedback", error.message, true);
   } finally {
     state.resetBusy = false;
     $("#previewReset").disabled = false;
@@ -2239,20 +2392,26 @@ async function executeReset(event) {
   event.preventDefault();
   updateResetAvailability();
   if ($("#executeReset").disabled) return;
-  const phone = state.resetPreview.phone_number;
+  const preview = state.resetPreview, phone = preview.phone_number, token = state.sessionToken;
+  if ($("#confirmDialog").open) return;
+  const confirmed = await confirmDestructive(
+    "reiniciar la conversación", `Se reiniciará la conversación de ${phone}. El historial se conserva.`,
+  );
+  if (!confirmed || state.resetPreview !== preview || state.sessionToken !== token) return;
   state.resetBusy = true;
   $("#previewReset").disabled = true;
   updateResetAvailability();
   try {
     const summary = await requestJson("/api/admin/conversations/reset", {
       method: "POST", headers: sessionHeaders(),
-      body: JSON.stringify({ phone_number: phone, dry_run: false, reason: $("#resetReason").value.trim() }),
+      body: JSON.stringify({ phone_number: phone, dry_run: false }),
     });
+    if (state.sessionToken !== token || state.resetPreview !== preview) return;
     state.resetPreview = null;
     renderResetSummary(summary);
     feedback("resetFeedback", "Reinicio completado. El historial se conserva.");
   } catch (error) {
-    feedback("resetFeedback", error.message, true);
+    if (state.sessionToken === token) feedback("resetFeedback", error.message, true);
   } finally {
     state.resetBusy = false;
     $("#previewReset").disabled = false;
@@ -2262,7 +2421,6 @@ async function executeReset(event) {
 
 function bindUi() {
   $("#moreCases").onclick=()=>loadAllAdminCases(true);
-  $("#navToggle").onclick=()=>$("#navToggle").setAttribute("aria-expanded",String(document.body.classList.toggle("navOpen")));
   $("#cancelAssign").onclick=()=>$("#assignDialog").close();
   $$(".navItem").forEach((button) => {
     button.addEventListener("click", () => selectView(button.dataset.view));
@@ -2333,9 +2491,17 @@ function bindUi() {
   });
   $("#resetPreviewForm").addEventListener("submit", previewReset);
   $("#resetExecuteForm").addEventListener("submit", executeReset);
-  $("#resetPhone").addEventListener("input", invalidateResetPreview);
-  $("#resetReason").addEventListener("input", updateResetAvailability);
-  $("#resetConfirmPhone").addEventListener("input", updateResetAvailability);
+  populatePhoneRegionSelect($("#resetCountry"));
+  $("#resetPhone").addEventListener("input", () => {
+    applyTypedCountryCode($("#resetPhone"), $("#resetCountry"));
+    invalidateResetPreview();
+  });
+  $("#resetCountry").addEventListener("change", () => {
+    rememberPhoneRegion($("#resetCountry").value);
+    invalidateResetPreview();
+  });
+  $("#confirmDialogAccept").addEventListener("click", () => $("#confirmDialog").close("accept"));
+  $("#confirmDialogCancel").addEventListener("click", () => $("#confirmDialog").close("cancel"));
   $("#logout").addEventListener("click", logout);
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);
@@ -2359,12 +2525,7 @@ function bindUi() {
   $("#refreshPaymentEvidence").addEventListener("click", loadPaymentEvidence);
   $("#catalogUploadForm").addEventListener("submit", uploadCatalog);
   $("#closeSummaryModal").addEventListener("click", closeSummaryModal);
-  $("#summaryModal").addEventListener("click", (event) => {
-    if (event.target.id === "summaryModal") closeSummaryModal();
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !$("#summaryModal").hidden) closeSummaryModal();
-  });
+
   $("#clearLog").addEventListener("click", () => {
     $("#eventLog").replaceChildren();
     setText("metricWebhook", "--");

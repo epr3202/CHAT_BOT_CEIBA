@@ -225,12 +225,20 @@ async def test_agent_cannot_reset_conversation(client: AsyncClient) -> None:
     assert response.status_code == 403
 
 
-async def test_execute_reset_requires_nonempty_reason(client: AsyncClient) -> None:
+@pytest.mark.parametrize("extra", [{}, {"reason": ""}, {"reason": "  "}])
+async def test_execute_reset_records_default_audit_reason(
+    client: AsyncClient, extra: dict[str, str]
+) -> None:
     headers = await login_headers(client, "90000000")
-    for reason in (None, "", "   "):
-        response = await client.post(
-            "/admin/conversations/reset",
-            headers=headers,
-            json={"phone_number": PHONE, "dry_run": False, "reason": reason},
+    await seed_reset_state()
+    response = await client.post(
+        "/admin/conversations/reset", headers=headers,
+        json={"phone_number": PHONE, "dry_run": False, **extra},
+    )
+    assert response.status_code == 200
+    async with app.state.db_sessionmaker() as session:
+        audit = await session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == response.json()["request_id"])
         )
-        assert response.status_code == 422
+        assert audit.actor == "Admin"
+        assert audit.new_value["reason"] == "Reinicio manual de conversación por el administrador"
