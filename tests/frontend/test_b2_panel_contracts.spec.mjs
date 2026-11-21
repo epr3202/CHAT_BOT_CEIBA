@@ -78,6 +78,7 @@ test("C-1 rechaza con motivo obligatorio y descarga el comprobante", async ({ pa
   await evidence.getByRole("button", { name: "Descargar", exact: true }).click();
   await download;
   await evidence.getByRole("button", { name: "Rechazar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
   await expect(view.locator("#reservationDetailFeedback")).toContainText("Comprobante rechazado");
   expect(data.calls.find(c => c.key.endsWith("/reject")).body).toEqual({ note: "Comprobante ilegible" });
 });
@@ -106,6 +107,7 @@ test("C-1 reprograma usando Bogotá y cancela con motivo", async ({ page }) => {
   expect(data.calls.find(c => c.key.endsWith("/schedule")).body).toEqual({ starts_at: "2026-10-09T23:00:00.000Z" });
   await view.getByLabel("Motivo", { exact: true }).fill("Cambio de planes");
   await view.getByRole("button", { name: "Cancelar reserva", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
   await expect(view).toContainText("Reserva cancelada");
   expect(data.calls.find(c => c.key.endsWith("/cancel")).body).toEqual({ note: "Cambio de planes" });
 });
@@ -159,6 +161,7 @@ for (const action of ["availability", "create", "accept", "reject", "schedule", 
     }
     await expect(button).toBeVisible();
     await button.click();
+    if (["reject", "cancel"].includes(action)) await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
     await expect(feedback).toHaveAttribute("role", "alert");
     await expect(feedback).toContainText("No se puede completar la operación.");
     await expect(feedback).toContainText("Franja ocupada: Reserva confirmada");
@@ -248,6 +251,7 @@ for (const action of ["availability", "create", "accept", "reject", "schedule", 
     await expect(button).toBeVisible();
     try {
       await button.click();
+      if (["reject", "cancel"].includes(action)) await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
       await expect.poll(() => data.calls.filter(c => c.key === key).length).toBe(1);
       // Name changes during the request, so assert the visible disabled action.
       await expect(page.getByRole("button", { name: /Verificando…|Creando…|Aceptando…|Rechazando…|Reprogramando…|Sincronizando…|Cancelando…|Guardando…/ }).first()).toBeDisabled();

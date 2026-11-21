@@ -78,6 +78,7 @@ test("D3 rechazo sin reserva separa nota interna y motivo del cliente", async ({
   await card.getByLabel("Nota interna", { exact: true }).fill("Solo para el asesor");
   await card.getByLabel("Motivo visible para el cliente", { exact: true }).fill("Imagen borrosa");
   await card.getByRole("button", { name: "Rechazar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
   await expect(page.locator("#paymentEvidenceFeedback")).toContainText("Prueba de formulario");
   expect(sent).toEqual({ note: "Solo para el asesor", customer_reason: "Imagen borrosa" });
 });

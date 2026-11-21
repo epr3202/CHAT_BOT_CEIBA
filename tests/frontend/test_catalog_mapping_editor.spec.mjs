@@ -83,6 +83,7 @@ test("añadir, cancelar y quitar todas las asignaciones conserva el catálogo", 
   const toggled = page.waitForResponse(response => response.request().method() === "PATCH"
     && response.url().endsWith(`/api/admin/catalogs/${catalog.catalog_asset_id}`));
   await card().getByRole("button", { name: "Desactivar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
   expect((await toggled).status()).toBe(200);
   await expect(card()).toContainText("Inactivo");
 });

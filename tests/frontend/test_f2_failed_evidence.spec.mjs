@@ -15,6 +15,7 @@ for (const scope of ["list", "reservation"]) {
       "No se pudo descargar el comprobante. Envía una nueva imagen.");
     expect(data.calls.filter(c => c.key.endsWith("/reject"))).toHaveLength(0);
     await card.getByRole("button", { name: "Rechazar", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
     await expect.poll(() => data.calls.filter(c => c.key.endsWith("/reject")).length).toBe(1);
     expect(data.calls.find(c => c.key.endsWith("/reject")).body).toEqual({
       note: "No se pudo descargar el comprobante. Envía una nueva imagen.",
@@ -30,6 +31,7 @@ test("F2 failed rejection keeps acceptance disabled and preserves the note", asy
   await page.locator('[data-view="paymentEvidence"]').click();
   const card = page.locator("#paymentEvidenceList .paymentEvidenceCard");
   await card.getByRole("button", { name: "Rechazar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
   await expect(page.locator("#paymentEvidenceFeedback")).toContainText("No se pudo guardar la revisión.");
   await expect(card.getByRole("button", { name: "Aceptar", exact: true })).toBeDisabled();
   await expect(card.getByRole("button", { name: "Rechazar", exact: true })).toBeEnabled();

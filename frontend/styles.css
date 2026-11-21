@@ -60,8 +60,22 @@ body.loggedOut .sidebar {
 }
 
 .bookingForm .actions,
-.bookingForm p {
+.bookingForm p,
+.bookingForm .phoneFields,
+.formGrid .phoneFields {
   grid-column: 1 / -1;
+}
+
+.phoneFields {
+  display: grid;
+  grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.phoneCountry {
+  display: grid;
+  gap: 7px;
+  align-content: start;
 }
 
 .manualBadge { display: inline-block; margin: 6px 0 0 8px; }
@@ -178,6 +192,7 @@ button:disabled {
 }
 
 .sidebar {
+  min-height: 100vh;
   background: #13231d;
   color: #f7faf8;
   padding: 22px 16px;
@@ -906,10 +921,15 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .phoneFields {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: sticky;
     top: 0;
     z-index: 2;
+    min-height: 0;
     padding: 12px;
   }
 
@@ -972,3 +992,53 @@ code {
 .receiptPrereview dl { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem 1rem; }
 .receiptPrereview dd { margin: 0; overflow-wrap: anywhere; }
 .receiptPrereview ul { padding-left: 1.25rem; }
+
+@supports (appearance: base-select) {
+  .phoneFields {
+    grid-template-columns: 8rem minmax(0, 1fr);
+  }
+
+  .phoneCountry select,
+  .phoneCountry ::picker(select) {
+    appearance: base-select;
+  }
+
+  .phoneCountry ::picker(select) {
+    width: max-content;
+    max-width: min(90vw, 24rem);
+    max-height: 22rem;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    box-shadow: var(--shadow);
+  }
+
+  .phoneCountry selectedcontent .countryName {
+    display: none;
+  }
+}
+
+.confirmDialog {
+  width: min(92vw, 460px);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 22px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.confirmDialog::backdrop {
+  background: rgba(19, 35, 29, 0.45);
+}
+
+.confirmDialog h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.confirmDialog .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}

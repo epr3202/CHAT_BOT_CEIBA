@@ -40,6 +40,7 @@ test("B2 acceptance keeps the COP amount and unlinked rejection requires both re
   await expect(page.locator("#paymentEvidenceFeedback")).toContainText("Escribe el motivo que verá el cliente");
   await card.getByLabel("Motivo visible para el cliente", { exact: true }).fill("Imagen borrosa");
   await card.getByRole("button", { name: "Rechazar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].body).toEqual({ note: "Comprobante ilegible", customer_reason: "Imagen borrosa" });
 });

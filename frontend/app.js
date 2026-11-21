@@ -2,6 +2,9 @@ import {
   labels, label, formatDate, summaryContent, formatCOP, bogotaDateTimeToISO,
   bookingBlockersText, backendErrorText,
 } from "./labels.mjs";
+import {
+  DEFAULT_REGION, countryOptions, digitsOnly, isKnownRegion, splitInternational, toE164,
+} from "./phone.mjs";
 
 const sessionTokenStorageKey = "ceiba.sessionToken";
 const legacyAdminTokenStorageKey = "ceiba.adminToken";
@@ -10,6 +13,7 @@ const legacyAgentTokenStorageKey = "ceiba.agentToken";
 const currentStatusStorageKey = "ceiba.currentStatus";
 const caseStatusStorageKey = "ceiba.caseStatus";
 const conversationStateStorageKey = "ceiba.conversationState";
+const phoneRegionStorageKey = "ceiba.phoneRegion";
 const assignedToMeStorageKey = "ceiba.assignedToMe";
 const directTakeEligibleStates = new Set([
   "BOT_ACTIVE",
@@ -286,6 +290,7 @@ async function reviewPaymentEvidence(evidenceId, decision, note, amount, button,
   if (state.agent?.role !== "ADMIN") return;
   const body = evidenceReviewBody(decision, note, amount, "paymentEvidenceFeedback", card);
   if (!body) return;
+  if (decision === "reject" && !await confirmDestructive("rechazar el comprobante", "El comprobante quedará marcado como rechazado.")) return;
   if (decision === "accept" && card.dataset.reviewId) body.review_id = card.dataset.reviewId;
   await managementAction(button, card, decision === "accept" ? "Aceptando…" : "Rechazando…", "paymentEvidenceFeedback",
     async current => {
@@ -564,6 +569,7 @@ async function uploadCatalog(event) {
 }
 
 async function setCatalogActive(catalogAssetId, active) {
+  if (!active && !await confirmDestructive("desactivar el catálogo", "El catálogo dejará de enviarse a los clientes hasta que se active de nuevo.")) return;
   try {
     await requestJson(`/api/admin/catalogs/${catalogAssetId}`, {
       method: "PATCH",
@@ -682,6 +688,7 @@ function clearSession() {
   $("#reservationDetail").hidden = true;
   $("#reservationCancelForm").reset();
   $("#manualReservationForm").reset();
+  $("#manualReservationCountry").value = preferredPhoneRegion();
   $("#manualReservationPlan").replaceChildren();
   $("#refreshPlans").disabled = false;
   for (const id of ["plansFeedback", "reservationsFeedback", "reservationDetailFeedback", "manualReservationFeedback", "paymentEvidenceFeedback"]) {
@@ -763,7 +770,7 @@ async function sendWebhook({ duplicate = false } = {}) {
   const payload = duplicate && state.lastWebhook
     ? state.lastWebhook
     : {
-        phone: $("#phone").value.trim(),
+        phone: phoneFieldValue($("#simulatorCountry"), $("#phone")),
         text: $("#messageText").value.trim(),
         messageId: messageId(),
         metaSecret: state.metaSecret,
@@ -1270,6 +1277,7 @@ function chatMetaText(message) {
 }
 
 async function returnHandoff(handoffId) {
+  if (!await confirmDestructive("devolver el caso al bot", "El bot volverá a responder en esta conversación.")) return;
   const resolution = "Cliente atendido y devuelto al bot.";
   try {
     await requestJson(`/api/admin/handoffs/${handoffId}/return`, {
@@ -1393,7 +1401,7 @@ function manualReservationData() {
   if (!form.reportValidity()) return null;
   const name = $("#manualReservationName").value.trim();
   return {
-    phone: $("#manualReservationPhone").value.trim(), ...(name ? { full_name: name } : {}),
+    phone: phoneFieldValue($("#manualReservationCountry"), $("#manualReservationPhone")), ...(name ? { full_name: name } : {}),
     plan_id: $("#manualReservationPlan").value,
     starts_at: bogotaDateTimeToISO($("#manualReservationDate").value, $("#manualReservationTime").value),
   };
@@ -1871,6 +1879,7 @@ async function settleReservationEvidence(id, evidenceId, decision, note, amount,
   if (state.agent?.role !== "ADMIN") return;
   const body = evidenceReviewBody(decision, note, amount, "reservationDetailFeedback");
   if (!body) return;
+  if (decision === "reject" && !await confirmDestructive("rechazar el comprobante", "El comprobante quedará marcado como rechazado.")) return;
   if (decision === "accept" && card.dataset.reviewId) body.review_id = card.dataset.reviewId;
   const request = state.reservationDetailRequest;
   await managementAction(button, card, decision === "accept" ? "Aceptando…" : "Rechazando…", "reservationDetailFeedback",
@@ -1958,6 +1967,7 @@ async function cancelReservation(event) {
     managementFeedback("reservationDetailFeedback", "Escribe el motivo de la cancelación.", true);
     return;
   }
+  if (!await confirmDestructive("cancelar la reserva", "La reserva quedará cancelada.")) return;
   const request = state.reservationDetailRequest;
   button.disabled = true;
   button.textContent = "Guardando…";
@@ -2108,7 +2118,7 @@ async function saveAgentCredentials(event) {
   const form = event.currentTarget;
   const button = form.querySelector('[type="submit"]');
   if (button.disabled) return;
-  if (!confirm("¿Guardar las credenciales? Esto cierra las sesiones del agente.")) return;
+  if (!await confirmDestructive("guardar las credenciales", "Esto cierra las sesiones del agente.")) return;
   button.disabled = true;
   try {
     await requestJson(`/api/admin/agents/${form.dataset.agentId}/credentials`, {
@@ -2131,7 +2141,8 @@ async function saveAgentCredentials(event) {
 async function toggleAgentActive(agent, button) {
   if (button.disabled) return;
   const action = agent.active ? "deactivate" : "activate";
-  if (!confirm(`¿${agent.active ? "Desactivar" : "Activar"} a ${agent.name}?`)) return;
+  if (!await confirmDestructive(`${agent.active ? "desactivar" : "activar"} a ${agent.name}`,
+    agent.active ? "Se cerrarán sus sesiones y no podrá iniciar sesión hasta que se active de nuevo." : "Podrá iniciar sesión en el panel.")) return;
   button.disabled = true;
   try {
     await requestJson(`/api/admin/agents/${agent.id}/${action}`, { method: "POST", headers: sessionHeaders() });
@@ -2146,12 +2157,129 @@ async function toggleAgentActive(agent, button) {
   }
 }
 
+/**
+ * Devuelve la región de indicativo preferida por este navegador.
+ * @returns {string} región guardada si es válida; si no, la región por defecto.
+ */
+function preferredPhoneRegion() {
+  const stored = localStorage.getItem(phoneRegionStorageKey);
+  return isKnownRegion(stored) ? stored : DEFAULT_REGION;
+}
+
+/**
+ * Guarda la región elegida como preferencia de este navegador.
+ * @param {string} region código ISO 3166-1 alfa-2.
+ * @returns {void}
+ */
+function rememberPhoneRegion(region) {
+  localStorage.setItem(phoneRegionStorageKey, region);
+}
+
+/**
+ * Crea la opción de un país cuyo texto es "País (+código)"; el nombre va marcado para que el selector
+ * cerrado muestre solo el indicativo.
+ * @param {{region: string, name: string, code: string}} country región, nombre visible e indicativo.
+ * @returns {HTMLOptionElement} opción con valor igual a la región.
+ */
+function countryOption({ region, name, code }) {
+  const option = document.createElement("option");
+  option.value = region;
+  const nameStart = Object.assign(document.createElement("span"), { className: "countryName", textContent: `${name} (` });
+  const nameEnd = Object.assign(document.createElement("span"), { className: "countryName", textContent: ")" });
+  const text = document.createElement("span");
+  text.append(nameStart, `+${code}`, nameEnd);
+  option.append(text);
+  return option;
+}
+
+/**
+ * Llena un selector de indicativo con todos los países y selecciona la preferencia del navegador.
+ * @param {HTMLSelectElement} select selector a poblar.
+ * @returns {void}
+ */
+function populatePhoneRegionSelect(select) {
+  select.append(...countryOptions("es").map(countryOption));
+  select.value = preferredPhoneRegion();
+}
+
+/**
+ * Si el campo de teléfono empieza con un indicativo internacional, actualiza el selector, guarda la
+ * preferencia y deja en el campo solo el número nacional; además quita espacios iniciales.
+ * @param {HTMLInputElement} input campo de teléfono.
+ * @param {HTMLSelectElement} select selector de indicativo asociado.
+ * @returns {void}
+ */
+function applyTypedCountryCode(input, select) {
+  const split = splitInternational(input.value);
+  if (split) {
+    select.value = split.region;
+    rememberPhoneRegion(split.region);
+    input.value = split.national;
+  } else if (/^\s/.test(input.value)) {
+    input.value = input.value.trimStart();
+  }
+}
+
+/**
+ * Prepara un selector de indicativo y su campo de teléfono: llena el selector, reconoce el indicativo escrito
+ * en el campo y guarda la región elegida como preferencia del navegador.
+ * @param {HTMLSelectElement} select selector de indicativo.
+ * @param {HTMLInputElement} input campo de teléfono asociado.
+ * @param {() => void} [onChange] acción a ejecutar tras cada cambio del indicativo o del número.
+ * @returns {void}
+ */
+function bindPhoneField(select, input, onChange = () => {}) {
+  populatePhoneRegionSelect(select);
+  input.addEventListener("input", () => {
+    applyTypedCountryCode(input, select);
+    onChange();
+  });
+  select.addEventListener("change", () => {
+    rememberPhoneRegion(select.value);
+    onChange();
+  });
+}
+
+/**
+ * Compone el teléfono de un par selector y campo en formato internacional.
+ * @param {HTMLSelectElement} select selector de indicativo.
+ * @param {HTMLInputElement} input campo con el número nacional.
+ * @returns {string} número E.164 con el indicativo seleccionado.
+ */
+function phoneFieldValue(select, input) {
+  return toE164(select.value, input.value);
+}
+
+/**
+ * Compone el teléfono del formulario de reinicio en formato internacional.
+ * @returns {string} número E.164 con el indicativo seleccionado.
+ */
+function resetPhoneNumber() {
+  return phoneFieldValue($("#resetCountry"), $("#resetPhone"));
+}
+
+/**
+ * Abre el modal de confirmación de una operación destructiva y espera la decisión del usuario.
+ * @param {string} operation operación en infinitivo, por ejemplo "reiniciar la conversación".
+ * @param {string} detail efecto concreto de la operación, mostrado bajo la pregunta.
+ * @returns {Promise<boolean>} true si el usuario confirma; false si cancela, pulsa Escape o cierra el modal.
+ */
+function confirmDestructive(operation, detail) {
+  const dialog = $("#confirmDialog");
+  $("#confirmDialogAccept").textContent = `Sí, quiero ${operation}`;
+  setText("confirmDialogDetail", detail);
+  dialog.returnValue = "";
+  dialog.showModal();
+  return new Promise(resolve => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "accept"), { once: true });
+  });
+}
+
 function updateResetAvailability() {
   const preview = state.resetPreview;
   $("#executeReset").disabled = state.resetBusy || !preview
-    || $("#resetPhone").value.trim() !== preview.input
-    || !$("#resetReason").value.trim()
-    || $("#resetConfirmPhone").value.trim() !== preview.phone_number;
+    || resetPhoneNumber() !== preview.input
+    || !$("#resetReason").value.trim();
 }
 
 function invalidateResetPreview() {
@@ -2159,7 +2287,6 @@ function invalidateResetPreview() {
   $("#resetSummary").replaceChildren();
   setText("resetRequestId", "");
   setText("resetFeedback", "");
-  $("#resetConfirmPhone").value = "";
   updateResetAvailability();
 }
 
@@ -2167,7 +2294,7 @@ function renderResetSummary(summary) {
   const container = $("#resetSummary");
   container.replaceChildren();
   const title = document.createElement("p");
-  title.textContent = `${summary.dry_run ? "Previsualización" : "Reinicio completado"}: ${summary.phone_number}`;
+  title.textContent = `${summary.dry_run ? "Verificación" : "Reinicio completado"}: ${summary.phone_number}`;
   const list = document.createElement("dl");
   list.className = "resetCounts";
   const fields = {
@@ -2209,12 +2336,12 @@ async function previewReset(event) {
   invalidateResetPreview();
   state.resetBusy = true;
   $("#previewReset").disabled = true;
-  const input = $("#resetPhone").value.trim();
+  const input = resetPhoneNumber();
   try {
     const summary = await requestJson("/api/admin/conversations/reset", {
       method: "POST", headers: sessionHeaders(), body: JSON.stringify({ phone_number: input, dry_run: true }),
     });
-    if ($("#resetPhone").value.trim() !== input || state.agent?.role !== "ADMIN") return;
+    if (resetPhoneNumber() !== input || state.agent?.role !== "ADMIN") return;
     state.resetPreview = { ...summary, input };
     renderResetSummary(summary);
     feedback("resetFeedback", summary.customer_id === null ? "No existe un cliente con ese teléfono." : "Revisa los conteos, escribe el motivo y confirma el teléfono.");
@@ -2232,6 +2359,10 @@ async function executeReset(event) {
   updateResetAvailability();
   if ($("#executeReset").disabled) return;
   const phone = state.resetPreview.phone_number;
+  const confirmed = await confirmDestructive(
+    "reiniciar la conversación", `Se reiniciará la conversación de ${phone}. El historial se conserva.`,
+  );
+  if (!confirmed || state.resetPreview?.phone_number !== phone) return;
   state.resetBusy = true;
   $("#previewReset").disabled = true;
   updateResetAvailability();
@@ -2318,9 +2449,13 @@ function bindUi() {
   });
   $("#resetPreviewForm").addEventListener("submit", previewReset);
   $("#resetExecuteForm").addEventListener("submit", executeReset);
-  $("#resetPhone").addEventListener("input", invalidateResetPreview);
+  bindPhoneField($("#resetCountry"), $("#resetPhone"), invalidateResetPreview);
+  bindPhoneField($("#recipientCountry"), $("#notificationRecipientForm").elements.phone_number);
+  bindPhoneField($("#manualReservationCountry"), $("#manualReservationPhone"));
+  bindPhoneField($("#simulatorCountry"), $("#phone"));
   $("#resetReason").addEventListener("input", updateResetAvailability);
-  $("#resetConfirmPhone").addEventListener("input", updateResetAvailability);
+  $("#confirmDialogAccept").addEventListener("click", () => $("#confirmDialog").close("accept"));
+  $("#confirmDialogCancel").addEventListener("click", () => $("#confirmDialog").close("cancel"));
   $("#logout").addEventListener("click", logout);
   $("#checkHealth").addEventListener("click", checkHealth);
   $("#refreshCases").addEventListener("click", loadAllAdminCases);
@@ -2369,14 +2504,19 @@ function resetRecipientForm() {
   form.reset();
   delete form.dataset.recipientId;
   form.elements.phone_number.disabled = false;
+  $("#recipientCountry").disabled = false;
+  $("#recipientCountry").value = preferredPhoneRegion();
 }
 
 function editNotificationRecipient(recipient) {
   const form = $("#notificationRecipientForm");
   form.dataset.recipientId = recipient.id;
   form.elements.display_name.value = recipient.display_name;
-  form.elements.phone_number.value = recipient.phone_number;
+  const split = splitInternational(recipient.phone_number);
+  if (split) $("#recipientCountry").value = split.region;
+  form.elements.phone_number.value = split ? split.national : recipient.phone_number;
   form.elements.phone_number.disabled = true;
+  $("#recipientCountry").disabled = true;
   for (const field of ["notify_on_evidence", "notify_on_payment_pending", "active"]) {
     form.elements[field].checked = recipient[field];
   }
@@ -2450,9 +2590,9 @@ async function saveNotificationRecipient(event) {
   if (state.agent?.role !== "ADMIN") return;
   const form = event.currentTarget;
   const displayName = form.elements.display_name.value.trim();
-  const phone = form.elements.phone_number.value.trim();
-  if (!displayName || displayName.length > 120 || !phone) {
-    managementFeedback("staffNotificationFeedback", "Escribe un nombre y un teléfono, por ejemplo +57 300 123 4567.", true);
+  const phone = phoneFieldValue($("#recipientCountry"), form.elements.phone_number);
+  if (!displayName || displayName.length > 120 || !digitsOnly(form.elements.phone_number.value)) {
+    managementFeedback("staffNotificationFeedback", "Escribe un nombre y un teléfono, por ejemplo 300 123 4567.", true);
     return;
   }
   const body = { display_name: displayName };

@@ -81,9 +81,9 @@ test("cinco vistas en español con datos sembrados y valores API intactos", asyn
   await capture(page, testInfo, "comprobantes");
 
   await page.locator('[data-view="tools"]').click();
-  await page.locator("#resetPhone").fill("573000000101");
+  await page.locator("#resetPhone").fill("3000000101");
   await page.locator("#previewReset").click();
-  await expect(page.locator("#resetSummary")).toContainText("Previsualización");
+  await expect(page.locator("#resetSummary")).toContainText("Verificación");
   await expectSpanish(page);
   expect(errors).toEqual([]);
 });

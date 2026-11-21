@@ -10,6 +10,7 @@ for (const decision of ["accept", "reject"]) {
     await card.getByLabel("Monto verificado (COP)").fill("125000");
     await card.getByLabel("Nota interna").fill("Validación humana");
     await card.getByRole("button", { name: decision === "accept" ? "Aceptar" : "Rechazar", exact: true }).click();
+    if (decision === "reject") await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
     await expect(page.locator("#paymentEvidenceFeedback")).toHaveAttribute("role", "alert");
     await expect(page.locator("#paymentEvidenceFeedback")).toContainText("El comprobante ya fue revisado.");
     await expect(card.getByLabel("Monto verificado (COP)")).toHaveValue("125000");

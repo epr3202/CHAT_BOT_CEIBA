@@ -208,7 +208,13 @@
           <p>Un número de asesor activo no puede usarse como número de prueba de cliente. Sus mensajes abren la ventana de avisos y el bot no responde.</p>
           <form id="notificationRecipientForm" class="formGrid">
             <label>Nombre<input name="display_name" maxlength="120" required /></label>
-            <label>Teléfono<input name="phone_number" type="tel" maxlength="32" placeholder="+57 300 123 4567" required /></label>
+            <div class="phoneFields">
+              <div class="phoneCountry">
+                <label for="recipientCountry">Indicativo</label>
+                <select id="recipientCountry"><button><selectedcontent></selectedcontent></button></select>
+              </div>
+              <label>Teléfono<input name="phone_number" type="tel" maxlength="32" placeholder="300 123 4567" required /></label>
+            </div>
             <label><input name="notify_on_evidence" type="checkbox" checked />Comprobantes</label>
             <label><input name="notify_on_payment_pending" type="checkbox" />Solicitudes</label>
             <label><input name="active" type="checkbox" checked />Activo</label>
@@ -224,18 +230,21 @@
       <section class="view" id="tools" hidden>
         <section class="panel">
           <div class="panelHeader"><h2>Reiniciar conversación</h2></div>
-          <p>Previsualiza los cambios para un teléfono antes de confirmar el reinicio. El historial se conserva.</p>
+          <p>Verifica los cambios para un teléfono antes de confirmar el reinicio. El historial se conserva.</p>
           <form id="resetPreviewForm" class="managementForm">
-            <label>Teléfono<input id="resetPhone" type="tel" placeholder="+573001112233" required autocomplete="off" /></label>
-            <div class="actions"><button type="submit" id="previewReset">Previsualizar</button></div>
+            <div class="phoneFields">
+              <div class="phoneCountry">
+                <label for="resetCountry">Indicativo</label>
+                <select id="resetCountry"><button><selectedcontent></selectedcontent></button></select>
+              </div>
+              <label>Teléfono<input id="resetPhone" type="tel" placeholder="300 123 4567" required autocomplete="off" /></label>
+            </div>
+            <div class="actions"><button type="submit" id="previewReset">Verificar</button></div>
           </form>
           <p id="resetFeedback" role="status" aria-live="polite"></p>
           <div id="resetSummary" aria-live="polite"></div>
           <form id="resetExecuteForm" class="managementForm">
             <label>Motivo del reinicio<textarea id="resetReason" required maxlength="300" rows="2"></textarea></label>
-            <label>Escribe de nuevo el teléfono de la previsualización para confirmar
-              <input id="resetConfirmPhone" type="tel" required autocomplete="off" />
-            </label>
             <div class="actions"><button type="submit" id="executeReset" class="danger" disabled>Reiniciar</button></div>
           </form>
           <p id="resetRequestId"></p>
@@ -254,10 +263,16 @@
                 Secreto Meta para simulación
                 <input id="metaSecret" type="password" autocomplete="off" placeholder="Opcional si el servidor ya tiene el secreto" />
               </label>
-              <label>
-                Teléfono cliente
-                <input id="phone" type="tel" value="+573001112233" />
-              </label>
+              <div class="phoneFields">
+                <div class="phoneCountry">
+                  <label for="simulatorCountry">Indicativo</label>
+                  <select id="simulatorCountry"><button><selectedcontent></selectedcontent></button></select>
+                </div>
+                <label>
+                  Teléfono cliente
+                  <input id="phone" type="tel" value="300 111 2233" placeholder="300 123 4567" />
+                </label>
+              </div>
               <label>
                 Mensaje
                 <textarea id="messageText" rows="5">Hola, quiero información de La Ceiba</textarea>
@@ -311,7 +326,13 @@
           <p>La disponibilidad es orientativa. La fecha se asegura cuando un administrador valida el anticipo.</p>
           <p id="manualReservationFeedback" role="status" aria-live="polite" hidden></p>
           <form id="manualReservationForm" class="managementForm bookingForm">
-            <label>Teléfono<input id="manualReservationPhone" type="tel" required pattern="\+?[1-9][0-9]{7,14}" placeholder="+573001112233" /></label>
+            <div class="phoneFields">
+              <div class="phoneCountry">
+                <label for="manualReservationCountry">Indicativo</label>
+                <select id="manualReservationCountry"><button><selectedcontent></selectedcontent></button></select>
+              </div>
+              <label>Teléfono<input id="manualReservationPhone" type="tel" required pattern="[\d\s\-]{6,20}" placeholder="300 123 4567" /></label>
+            </div>
             <label>Nombre<input id="manualReservationName" maxlength="128" autocomplete="name" /></label>
             <div><label for="manualReservationPlan">Plan</label><select id="manualReservationPlan" required><option value="">Selecciona un plan</option></select></div>
             <label>Fecha<input id="manualReservationDate" type="date" required /></label>
@@ -486,6 +507,15 @@
         <div class="caseActions"></div>
       </article>
     </template>
+
+    <dialog id="confirmDialog" class="confirmDialog" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogDetail">
+      <h2 id="confirmDialogTitle">¿Está seguro que desea realizar esta operación?</h2>
+      <p id="confirmDialogDetail"></p>
+      <div class="actions">
+        <button type="button" id="confirmDialogAccept" class="danger"></button>
+        <button type="button" id="confirmDialogCancel" autofocus>No, cancelar operación</button>
+      </div>
+    </dialog>
 
     <div id="summaryModal" class="modalBackdrop" hidden>
       <section class="summaryModal" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">

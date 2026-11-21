@@ -168,6 +168,7 @@ test("R6 Reservas filtra, abre detalle y cancela con motivo e indicador", async 
   });
   try {
     await cancel.click();
+    await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
     await expect(detail.getByText(/Cancelando…|Guardando…/)).toBeVisible();
     await expect(detail.getByRole("button", { name: /Cancelando|Guardando|Cancelar reserva/ }))
       .toBeDisabled();
@@ -185,6 +186,7 @@ for (const failure of ["http", "network"]) {
       ? route.fulfill({ status: 409, json: { detail: "La reserva ya está cancelada." } })
       : route.abort("failed"));
     await detail.getByRole("button", { name: "Cancelar reserva", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^Sí, quiero/ }).click();
     const error = detail.getByRole("alert");
     await expect(error).toBeVisible();
     await expect(error).toContainText(failure === "http"
