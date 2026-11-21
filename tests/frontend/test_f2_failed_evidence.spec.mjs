@@ -43,16 +43,17 @@ for (const [reason, description] of [
 ]) {
 test(`F2 suppressed outbox ${reason} is visible in Spanish`, async ({ page }) => {
   await panel(page);
-  await page.route("**/api/admin/handoffs?*", route => route.fulfill({ json: [{
-    id: 1, conversation_id: 1, status: "PENDING", priority: "NORMAL",
-    reason: "PAYMENT_REVIEW", customer_name: "Cliente del panel", summary: "Comprobante",
+  await page.route("**/api/admin/conversations?*", route => route.fulfill({ json: [{
+    id: 1, handoff_id: 1, state: "WAITING_FOR_HUMAN", handoff_status: "PENDING", handoff_priority: "NORMAL",
+    handoff_reason: "PAYMENT_REVIEW", customer_name: "Cliente del panel", handoff_summary: "Comprobante",
   }] }));
   await page.route("**/api/admin/conversations/1/messages", route => route.fulfill({ json: [{
     id: "outbox-1", direction: "OUTBOUND", message_type: "text", body: "Respuesta aprobada",
     status: "SUPPRESSED", delivery_reason: reason, created_at: "2026-10-01T15:00:00Z",
   }] }));
-  await page.locator('[data-view="handoffs"]').click();
-  await expect(page.locator(".chatMeta").last()).toContainText("Suprimido");
-  await expect(page.locator(".chatMeta").last()).toContainText(`Motivo: ${description}`);
+  await page.locator("#refreshCases").click();
+  await page.getByRole("button", { name: "Abrir conversación de Cliente del panel" }).click();
+  await expect(page.locator("#activeHistory")).toContainText("Suprimido");
+  await expect(page.locator("#activeHistory")).toContainText(`Motivo: ${description}`);
 });
 }

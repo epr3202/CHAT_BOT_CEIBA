@@ -158,7 +158,13 @@ async def test_form_replay_payment_panel_calendar_and_history(
     )
     assert accepted.status_code == 200, accepted.text
     calendar_event = await harness.calendar.get_event(reservation.reservation_id.hex)
-    assert snapshot in calendar_event.description
+    assert "Fecha confirmada: 08/11/2026" in calendar_event.description
+    assert "Horario confirmado: 19:00 – 22:00" in calendar_event.description
+    assert "Fecha deseada:" not in calendar_event.description
+    assert "Horario preferido:" not in calendar_event.description
+    for line in snapshot.splitlines():
+        if not line.startswith(("Fecha deseada:", "Horario preferido:")):
+            assert line in calendar_event.description
     assert (
         await api.patch(url, headers=headers, json={"price_cop": 450000, "min_lead_days": 20})
     ).status_code == 200

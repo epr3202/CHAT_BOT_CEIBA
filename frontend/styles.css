@@ -287,8 +287,7 @@ label {
   flex-wrap: wrap;
 }
 
-.pill,
-.priority {
+.pill {
   min-height: 28px;
   border-radius: 999px;
   padding: 4px 10px;
@@ -452,13 +451,11 @@ textarea {
 }
 
 .quickMessages button,
-.segment,
 .caseFilter {
   min-height: 34px;
   font-size: 13px;
 }
 
-.segment.active,
 .caseFilter.active {
   background: var(--accent-strong);
   color: white;
@@ -489,11 +486,6 @@ textarea {
   background: var(--surface-muted);
   border-radius: 0 7px 7px 0;
   font-size: 13px;
-}
-
-.handoffList {
-  display: grid;
-  gap: 12px;
 }
 
 .paymentEvidenceList {
@@ -552,13 +544,6 @@ textarea {
   border-bottom: 0;
 }
 
-.caseHead {
-  min-height: 42px;
-  background: #eef3ef;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
 
 .clientCell strong,
 .clientCell span {
@@ -583,50 +568,12 @@ textarea {
   color: #314138;
 }
 
-.caseActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.caseActions button {
-  min-height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
-}
-
 .emptyState {
   padding: 30px;
   text-align: center;
   border: 1px dashed var(--line);
   border-radius: 8px;
   color: var(--muted);
-}
-
-.handoffCard {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
-  background: #fbfcfb;
-}
-
-.handoffTop {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
-}
-
-.handoffTitle,
-.handoffMeta {
-  display: block;
-}
-
-.handoffMeta {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 3px;
 }
 
 .summary {
@@ -672,71 +619,6 @@ textarea {
   font-size: 13px;
   line-height: 1.45;
   margin-bottom: 12px;
-}
-
-.chatThread {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 180px;
-  max-height: 360px;
-  overflow-y: auto;
-  margin-bottom: 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f6f8f6;
-}
-
-.chatBubble {
-  width: min(76%, 720px);
-  padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.chatBubble.inbound {
-  align-self: flex-start;
-  background: var(--surface);
-}
-
-.chatBubble.outbound {
-  align-self: flex-end;
-  background: #dcefe4;
-  border-color: #bfd9ca;
-}
-
-.chatBody {
-  font-size: 14px;
-}
-
-.chatMeta,
-.chatEmpty {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.chatMeta {
-  margin-top: 5px;
-  text-align: right;
-}
-
-.chatEmpty {
-  padding: 18px;
-  text-align: center;
-}
-
-.handoffActions {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto auto;
-  gap: 8px;
-  align-items: start;
-}
-
-.handoffActions textarea {
-  min-height: 82px;
 }
 
 .coverageGrid {
@@ -930,8 +812,7 @@ code {
   }
 
   .topbar,
-  .panelHeader,
-  .handoffTop {
+  .panelHeader {
     align-items: stretch;
     flex-direction: column;
   }
@@ -942,7 +823,6 @@ code {
   .coverageGrid,
   .catalogUploadForm,
   .catalogCategoryList,
-  .handoffActions,
   .paymentEvidenceCard {
     grid-template-columns: 1fr;
   }
@@ -952,9 +832,6 @@ code {
     overflow: visible;
   }
 
-  .caseHead {
-    display: none;
-  }
 
   .caseRow {
     grid-template-columns: 1fr;
@@ -964,9 +841,6 @@ code {
     margin-bottom: 10px;
   }
 
-  .caseActions {
-    justify-content: flex-start;
-  }
 }
 .receiptPrereview { padding: 1rem; border: 1px solid var(--line, #ddd); border-radius: 8px; }
 .receiptPrereview dl { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem 1rem; }
@@ -992,7 +866,6 @@ button:not(:disabled):active { transform:translateY(1px); }
 .caseToolbar label, .caseToolbar input, .caseToolbar select { min-width:0; max-width:100%; }
 .operatorWorkspace { display:grid; grid-template-columns:minmax(250px, .9fr) minmax(320px,1.4fr); border:1px solid var(--line); border-radius:12px; overflow:hidden; min-width:0; }
 .contactDirectory { max-height:74vh; min-height:25rem; overflow:auto; background:white; }
-.operatorWorkspace .caseHead { display:none; }
 .operatorWorkspace .caseTable { border:0; border-radius:0; overflow:visible; }
 .operatorWorkspace .caseRow { grid-template-columns:minmax(0,1fr) auto; gap:4px 8px; border:0; border-radius:0; margin:0; border-bottom:1px solid var(--line); padding:12px; background:white; font-size:.84rem; }
 .operatorWorkspace .caseRow[aria-current] { background:#eaf4ec; box-shadow:inset 4px 0 #21764e; }
@@ -1000,9 +873,7 @@ button:not(:disabled):active { transform:translateY(1px); }
 .contactOpen { text-align:left; font-weight:750; background:transparent; border:0; padding:0; min-height:35px; font-size:1rem; color:#164c37; }
 .clientCell .messagePreview { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#263e30; }
 .clientCell .readBadge { color:#17614a; font-size:.78rem; font-weight:700; }
-.caseRow .caseActions,.caseRow details,.caseActivity { grid-column:1/-1; }
-.caseActions { justify-content:flex-start; flex-wrap:wrap; }
-.caseActions button { min-height:32px; padding:0 .55rem; }
+.caseRow details,.caseActivity { grid-column:1/-1; }
 #chatEmpty { display:grid; align-content:center; justify-items:center; padding:2rem; text-align:center; background:#f3f7f2; }
 #activeChat { display:flex; flex-direction:column; background:#f6f8f4; border-left:1px solid var(--line); min-width:0; min-height:28rem; height:min(74vh,54rem); padding:.85rem; gap:.4rem; }
 .chatHeader { display:grid; grid-template-columns:1fr auto; align-items:center; gap:.25rem; }
@@ -1019,16 +890,59 @@ button:not(:disabled):active { transform:translateY(1px); }
 #replyForm label { grid-column:1/-1;font-weight:700; } #replyText { resize:vertical; max-height:8rem; min-width:0; width:100%; }
 #replyRestriction,#replyStatus { margin:0; font-size:.86rem; } #replyStatus:empty,#replyRestriction:empty {display:none;}
 #moreCases { width:100%; }
-.agendaLayout { display:grid; grid-template-columns:minmax(215px,1fr) minmax(240px,1.35fr); gap:1.3rem; }
-.monthNav,.weekDays,#monthDays { display:grid;align-items:center;text-align:center;gap:.25rem; }
-.monthNav {grid-template-columns:auto 1fr auto;} .weekDays,#monthDays {grid-template-columns:repeat(7,minmax(0,1fr));}
-.weekDays {font-size:.85rem;padding:.5rem 0;} #monthDays button {padding:0;min-width:0;position:relative;}
-#monthDays button.hasEvents::after {content:"";position:absolute;bottom:2px;left:45%;width:5px;height:5px;border-radius:50%;background:#197148;}
-#monthDays button[aria-pressed=true] {background:#174f39;color:white;}
-#monthDays button[aria-pressed=true]::after {background:white;}
-.agendaLayout .actions {align-items:end;margin-top:.6rem;}
-#agendaEvents article {border-left:3px solid #61915e;background:#edf4ed;padding:.7rem 1rem;margin:.5rem 0;overflow-wrap:anywhere;}
-#agendaEvents h4 {margin:.2rem 0;} #agendaRules fieldset {min-width:0;}
+.agendaLayout { display: grid; grid-template-columns: minmax(0, 2.55fr) minmax(15rem, 1fr); gap: 1rem; align-items: start; }
+.monthSheet, .daySheet, .agendaSettings { background: white; border: 1px solid var(--line); border-radius: .75rem; min-width: 0; }
+.monthSheet { overflow: hidden; }
+.monthNav { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 1.05rem; }
+.monthNav h2, .daySheet h2 { font: 600 clamp(1.15rem, 1.6vw, 1.55rem)/1.15 Georgia, serif; margin: .15rem 0; }
+.monthNav small, .daySheet small { color: var(--muted); }
+.monthControls { display: flex; gap: .35rem; }
+.monthControls button { min-width: 2.15rem; padding: .3rem .55rem; }
+.weekDays, #monthDays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.weekDays { background: #f2f5ef; border-block: 1px solid var(--line); text-align: center; padding: .42rem 0; font-size: .74rem; font-weight: 650; color: #46564a; }
+#monthDays > * { border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: clamp(4.2rem, 7.9vh, 6.5rem); }
+#monthDays > :nth-child(7n) { border-right: 0; }
+#monthDays button { display: flex; flex-direction: column; align-items: flex-start; gap: .13rem; min-width: 0; padding: .28rem; border-radius: 0; background: #fff; color: #183629; text-align: left; }
+#monthDays button:hover { background: #f4f7ee; }
+#monthDays button[aria-pressed=true] { background: #eaf2df; box-shadow: inset 0 0 0 2px #709972; }
+#monthDays button:focus-visible { outline-offset: -3px; }
+.outsideDay { background: #f7f8f4; }
+.dateNumber { font-size: .77rem; font-weight: 700; min-width: 1.45rem; line-height: 1.45rem; text-align: center; }
+[aria-current="date"] > .dateNumber, [aria-pressed="true"] > .dateNumber { color: white; background: #215c43; border-radius: 100%; }
+.calItem { display: block; width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: .2rem; padding: .13rem .22rem; font-size: .71rem; font-weight: 500; line-height: 1.2; background: #f5ead6; color: #664319; }
+.calItem.visit { background: #e2eedb; color: #315b37; }
+#monthDays button small { padding-inline: .2rem; font-size: .69rem; }
+.calFooter { padding: .55rem .85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .45rem; }
+.calLegend { display: flex; gap: .85rem; color: var(--muted); font-size: .72rem; }
+.calLegend span::before { content: ""; display: inline-block; border-radius: 100%; width: .48rem; height: .48rem; background: #876233; margin-right: .3rem; }
+.calLegend .visit::before { background: #527f52; }
+.calFooter label { white-space: nowrap; display: flex; align-items: center; gap: .4rem; font-size: .75rem; }
+.calFooter input { min-height: 30px; max-width: 9.4rem; font-size: .75rem; }
+.daySheet, .agendaSettings { padding: 1rem; }
+.daySheet h2 { padding-block: .25rem; }
+#agendaVisits, #agendaEvents { font-size: .86rem; color: #3d5144; }
+#agendaEvents { display: grid; gap: .55rem; margin-block: .9rem; }
+.dayEvent { width: 100%; display: grid; gap: .24rem; text-align: left; padding: .6rem .7rem; color: #19382b; border: 0; border-left: 3px solid #916d3d; border-radius: 0 .45rem .45rem 0; background: #f7f6ee; }
+.dayEvent.visit { border-left-color: #59815a; background: #f2f6ee; }
+.dayEvent:hover { background: #edf1e6; }
+.dayEvent strong { overflow-wrap: anywhere; }
+.dayExcerpt { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
+.dayEvent span, .dayEvent small { font-size: .76rem; }
+.daySheet h3 { font-size: .93rem; margin: .85rem 0 .3rem; }
+#agendaRefresh { margin-top: .85rem; font-size: .8rem; }
+#agendaDescription { white-space: pre-wrap; overflow-wrap: anywhere; }
+#agendaDescription p { margin: .45rem 0; }
+#agendaEventWhen { color: var(--muted); }
+.agendaSettings { margin-top: .75rem; }
+#agendaRules fieldset { min-width: 0; }
+@media (max-width: 1100px) { .agendaLayout { grid-template-columns: minmax(0, 2fr) minmax(12rem, 1fr); } }
+@media (max-width: 740px) {
+  .agendaLayout { grid-template-columns: minmax(0, 1fr); }
+  #monthDays > * { min-height: 3.6rem; }
+  .monthNav { padding: .65rem; }
+  #monthDays button { padding: .12rem; }
+  .calItem { font-size: .66rem; }
+}
 dialog { width:min(92vw,46rem); border:1px solid var(--line); border-radius:14px; max-height:90dvh; padding:1.1rem; }
 dialog::backdrop {background:rgb(15 36 25 / 48%);} dialog header {display:flex;align-items:center;justify-content:space-between;gap:1rem;}
 #proofMedia {overflow:auto; max-height:70dvh;} #proofMedia img,#proofMedia canvas {display:block;max-width:100%;height:auto;margin:auto;}
@@ -1051,7 +965,6 @@ dialog::backdrop {background:rgb(15 36 25 / 48%);} dialog header {display:flex;a
   .contactDirectory {max-height:none;}
 }
 @media(max-width:620px){
-  .agendaLayout {grid-template-columns:minmax(0,1fr);}
   .shell {padding:.7rem;} .panel {padding:.8rem;}
   .caseToolbar {display:grid;grid-template-columns:minmax(0,1fr);}
   .segmented {flex-wrap:wrap;} .metrics article {min-width:0;}
@@ -1119,4 +1032,18 @@ dialog::backdrop {background:rgb(15 36 25 / 48%);} dialog header {display:flex;a
   .inboxPanel .operatorWorkspace { grid-template-columns: minmax(0,1fr); }
   body:has(#admin.active.chatOpen) .topbar { display: none; }
   #activeChat { height: calc(100dvh - 5.75rem); min-height: 20rem; }
+}
+
+.inboxOverview { margin-bottom: .7rem; }
+.inboxOverview summary { color: #405c4e; font-size: .85rem; cursor: pointer; }
+.inboxOverview[open] summary { margin-bottom: .5rem; }
+.operatorWorkspace .caseRow:hover { background-color: #f5f8f4; }
+.operatorWorkspace .caseRow { cursor: pointer; }
+.casePriority { justify-self: start; }
+.chatActions { display: flex; flex-wrap: wrap; gap: .35rem; padding: .3rem .75rem; background: white; }
+.chatActions button { min-height: 32px; font-size: .8rem; padding-inline: .65rem; }
+.replyGate { background: #edf4ee; }
+.replyGate:has(#replyRestriction:empty) { display: none; }
+@media (max-width: 920px) {
+  .chatOpen .inboxOverview { display: none; }
 }

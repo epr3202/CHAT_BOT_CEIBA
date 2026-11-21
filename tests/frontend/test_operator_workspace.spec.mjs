@@ -114,9 +114,15 @@ for (const width of [375, 768, 1024, 1440]) {
         (await page.locator("#agendaDate").inputValue()).slice(0, 8) + "01",
       );
     await page.locator("#agendaDate").dispatchEvent("change");
-    await expect(page.locator("#calendar")).toContainText(
-      "Descripción completa",
-    );
+    const dayButton = page.locator("#monthDays button[aria-pressed=true]");
+    await expect(dayButton).toContainText("Reserva familiar");
+    await page.locator("#agendaEvents").getByRole("button", { name: /Reserva familiar/ }).click();
+    await expect(page.locator("#agendaEventDialog")).toBeVisible();
+    await expect(page.locator("#agendaEventDialog")).toContainText("Descripción completa");
+    await page.keyboard.press("Escape");
+    await dayButton.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.locator("#monthDays button[aria-pressed=true]")).toBeFocused();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -296,4 +302,128 @@ test("cambiar de conversación durante un envío conserva cada borrador y evita 
   await contact("Sol").click();
   await expect(input).toHaveValue("Segundo borrador");
   expect(count).toBe(1);
+});
+
+for (const [width, initial] of [[375, "PENDING"], [1440, "BOT_ACTIVE"]]) {
+  test(`leer, tomar, responder y devolver en la misma conversación a ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await panel(page, { role: "AGENT" });
+    let status = initial;
+    const posts = [];
+    const owner = { id: 1, name: "Asesor del panel" };
+    await page.route("**/api/admin/conversations?*", route => {
+      const filter = new URL(route.request().url()).searchParams.get("handoff_status");
+      const row = {
+        id: 18, customer_name: "Contacto de muestra", handoff_id: status === "BOT_ACTIVE" ? null : 21,
+        state: { PENDING: "WAITING_FOR_HUMAN", TAKEN: "HUMAN_ACTIVE", RETURNED: "BOT_ACTIVE" }[status] || status,
+        handoff_status: status === "BOT_ACTIVE" ? null : status,
+        assigned_agent: status === "TAKEN" ? owner : null,
+      };
+      return route.fulfill({ json: filter && status !== filter ? [] : [row] });
+    });
+    for (const [path, next] of [
+      [initial === "PENDING" ? "handoffs/21/take" : "conversations/18/take", "TAKEN"],
+      ["handoffs/21/return", "RETURNED"],
+    ]) {
+      await page.route("**/api/admin/" + path, route => {
+        posts.push(path);
+        status = next;
+        return route.fulfill({ json: { id: 21, conversation_id: 18, status,
+          assigned_agent: status === "TAKEN" ? owner : null } });
+      });
+    }
+    await page.route("**/api/admin/conversations/18/messages", route => {
+      if (route.request().method() === "POST") {
+        posts.push(route.request().postDataJSON().text);
+        return route.fulfill({ json: { status: "PENDING" } });
+      }
+      return route.fulfill({ json: [{ id: "message-9", body: "Hola, ¿me ayudan?", direction: "INBOUND",
+        opened_by_me: true, created_at: "2026-11-20T17:00:00Z" }] });
+    });
+    await expect(page.locator('#mainNav [data-view="handoffs"]')).toHaveCount(0);
+    if (initial === "PENDING") await page.locator("#conversationStateFilter").selectOption("case:PENDING");
+    else await page.locator("#refreshCases").click();
+    await page.getByRole("button", { name: "Abrir conversación de Contacto de muestra" }).click();
+    await expect(page.locator("#activeHistory")).toContainText("Hola, ¿me ayudan?");
+    await expect(page.getByLabel("Tu respuesta")).toBeHidden();
+    expect(posts).toEqual([]);
+    await page.getByRole("button", { name: "Tomar para responder" }).click();
+    await expect(page.getByLabel("Tu respuesta")).toBeFocused();
+    await page.getByLabel("Tu respuesta").fill("Te ayudo");
+    await page.getByRole("button", { name: "Enviar", exact: true }).click();
+    await expect(page.locator("#replyStatus")).toContainText("Respuesta en cola");
+    page.once("dialog", dialog => dialog.accept());
+    await page.getByRole("button", { name: "Devolver al bot" }).click();
+    await expect(page.getByLabel("Tu respuesta")).toBeHidden();
+    await expect(page.locator("#assignedToMeFilter")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#caseList")).toContainText("No tienes conversaciones en atención");
+    expect(posts).toEqual([initial === "PENDING" ? "handoffs/21/take" : "conversations/18/take",
+      "Te ayudo", "handoffs/21/return"]);
+  });
+}
+
+test("la bandeja anterior se restaura y un caso de otro asesor abre en lectura", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("ceiba.currentView", "handoffs");
+    localStorage.setItem("ceiba.currentStatus", "TAKEN");
+  });
+  await panel(page, { role: "AGENT" });
+  await page.route("**/api/admin/conversations?*", route => route.fulfill({ json: [{
+    id: 3, customer_name: "Contacto compartido", handoff_id: 7, state: "HUMAN_ACTIVE",
+    handoff_status: "TAKEN", assigned_agent: { id: 2, name: "Laura" },
+  }] }));
+  await page.locator("#refreshCases").click();
+  await expect(page.locator("#assignedToMeFilter")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#caseList")).not.toContainText("Contacto compartido");
+  await page.getByRole("button", { name: "Todas", exact: true }).click();
+  await expect(page.locator("#conversationStateFilter")).toHaveValue("case:TAKEN");
+  await page.getByRole("button", { name: "Abrir conversación de Contacto compartido" }).click();
+  await expect(page.locator("#replyRestriction")).toContainText("Laura");
+  await expect(page.getByLabel("Tu respuesta")).toBeHidden();
+  await expect(page.locator("#chatTake")).toBeHidden();
+  await expect(page.locator("#chatReturn")).toBeHidden();
+});
+
+test("Mis conversaciones separa por responsable y permite salir de una cola incompatible", async ({ page }) => {
+  await panel(page, { role: "AGENT" });
+  const names = ["Contacto mío", "Contacto de otra asesora", "Contacto pendiente"];
+  const people = [1, 2, null];
+  let transferred = false;
+  const queries = [];
+  await page.route("**/api/admin/conversations?*", route => {
+    const query = new URL(route.request().url()).searchParams;
+    queries.push(Object.fromEntries(query));
+    const rows = names.map((name, index) => {
+      const owner = transferred && index === 0 ? 2 : people[index];
+      return { id: index + 1, customer_name: name, state: owner ? "HUMAN_ACTIVE" : "WAITING_FOR_HUMAN",
+        handoff_id: index + 10, handoff_status: owner ? "TAKEN" : "PENDING",
+        assigned_agent: owner ? { id: owner, name: owner === 1 ? "Asesor del panel" : "Laura" } : null };
+    });
+    return route.fulfill({ json: rows.filter(row =>
+      (!query.get("handoff_status") || row.handoff_status === query.get("handoff_status")) &&
+      (!query.has("assigned_to_me") || row.assigned_agent?.id === 1) &&
+      (!query.get("state") || row.state === query.get("state"))) });
+  });
+  const list = page.locator("#caseList");
+  await page.locator("#conversationStateFilter").selectOption("case:PENDING");
+  await expect(list).toContainText(names[2]);
+  await page.getByRole("button", { name: "Mis conversaciones", exact: true }).click();
+  await expect(list.getByRole("button")).toHaveCount(1);
+  await expect(list).toContainText(names[0]);
+  await expect(list).toContainText("Asignada a ti");
+  expect(queries.at(-1)).toMatchObject({ state: "HUMAN_ACTIVE", handoff_status: "TAKEN", assigned_to_me: "true" });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mis conversaciones" })).toHaveAttribute("aria-pressed", "true");
+  await expect(list).toContainText(names[0]);
+  await list.getByRole("button").click();
+  await expect(page.getByLabel("Tu respuesta")).toBeVisible();
+  transferred = true;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(list).toContainText("No tienes conversaciones en atención");
+  await expect(page.getByLabel("Tu respuesta")).toBeHidden();
+  await page.getByRole("button", { name: "Todas", exact: true }).click();
+  await page.locator("#conversationStateFilter").selectOption("case:TAKEN");
+  await expect(list.getByRole("button")).toHaveCount(2);
+  await expect(list).toContainText("Laura");
+  expect(queries.at(-1)).not.toHaveProperty("assigned_to_me");
 });

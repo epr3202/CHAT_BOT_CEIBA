@@ -98,7 +98,7 @@ general de operación:
 
 - conversaciones sin handoff aparecen con su estado conversacional actual;
 - conversaciones con handoff muestran estado `Pendiente`, `Asignado` o `Devuelto`;
-- el botón `Tomar` llama `POST /admin/conversations/{conversation_id}/take`;
+- el botón **Tomar para responder** en una conversación con bot llama `POST /admin/conversations/{conversation_id}/take`;
 - tomar una conversación elegible crea un `Handoff(reason=MANUAL_TAKEOVER)`,
   pausa el bot y mueve la conversación a `HUMAN_ACTIVE`;
 - la toma directa siempre queda asignada al usuario autenticado;
@@ -112,15 +112,9 @@ general de operación:
 - la búsqueda y los filtros se aplican en la API antes de paginar. **Cargar más** continúa el listado. Los contadores corresponden a los casos cargados;
 - un administrador puede reasignar un caso tomado a otro agente activo y registrar el motivo.
 
-### Handoffs
+**Todas** reúne las conversaciones de todo el equipo. El selector **Estado** permite buscar pendientes por tomar, casos con asesor y casos devueltos al bot. **Mis conversaciones** muestra exclusivamente las que el usuario de la sesión tiene tomadas y en atención. La búsqueda por texto opera dentro de la lista seleccionada. Quien tenía abierta la antigua bandeja humana vuelve a **Mis conversaciones**. Su filtro de asignación anterior sigue disponible en **Todas**.
 
-La bandeja humana mantiene las colas históricas por estado:
-
-- `Pendiente`: handoffs creados por el bot u operación, todavía sin asesor activo;
-- `Asignado`: conversaciones en atención humana;
-- `Devuelto`: casos que ya regresaron al bot.
-
-El resumen de escalamiento y la acción para abrir la conversación siguen disponibles desde la bandeja. El historial abierto se actualiza cada tres segundos mientras la vista está visible.
+Al tomar el caso, el panel abre **Mis conversaciones** y enfoca el editor del mismo hilo. Al devolverlo al bot o reasignarlo a otro asesor se retira de la lista personal. El resumen de escalamiento, la prioridad y las acciones de asignación se consultan en Conversaciones. Mientras el panel está visible, el historial abierto se actualiza cada tres segundos y la lista personal cada quince. Al volver a la pestaña se vuelven a consultar las asignaciones.
 
 ### Apertura y entrega de mensajes
 
@@ -130,9 +124,11 @@ Los salientes ya enviados muestran **Leído por el contacto** al recibir el acus
 
 ### Calendario y comprobantes
 
-En **Calendario**, el administrador puede consultar el mes, abrir un día, leer títulos y descripciones, revisar las visitas locales y administrar bloqueos y festivos. Las horas se presentan en Bogotá. Las fechas de fin de los eventos de día completo son exclusivas. Una incidencia al leer los calendarios se muestra como error y permite reintentar con **Actualizar**.
+En **Calendario**, cada día muestra títulos de eventos. Al seleccionar una fecha se abre su agenda lateral, y al pulsar un evento se ve la descripción completa. Las flechas del teclado permiten cambiar de día. Las visitas vinculadas se distinguen de las reservas y los eventos. El administrador también puede revisar las visitas locales y administrar bloqueos y festivos. Para una reserva vinculada, la fecha y el horario proceden del intervalo del evento sincronizado en Bogotá. Los datos comerciales de la solicitud permanecen en su expediente. Las horas se presentan en Bogotá. Las fechas de fin de los eventos de día completo son exclusivas. Una incidencia al leer los calendarios se muestra como error y permite reintentar con **Actualizar**.
 
 La API usa el adaptador existente. Con `CALENDAR_ADAPTER=google` se necesitan la cuenta de servicio y los permisos de lectura de eventos de los calendarios elegidos. `GOOGLE_AGENDA_CALENDAR_IDS` admite una lista separada por comas. Si está vacía se muestra el calendario principal `GOOGLE_CALENDAR_ID`. Un calendario configurado únicamente en `GOOGLE_FREEBUSY_CALENDAR_IDS` aporta ocupación y conserva la privacidad de sus títulos y descripciones. La vista consulta un máximo de 42 días por petición.
+
+En **Comprobantes** y en el detalle de una reserva, **Monto verificado (COP)** se rellena con la propuesta válida de la última pre-revisión completada. El asesor puede editarla. **Aceptar** registra el importe que queda en el campo y la referencia de la pre-revisión. Si falta el monto o la lectura indica otra moneda, el campo permite entrada manual.
 
 **Ver comprobante** abre JPEG, PNG, WebP o PDF dentro del panel usando el mismo permiso administrativo que la descarga. En PDF hay controles de página. **Descargar**, pre-revisar, aceptar y rechazar siguen siendo acciones independientes. El visor sirve PDF.js desde `frontend/vendor/pdfjs`; la imagen o el documento se procesa en el navegador.
 
@@ -141,7 +137,7 @@ La API usa el adaptador existente. Con `CALENDAR_ADAPTER=google` se necesitan la
 | Sección | Acciones del panel |
 |---|---|
 | Agentes | Crear, consultar ficha, editar nombre y rol, asignar o cambiar credenciales, activar y desactivar. El historial se conserva. |
-| Atención humana | Consultar colas, tomar un caso, responder, reasignar como administrador y devolver al bot. |
+| Conversaciones | Consultar Todas o Mis conversaciones, tomar, responder, reasignar como administrador y devolver al bot. |
 | Comprobantes | Consultar y revisar evidencia, visualizar o descargar el archivo disponible y registrar la decisión humana. |
 | Planes y reservas | Editar planes existentes, consultar disponibilidad, crear manualmente, filtrar, ver detalle, reprogramar, cancelar y reintentar la sincronización elegible. |
 | Catálogos | Consultar categorías y archivos, cargar PDF y gestionar sus asociaciones y estado conforme al rol. |

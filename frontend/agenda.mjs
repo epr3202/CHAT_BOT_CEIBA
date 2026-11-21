@@ -4,6 +4,7 @@ const clock = new Intl.DateTimeFormat("es-CO", {
   timeZone: bogota,
   hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
 });
 const monthFormat = new Intl.DateTimeFormat("es-CO", {
   month: "long",
@@ -12,6 +13,21 @@ const monthFormat = new Intl.DateTimeFormat("es-CO", {
 });
 const iso = (d) => d.toISOString().slice(0, 10);
 const asDate = (day) => new Date(day + "T12:00:00Z");
+const fullDay = new Intl.DateTimeFormat("es-CO", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+const capital = (value) => value.charAt(0).toUpperCase() + value.slice(1);
+const kindLabel = { reservation: "Reserva", visit: "Visita", event: "Evento" };
+function shiftDay(day, offset) {
+  const d = asDate(day);
+  d.setUTCDate(d.getUTCDate() + offset);
+  return iso(d);
+}
+function eventTime(event) {
+  if (event.all_day) return "Todo el día";
+  const end = new Date(event.end);
+  const endDate = dayFormat.format(end);
+  const nextDate = endDate !== event.start_date ? end.toLocaleDateString("es-CO", { timeZone: bogota }) + " " : "";
+  return clock.format(new Date(event.start)) + " – " + nextDate + clock.format(end);
+}
 function shiftMonth(day, delta) {
   const d = asDate(day.slice(0, 7) + "-01");
   d.setUTCMonth(d.getUTCMonth() + delta);
@@ -47,43 +63,108 @@ export function createAgenda(api) {
       days = new Date(
         Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0),
       ).getUTCDate();
-    $("agendaMonth").textContent = monthFormat.format(start);
-    grid.replaceChildren();
-    for (let n = 1; n <= days; n++) {
+    $("agendaMonth").textContent = capital(monthFormat.format(start));
+    $("agendaDay").textContent = capital(fullDay.format(asDate(day)));
+    const restoreFocus = grid.contains(document.activeElement);
+    const today = dayFormat.format(new Date());
+    const leading = (start.getUTCDay() + 6) % 7;
+    const cells = document.createDocumentFragment();
+    for (let i = 0; i < Math.ceil((leading + days) / 7) * 7; i++) {
+      const n = i - leading + 1;
+      if (n < 1 || n > days) {
+        const blank = document.createElement("span");
+        blank.className = "outsideDay";
+        blank.setAttribute("aria-hidden", "true");
+        cells.append(blank);
+        continue;
+      }
       const date = month.slice(0, 8) + String(n).padStart(2, "0");
+      const entries = events.filter(event => occurrence(event, date));
       const b = document.createElement("button");
       b.type = "button";
-      b.textContent = String(n);
-      if (n === 1)
-        b.style.gridColumnStart = String(((start.getUTCDay() + 6) % 7) + 1);
-      b.setAttribute("aria-label", date);
+      b.dataset.day = date;
+      b.tabIndex = day === date ? 0 : -1;
+      b.setAttribute("aria-label", fullDay.format(asDate(date)) + ", " + entries.length + " eventos");
       b.setAttribute("aria-pressed", String(day === date));
-      if (events.some((e) => occurrence(e, date))) b.classList.add("hasEvents");
+      if (date === today) b.setAttribute("aria-current", "date");
+      const num = document.createElement("span");
+      num.className = "dateNumber";
+      num.textContent = String(n);
+      b.append(num);
+      for (const event of entries.slice(0, 2)) {
+        const chip = document.createElement("span");
+        chip.className = "calItem " + (event.kind === "visit" ? "visit" : "event");
+        chip.textContent = event.title;
+        chip.title = event.title;
+        b.append(chip);
+      }
+      if (entries.length > 2) {
+        const extra = document.createElement("small");
+        extra.textContent = "+" + (entries.length - 2) + " más";
+        b.append(extra);
+      }
       b.onclick = () => choose(date);
-      grid.append(b);
+      cells.append(b);
     }
+    grid.replaceChildren(cells);
+    if (restoreFocus) grid.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+  }
+  function showDetails(event) {
+    $("agendaEventTitle").textContent = event.title;
+    const lastDay = event.all_day ? shiftDay(event.end_date, -1) : dayFormat.format(new Date(Date.parse(event.end) - 1));
+    const dates = fullDay.format(asDate(event.start_date)) + (lastDay === event.start_date ? "" : " – " + fullDay.format(asDate(lastDay)));
+    $("agendaEventWhen").textContent = capital(dates) + " · " + eventTime(event) + " · Bogotá";
+    $("agendaDescriptionHeading").textContent = event.kind === "reservation" ? "Descripción de la reserva" : "Descripción del evento";
+    const notes = $("agendaDescription");
+    notes.replaceChildren();
+    const text = event.description?.trim() || "Sin descripción registrada.";
+    if (event.kind === "reservation") {
+      const seen = new Set();
+      for (const line of text.split(/\r?\n/).filter(Boolean)) {
+        if (seen.has(line)) continue;
+        seen.add(line);
+        const p = document.createElement("p");
+        const at = line.indexOf(":");
+        if (at > 0) {
+          const label = document.createElement("strong");
+          label.textContent = line.slice(0, at + 1);
+          p.append(label, line.slice(at + 1));
+        } else p.textContent = line;
+        notes.append(p);
+      }
+    } else notes.textContent = text;
+    $("agendaEventDialog").showModal();
   }
   function showEvents() {
-    const nodes = events
-      .filter((e) => occurrence(e, day))
-      .map((event) => {
-        const card = document.createElement("article"),
-          h = document.createElement("h4"),
-          t = document.createElement("small"),
-          p = document.createElement("p");
-        h.textContent = event.title;
-        t.textContent = event.all_day
-          ? "Todo el día"
-          : clock.format(new Date(event.start)) +
-            " – " +
-            clock.format(new Date(event.end));
-        p.textContent =
-          event.description?.trim() || "Sin descripción registrada.";
-        card.append(t, h, p);
-        return card;
-      });
+    const nodes = events.filter(e => occurrence(e, day)).map(event => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "dayEvent " + (event.kind === "visit" ? "visit" : "event");
+      const t = document.createElement("small"), h = document.createElement("strong"), k = document.createElement("span");
+      t.textContent = eventTime(event);
+      h.textContent = event.title;
+      k.textContent = (kindLabel[event.kind] || "Evento") + "  ›";
+      card.append(t, h);
+      const description = (event.description || "").split(/\r?\n/).find(line =>
+        line.trim() && !/^(fecha confirmada|horario confirmado|plan|reservation_id):/i.test(line));
+      if (description) {
+        const preview = document.createElement("span");
+        preview.className = "dayExcerpt";
+        preview.textContent = description;
+        card.append(preview);
+      }
+      card.append(k);
+      card.onclick = () => showDetails(event);
+      return card;
+    });
     list("agendaEvents", nodes, "Sin eventos para este día.");
   }
+  grid.onkeydown = e => {
+    const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+    if (!delta || mutation) return;
+    e.preventDefault();
+    choose(shiftDay(day, delta));
+  };
   async function choose(date, force = false) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || mutation) return;
     const oldMonth = month;
@@ -254,6 +335,10 @@ export function createAgenda(api) {
     reset() {
       version++;
       mutation = null;
+      if ($("agendaEventDialog").open) $("agendaEventDialog").close();
+      $("agendaDescription").replaceChildren();
+      $("agendaEventTitle").textContent = "";
+      $("agendaEventWhen").textContent = "";
       lockControls(false);
       day = "";
       month = "";

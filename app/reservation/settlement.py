@@ -24,6 +24,7 @@ from app.payment.models import PaymentEvidence, PaymentEvidenceReview
 from app.plan.models import Plan
 from app.reservation.availability import BookingBlocker, evaluate_booking_availability
 from app.reservation.booking import deposit_amount
+from app.reservation.calendar_description import reservation_calendar_description
 from app.reservation.models import Reservation
 from app.reservation.service import transition_reservation
 
@@ -344,6 +345,7 @@ async def sync_reservation_calendar(
                 f"reservation_id: {reservation_id}",
             ]
         )
+        description = reservation_calendar_description(description, start, end)
     event_id = reservation_id.hex
     try:
         if existing:

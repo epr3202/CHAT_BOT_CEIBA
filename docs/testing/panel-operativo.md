@@ -1,14 +1,13 @@
 # Cobertura del panel operativo
 
-La integración parte de `1dcf000da37692f1b57395379cb8e856622f561c`. El censo abarca las 59 operaciones HTTP explícitas de FastAPI y los 13 destinos de navegación del panel, más el acceso. Los menús dependen del rol y del entorno. La tabla identifica contratos de código. Las pruebas ejecutables del panel se encuentran en `tests/frontend`, con los nuevos recorridos en `test_operator_workspace.spec.mjs`; la persistencia y los permisos administrativos tienen pruebas en `tests/integration/test_operator_panel.py`.
+La integración parte de `1dcf000da37692f1b57395379cb8e856622f561c`. El censo abarca las 59 operaciones HTTP explícitas de FastAPI y los 12 destinos de navegación del panel, más el acceso. Los menús dependen del rol y del entorno. La tabla identifica contratos de código. Las pruebas ejecutables del panel se encuentran en `tests/frontend`, con los nuevos recorridos en `test_operator_workspace.spec.mjs`; la persistencia y los permisos administrativos tienen pruebas en `tests/integration/test_operator_panel.py`.
 
 | Destino | Trabajo del usuario |
 |---|---|
 | Acceso | Autenticar con documento y PIN, recuperar la sesión o cerrarla. |
-| Conversaciones | Buscar y paginar casos, filtrar, consultar ficha e historial, abrir mensajes y responder cuando se tiene la asignación. |
-| Atención humana | Consultar colas de pendientes, asignados y devueltos, tomar un caso o devolverlo al bot. La reasignación se inicia desde Conversaciones. |
-| Comprobantes | Consultar evidencia, revisar archivo y sugerencias, registrar el monto y decidir. La aceptación es humana. |
-| Calendario | Consultar descripción, horario y eventos de día completo de los calendarios operativos seleccionados. Revisar citas locales, bloqueos y festivos. |
+| Conversaciones | Buscar y paginar casos en Todas o Mis conversaciones. Desde el hilo se consulta el historial, se toma el caso, se responde, se devuelve al bot o se reasigna según el rol. Mis conversaciones muestra los casos tomados por el usuario de la sesión que continúan en atención. |
+| Comprobantes | Consultar evidencia y abrir el archivo. El monto COP propuesto se carga en el campo editable al abrir o completar la pre-revisión. El operador verifica el importe y confirma la decisión. El detalle de la reserva usa el mismo formulario. |
+| Calendario | Recorrer el mes con títulos por día y abrir el detalle desde la agenda del día. Las reservas vinculadas muestran la fecha y el horario confirmado en Bogotá, incluso cuando la descripción anterior conserva valores provisionales. Revisar citas locales, bloqueos y festivos. |
 | Catálogos | Consultar cobertura, cargar PDF, editar estado y gestionar asignaciones a tipos de evento. |
 | Planes | Consultar y editar los planes existentes, con sus condiciones de reserva y pernoctación. |
 | Reservas | Consultar, filtrar, ver detalle, preparar y crear una reserva manual, reprogramar, cancelar o reintentar la sincronización cuando corresponda. |

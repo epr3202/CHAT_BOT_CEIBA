@@ -93,6 +93,7 @@ from app.reservation.availability import (
     validate_booking_window,
 )
 from app.reservation.booking import create_pending_reservation, deposit_amount
+from app.reservation.calendar_description import reservation_calendar_description
 from app.reservation.models import Reservation
 from app.reservation.service import InvalidReservationTransition, transition_reservation
 from app.reservation.settlement import (
@@ -307,6 +308,7 @@ class OpenMessagesRequest(BaseModel):
 
 
 class AgendaEventPayload(BaseModel):
+    kind: Literal["reservation", "visit", "event"] = "event"
     title: str
     description: str | None
     start: datetime
@@ -1620,20 +1622,60 @@ async def list_calendar_events(
         )
     except CalendarUnavailableError as exc:
         raise HTTPException(503, "No se pudo consultar la agenda completa.") from exc
-    return [
-        AgendaEventPayload(
-            title=event.summary or "Ocupado",
-            description=event.description,
-            start=event.start,
-            end=event.end,
-            all_day=event.all_day,
-            start_date=event.start.date()
-            if event.all_day
-            else event.start.astimezone(bogota).date(),
-            end_date=event.end.date() if event.all_day else event.end.astimezone(bogota).date(),
+    # Provider IDs are scoped to a calendar. Never enrich an unrelated calendar's event.
+    primary = settings.google_calendar_id.strip()
+    event_ids = {event.event_id for event in events if event.calendar_id == primary}
+    reservations = {}
+    visits = set()
+    if event_ids:
+        reservations = dict(
+            (
+                await session.execute(
+                    select(Reservation.external_calendar_id, Reservation.reservation_id).where(
+                        Reservation.external_calendar_id.in_(event_ids),
+                        Reservation.status == "RESERVED",
+                    )
+                )
+            ).all()
         )
-        for event in events
-    ]
+        visits = set(
+            await session.scalars(
+                select(Appointment.external_calendar_id).where(
+                    Appointment.external_calendar_id.in_(event_ids)
+                )
+            )
+        )
+    result = []
+    for event in events:
+        kind: Literal["reservation", "visit", "event"] = "event"
+        description = event.description
+        if event.calendar_id == primary:
+            if reservation_id := reservations.get(event.event_id):
+                kind = "reservation"
+                if not event.all_day:
+                    notes = (
+                        (description or "")
+                        .removesuffix(f"reservation_id: {reservation_id}")
+                        .rstrip()
+                    )
+                    description = reservation_calendar_description(notes, event.start, event.end)
+            elif event.event_id in visits:
+                kind = "visit"
+        result.append(
+            AgendaEventPayload(
+                kind=kind,
+                title=event.summary or "Ocupado",
+                description=description,
+                start=event.start,
+                end=event.end,
+                all_day=event.all_day,
+                start_date=event.start.date()
+                if event.all_day
+                else event.start.astimezone(bogota).date(),
+                end_date=event.end.date() if event.all_day else event.end.astimezone(bogota).date(),
+            )
+        )
+    return result
 
 
 @router.get("/appointments")

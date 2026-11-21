@@ -34,6 +34,13 @@ function cleanupLegacyAuthStorage() {
 }
 
 cleanupLegacyAuthStorage();
+if (localStorage.getItem("ceiba.currentView") === "handoffs") {
+  const queue = localStorage.getItem(currentStatusStorageKey);
+  localStorage.setItem(caseStatusStorageKey, ["PENDING", "TAKEN", "RETURNED"].includes(queue) ? queue : "PENDING");
+  localStorage.removeItem(conversationStateStorageKey);
+  localStorage.setItem(assignedToMeStorageKey, "true");
+  localStorage.setItem("ceiba.currentView", "admin");
+}
 
 const state = {
   sessionToken: sessionStorage.getItem(sessionTokenStorageKey) || "",
@@ -42,12 +49,12 @@ const state = {
   currentView: localStorage.getItem("ceiba.currentView") || "admin",
   environment: null,
   metaSecret: sessionStorage.getItem("ceiba.metaSecret") || "",
-  currentStatus: localStorage.getItem(currentStatusStorageKey) || "PENDING",
   caseStatus: localStorage.getItem(caseStatusStorageKey) || "ALL",
   conversationState: localStorage.getItem(conversationStateStorageKey) || "",
   assignedToMe: localStorage.getItem(assignedToMeStorageKey) === "true",
   adminCases: [],
   caseRequest: 0,
+  caseLoading: false,
   caseOffset: 0,
   catalogCategories: [],
   unassignedCatalogs: [],
@@ -66,7 +73,6 @@ const state = {
   manualPlansRequest: 0,
   resetPreview: null,
   resetBusy: false,
-  visibleConversationIds: new Set(),
   chatPollIntervalMs: 3000,
   lastWebhook: null,
 };
@@ -80,11 +86,25 @@ let lastChatId = null;
 const inbox = createInbox({
   api: panelApi,
   getAgent: () => state.agent,
+  ownedByMe,
   meta: chatMetaText,
-  refreshCases: loadAllAdminCases,
+  refreshCases: (locate) => loadAllAdminCases(false, { preservePages: true, locate }),
+  canTake: (item) => item.handoffStatus === "PENDING"
+    ? item.id != null && item.status === "WAITING_FOR_HUMAN"
+    : item.handoffStatus !== "TAKEN" && directTakeEligibleStates.has(item.status),
+  showSummary,
+  openReassign,
+  onReturned: () => setText("caseFeedback", "Conversación devuelta al bot."),
+  onTaken: () => {
+    setText("caseFeedback", "");
+    state.assignedToMe = true;
+    $("#caseSearch").value = "";
+    updateCaseFilters();
+    persistViewState();
+  },
   onClose: () => {
     $("#chatEmpty").hidden = false;
-    document.querySelector(`[data-open-chat="${lastChatId}"]`)?.focus();
+    (document.querySelector(`[data-open-chat="${lastChatId}"]`) || $(".caseFilter.active")).focus();
     $$(".caseRow[aria-current]").forEach((row) => row.removeAttribute("aria-current"));
   },
   updateCount: (id, unopened) => {
@@ -108,7 +128,7 @@ function openChat(item) {
     .querySelector(`[data-open-chat="${lastChatId}"]`)
     ?.closest(".caseRow")
     ?.setAttribute("aria-current", "true");
-  inbox.open(item, directTakeEligibleStates.has(item.status) || item.handoffStatus === "PENDING");
+  inbox.open(item);
 }
 
 function setText(id, value) {
@@ -234,7 +254,6 @@ function selectView(view) {
   localStorage.setItem("ceiba.currentView", view);
   applyAuthState();
   if (view === "admin") loadAllAdminCases();
-  if (view === "handoffs") refreshVisibleHandoffMessages();
   if (view === "catalogsModule") loadCatalogCategories();
   if (view === "paymentEvidence") loadPaymentEvidence();
   if (view === "calendar") agenda.open();
@@ -635,14 +654,17 @@ function applyConfigToForm() {
   $("#documentId").value = state.documentId;
   $("#pin").value = "";
   $("#metaSecret").value = state.metaSecret;
-  $("#conversationStateFilter").value = state.conversationState;
-  $("#assignedToMeFilter").checked = state.assignedToMe;
-  $$(".segment").forEach((button) =>
-    button.classList.toggle("active", button.dataset.status === state.currentStatus)
-  );
-  $$(".caseFilter").forEach((button) =>
-    button.classList.toggle("active", button.dataset.caseStatus === state.caseStatus)
-  );
+  $("#conversationStateFilter").value = state.caseStatus === "ALL" ? state.conversationState : "case:" + state.caseStatus;
+  updateCaseFilters();
+}
+
+function updateCaseFilters() {
+  $("#caseStateLabel").hidden = state.assignedToMe;
+  $$(".caseFilter").forEach((button) => {
+    const selected = (button.dataset.inbox === "mine") === state.assignedToMe;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
 }
 
 function saveLocalConfig() {
@@ -707,8 +729,9 @@ async function login() {
 
 function clearSession() {
   state.caseRequest++;
+  state.caseLoading = false;
   $("#agentFields").replaceChildren();
-  caseFeedback("");
+  setText("caseFeedback", "");
   $("#moreCases").hidden = true;
   inbox.reset();
   agenda.reset();
@@ -762,10 +785,9 @@ function clearSession() {
   $("#agentCredentialsForm").reset();
   $("#resetExecuteForm").reset();
   invalidateResetPreview();
-  state.visibleConversationIds.clear();
   $("#pin").value = "";
   closeSummaryModal();
-  for (const id of ["caseList", "handoffList", "paymentEvidenceList", "catalogCategoryList"]) {
+  for (const id of ["caseList", "paymentEvidenceList", "catalogCategoryList"]) {
     document.getElementById(id)?.replaceChildren();
   }
   setText("agentState", "Sin asesor");
@@ -787,7 +809,6 @@ async function logout() {
 }
 
 function persistViewState() {
-  localStorage.setItem(currentStatusStorageKey, state.currentStatus);
   localStorage.setItem(caseStatusStorageKey, state.caseStatus);
   localStorage.setItem(conversationStateStorageKey, state.conversationState);
   localStorage.setItem(assignedToMeStorageKey, String(state.assignedToMe));
@@ -859,30 +880,7 @@ async function sendWebhook({ duplicate = false } = {}) {
   }
 }
 
-async function loadHandoffs(status = state.currentStatus) {
-  state.currentStatus = status;
-  persistViewState();
-  $$(".segment").forEach((button) => button.classList.toggle("active", button.dataset.status === status));
-
-  const list = $("#handoffList");
-  setEmpty(list, "Cargando casos...");
-
-  try {
-    const handoffs = await requestJson(`/api/admin/handoffs?status=${encodeURIComponent(status)}`, {
-      headers: operationHeaders(),
-    });
-    renderHandoffs(handoffs);
-    await refreshVisibleHandoffMessages();
-    if (status === "PENDING") setText("metricPending", String(handoffs.length));
-    if (status === "TAKEN") setText("metricTaken", String(handoffs.length));
-    return handoffs;
-  } catch (error) {
-    setEmpty(list, `No se pudo cargar la bandeja: ${error.message}`);
-    return [];
-  }
-}
-
-async function loadAllAdminCases(append = false) {
+async function loadAllAdminCases(append = false, { preservePages = false, locate = null } = {}) {
   const request = ++state.caseRequest, token = state.sessionToken;
   const offset = append === true ? state.caseOffset : 0;
   if (!hasOperationToken()) {
@@ -890,6 +888,7 @@ async function loadAllAdminCases(append = false) {
     return;
   }
 
+  state.caseLoading = true;
   try {
     if (state.sessionToken && !state.agent) {
       await resolveAgentIdentity();
@@ -903,17 +902,31 @@ async function loadAllAdminCases(append = false) {
         .map(([code]) => code);
       if (codes.length) params.set("reason_codes", codes.join(","));
     }
-    if (state.caseStatus !== "ALL") params.set("handoff_status", state.caseStatus);
-    if (state.conversationState) params.set("state", state.conversationState);
-    if (state.assignedToMe) params.set("assigned_to_me", "true");
-    const conversations = await requestJson(`/api/admin/conversations?${params.toString()}`, {
-      headers: operationHeaders(),
-    });
-    if (request !== state.caseRequest || token !== state.sessionToken) return;
-    const batch = conversations.map(caseFromConversation);
-    state.caseOffset = offset + conversations.length;
+    if (state.assignedToMe) {
+      params.set("state", "HUMAN_ACTIVE");
+      params.set("handoff_status", "TAKEN");
+      params.set("assigned_to_me", "true");
+    } else if (state.caseStatus !== "ALL") {
+      params.set("handoff_status", state.caseStatus);
+    } else if (state.conversationState) {
+      params.set("state", state.conversationState);
+    }
+    const target = preservePages ? state.caseOffset : 0;
+    const batch = [];
+    let nextOffset = offset, more;
+    do {
+      params.set("offset", String(nextOffset));
+      const conversations = await requestJson(`/api/admin/conversations?${params.toString()}`, {
+        headers: operationHeaders(),
+      });
+      if (request !== state.caseRequest || token !== state.sessionToken) return;
+      batch.push(...conversations.map(caseFromConversation));
+      nextOffset += conversations.length;
+      more = conversations.length === 200;
+    } while (more && (nextOffset < target || (locate && !batch.some(row => row.conversationId === locate))));
+    state.caseOffset = nextOffset;
     state.adminCases = offset ? [...new Map([...state.adminCases,...batch].map(row => [row.conversationId,row])).values()] : batch;
-    $("#moreCases").hidden = conversations.length < 200;
+    $("#moreCases").hidden = !more;
     setText("metricPending", String(state.adminCases.filter((item) => item.handoffStatus === "PENDING").length));
     setText("metricTaken", String(state.adminCases.filter((item) => item.handoffStatus === "TAKEN").length));
     setText("metricReturned", String(state.adminCases.filter((item) => item.handoffStatus === "RETURNED").length));
@@ -925,26 +938,9 @@ async function loadAllAdminCases(append = false) {
     const container = $("#caseList");
     setEmpty(container, `No se pudo cargar clientes: ${error.message}`);
     logEvent(`Clientes falló: ${error.message}`);
+  } finally {
+    if (request === state.caseRequest) state.caseLoading = false;
   }
-}
-
-function caseFromHandoff(handoff) {
-  const parsed = parseSummary(handoff.summary || "");
-  return {
-    id: handoff.id,
-    conversationId: handoff.conversation_id,
-    status: handoff.status,
-    priority: handoff.priority,
-    reason: handoff.reason,
-    reasonKind: "handoffReason",
-    customerName: handoff.customer_name || parsed.cliente || "Cliente sin nombre confirmado",
-    phone: handoff.customer_phone || parsed.telefono || "Teléfono no disponible",
-    assignedTo: handoff.assigned_to || "Sin asignar",
-    createdAt: handoff.created_at,
-    takenAt: handoff.taken_at,
-    resolvedAt: handoff.resolved_at,
-    summary: handoff.summary || "",
-  };
 }
 
 function caseFromConversation(conversation) {
@@ -961,10 +957,7 @@ function caseFromConversation(conversation) {
     customerName: conversation.customer_name || "Cliente sin nombre confirmado",
     phone: conversation.customer_phone || "Teléfono no disponible",
     assignedTo: assignedAgent || (conversation.bot_enabled ? "Bot activo" : "Sin asignar"),
-    assignmentHistory: [],
     createdAt: conversation.last_message_at,
-    takenAt: null,
-    resolvedAt: null,
     summary: conversation.handoff_summary || conversation.last_message_preview || conversation.last_message_body || "",
     lastMessageDirection: conversation.last_message_direction,
     ownerId: conversation.assigned_agent?.id,
@@ -975,27 +968,15 @@ function caseFromConversation(conversation) {
   };
 }
 
-function parseSummary(summary) {
-  const fields = {};
-  for (const line of summary.split("\n")) {
-    const [rawKey, ...rest] = line.split(":");
-    if (!rawKey || rest.length === 0) continue;
-    const key = rawKey.trim().toLowerCase();
-    const value = rest.join(":").trim();
-    if (key === "cliente") fields.cliente = value;
-    if (key === "telefono") fields.telefono = value;
-    if (key === "motivo") fields.motivo = value;
-  }
-  return fields;
-}
-
 function renderAdminCases() {
   const container = $("#caseList");
   if (!container) return;
 
+  const focusedContact = document.activeElement?.dataset.openChat;
   const query = ($("#caseSearch")?.value || "").trim().toLowerCase();
   const cases = state.adminCases.filter((item) => {
-    const statusMatches = state.caseStatus === "ALL" || item.handoffStatus === state.caseStatus;
+    const statusMatches = state.assignedToMe ? ownedByMe(item)
+      : state.caseStatus === "ALL" || item.handoffStatus === state.caseStatus;
     const text = [
       item.customerName,
       item.phone,
@@ -1013,10 +994,13 @@ function renderAdminCases() {
   if (inbox.selected()) {
     const selected = cases.find((c) => c.conversationId === inbox.selected());
     if (selected) openChat(selected);
+    else if (state.assignedToMe) inbox.close();
   }
   container.replaceChildren();
   if (!cases.length) {
-    setEmpty(container, "No hay clientes para este filtro con la API actual.");
+    setEmpty(container, state.assignedToMe && !query
+      ? "No tienes conversaciones en atención. Abre un caso en Todas y pulsa Tomar para responder."
+      : "No hay conversaciones que coincidan con estos filtros.");
     return;
   }
 
@@ -1073,24 +1057,18 @@ function renderAdminCases() {
       details.append(title, body);
       row.append(details);
     }
-    const actions = $(".caseActions", row);
-    if (directTakeEligibleStates.has(item.status)) {
-      actions.append(actionButton("Tomar conversación", () => takeConversation(item.conversationId), "primary"));
-    } else if (item.status === "WAITING_FOR_HUMAN" && item.handoffStatus === "PENDING" && item.id !== null) {
-      actions.append(actionButton("Tomar caso", () => takeHandoff(item.id), "primary"));
+    const priority = $(".casePriority", row);
+    if (item.id != null && item.priority !== "NORMAL") {
+      priority.hidden = false;
+      priority.classList.add(priorityClass(item.priority));
+      priority.replaceChildren(label("priority", item.priority));
     }
-    if (item.handoffStatus === "TAKEN" && item.id !== null) {
-      if (item.ownerId === state.agent?.id) {
-        actions.append(actionButton("Responder", () => openChat(item)));
-        actions.append(actionButton("Devolver", () => confirmReturn(item.id), "danger"));
-      }
-      if (state.agent?.role === "ADMIN")
-        actions.append(actionButton("Reasignar", () => openReassign(item)));
-    } else if (item.id !== null) {
-      actions.append(actionButton("Ver resumen", () => showSummary(item)));
-    }
+    row.addEventListener("click", (event) => {
+      if (!event.target.closest("button, details")) openChat(item);
+    });
     container.append(row);
   }
+  if (focusedContact) container.querySelector(`[data-open-chat="${focusedContact}"]`)?.focus({ preventScroll: true });
 }
 
 function statusClass(status) {
@@ -1112,36 +1090,21 @@ function reasonLabel(item) {
 }
 
 function activityText(item) {
-  const timestamp = item.resolvedAt || item.takenAt || item.createdAt;
+  const timestamp = item.createdAt;
   if (!timestamp) return "Sin fecha";
-  const action = item.lastMessageDirection ? label("direction", item.lastMessageDirection)
-    : item.resolvedAt ? label("handoffStatus", "RETURNED")
-    : item.takenAt ? label("handoffStatus", "TAKEN") : "Creado";
+  const action = item.lastMessageDirection ? label("direction", item.lastMessageDirection) : "Creado";
   const content = document.createDocumentFragment();
   content.append(action, ` · ${formatDate(timestamp)}`);
   return content;
 }
 
-function assignmentText(item) {
-  const history = item.assignmentHistory || [];
-  if (!history.length) {
-    return item.assignedTo;
-  }
-  const trail = history
-    .map((event) => {
-      if (event.action === "HANDOFF_RETURNED") return `${event.actor} devolvió`;
-      return `${event.actor} tomó`;
-    })
-    .join(" · ");
-  return `${item.assignedTo}\n${trail}`;
+function ownedByMe(item) {
+  return item.status === "HUMAN_ACTIVE" && item.handoffStatus === "TAKEN" &&
+    item.ownerId != null && item.ownerId === state.agent?.id;
 }
 
-function caseFeedback(message) {
-  setText("caseFeedback", message);
-  setText("handoffFeedback", message);
-}
-function confirmReturn(id) {
-  if (window.confirm("¿Devolver este caso al bot?")) returnHandoff(id);
+function assignmentText(item) {
+  return ownedByMe(item) ? "Asignada a ti" : item.assignedTo;
 }
 
 let assignmentRequest = 0;
@@ -1180,7 +1143,7 @@ async function openReassign(item) {
     if (btn.disabled) return;
     btn.disabled = true;
     try {
-      await panelApi(`/api/admin/conversations/${item.conversationId}/reassign`, {
+      const handoff = await panelApi(`/api/admin/conversations/${item.conversationId}/reassign`, {
         method: "POST",
         body: JSON.stringify({
           agent_id: Number(select.value),
@@ -1189,7 +1152,8 @@ async function openReassign(item) {
       });
       if (current()) {
         dialog.close();
-        await refreshAll();
+        inbox.applyAssignment(handoff);
+        await loadAllAdminCases();
       }
     } catch (error) {
       if (current()) $("#assignFeedback").textContent = error.message;
@@ -1208,7 +1172,8 @@ function showSummary(item) {
     "\nActividad: ", activityText(item),
   );
   if (item.handoffStatus && item.handoffStatus !== "SIN_HANDOFF") {
-    $("#summaryModalDetails").append("\nEstado del caso: ", label("handoffStatus", item.handoffStatus));
+    $("#summaryModalDetails").append("\nEstado del caso: ", label("handoffStatus", item.handoffStatus),
+      "\nPrioridad: ", label("priority", item.priority));
   }
   $("#summaryModalBody").replaceChildren(summaryContent(item.summary));
   $("#summaryModal").hidden = false;
@@ -1249,44 +1214,6 @@ function priorityClass(priority) {
   return "neutral";
 }
 
-function renderHandoffs(handoffs) {
-  const list = $("#handoffList");
-  list.replaceChildren();
-  state.visibleConversationIds = new Set(handoffs.map((handoff) => handoff.conversation_id));
-  if (!handoffs.length) {
-    setEmpty(list, "No hay casos en este estado.");
-    return;
-  }
-
-  const template = $("#handoffTemplate");
-  for (const handoff of handoffs) {
-    const node = template.content.firstElementChild.cloneNode(true);
-    node.dataset.handoffId = String(handoff.id);
-    $(".handoffTitle", node).textContent = `Conversación ${handoff.conversation_id}`;
-    $(".handoffMeta", node).replaceChildren(`Caso ${handoff.id} · `,
-      label("handoffReason", handoff.reason), " · ", label("handoffStatus", handoff.status));
-    const priority = $(".priority", node);
-    priority.className = `priority ${priorityClass(handoff.priority)}`;
-    priority.replaceChildren(label("priority", handoff.priority));
-    $(".summary", node).replaceChildren(summaryContent(handoff.summary));
-    $(".chatThread", node).dataset.conversationId = String(handoff.conversation_id);
-    setEmpty($(".chatThread", node), "Cargando conversación...", "chatEmpty");
-
-    const actions = $(".handoffActions", node);
-    if (handoff.status === "PENDING") {
-      actions.append(actionButton("Tomar", () => takeHandoff(handoff.id)));
-    } else if (handoff.status === "TAKEN") {
-      actions.append(actionButton("Abrir conversación",()=>openFromHandoff(handoff)));
-      if (handoff.assigned_agent?.id === state.agent?.id)
-        actions.append(actionButton("Devolver", () => confirmReturn(handoff.id), "danger"));
-    } else {
-      const button = actionButton("Ver pendientes", () => loadHandoffs("PENDING"));
-      actions.append(button);
-    }
-    list.append(node);
-  }
-}
-
 function actionButton(label, onClick, className = "") {
   const button = document.createElement("button");
   button.type = "button";
@@ -1294,137 +1221,6 @@ function actionButton(label, onClick, className = "") {
   if (className) button.classList.add(className);
   button.addEventListener("click", onClick);
   return button;
-}
-
-async function takeHandoff(handoffId) {
-  saveLocalConfig();
-  if (!state.sessionToken) {
-    logEvent("Inicia sesión para tomar casos.");
-    return;
-  }
-  try {
-    const options = {
-      method: "POST",
-      headers: operationHeaders(),
-    };
-    await requestJson(`/api/admin/handoffs/${handoffId}/take`, {
-      ...options,
-    });
-    caseFeedback("Caso asignado a ti.");
-    logEvent(`Caso ${handoffId} tomado.`);
-    await refreshAll();
-    await loadHandoffs("TAKEN");
-  } catch (error) {
-    caseFeedback("No se pudo tomar el caso. "+error.message);
-    logEvent(`No se pudo tomar el caso: ${error.message}`);
-  }
-}
-
-async function takeConversation(conversationId) {
-  saveLocalConfig();
-  if (!state.sessionToken) {
-    logEvent("La toma directa requiere sesión activa.");
-    return;
-  }
-  if (!state.agent) {
-    await resolveAgentIdentity();
-  }
-  if (!state.agent) {
-    logEvent("Inicia sesión antes de tomar la conversación.");
-    return;
-  }
-  try {
-    const options = {
-      method: "POST",
-      headers: sessionHeaders(),
-    };
-    const handoff = await requestJson(`/api/admin/conversations/${conversationId}/take`, {
-      ...options,
-    });
-    logEvent(`Conversación ${conversationId} tomada por ${state.agent.name}.`);
-    await refreshAll();
-    await loadHandoffs("TAKEN");
-    openFromHandoff(handoff);
-  } catch (error) {
-    caseFeedback("No se pudo tomar la conversación. "+error.message);
-    logEvent(`No se pudo tomar la conversación: ${error.message}`);
-  }
-}
-
-function openFromHandoff(handoff) {
-  const existing = state.adminCases.find((c) => c.conversationId === handoff.conversation_id);
-  selectView("admin");
-  openChat({
-    ...existing,
-    conversationId: handoff.conversation_id,
-    id: handoff.id,
-    status: "HUMAN_ACTIVE",
-    handoffStatus: handoff.status,
-    ownerId: handoff.assigned_agent?.id,
-    assignedTo: handoff.assigned_to,
-    customerName: handoff.customer_name || existing?.customerName || "Contacto",
-    phone: handoff.customer_phone || existing?.phone
-  });
-}
-
-async function refreshVisibleHandoffMessages() {
-  if (document.hidden) return;
-  if (state.currentView==="admin") { await inbox.load(); return; }
-  if (state.currentView!=="handoffs") return;
-  if (!hasOperationToken() || state.visibleConversationIds.size === 0) return;
-  await Promise.all(
-    Array.from(state.visibleConversationIds).map((conversationId) =>
-      refreshConversationMessages(conversationId)
-    )
-  );
-}
-
-async function refreshConversationMessages(conversationId) {
-  const threads = $$(`.chatThread[data-conversation-id="${conversationId}"]`);
-  if (!threads.length) return;
-
-  try {
-    const messages = await requestJson(`/api/admin/conversations/${conversationId}/messages`, {
-      headers: operationHeaders(),
-    });
-    for (const thread of threads) {
-      renderChatThread(thread, messages);
-    }
-  } catch (error) {
-    for (const thread of threads) {
-      setEmpty(thread, `No se pudo cargar el chat: ${error.message}`, "chatEmpty");
-    }
-  }
-}
-
-function renderChatThread(thread, messages) {
-  const wasNearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
-  thread.replaceChildren();
-  if (!messages.length) {
-    setEmpty(thread, "Sin mensajes en esta conversación.", "chatEmpty");
-    return;
-  }
-
-  for (const message of messages) {
-    const bubble = document.createElement("div");
-    bubble.className = `chatBubble ${message.direction === "OUTBOUND" ? "outbound" : "inbound"}`;
-
-    const body = document.createElement("div");
-    body.className = "chatBody";
-    body.textContent = message.body;
-    bubble.append(body);
-
-    const meta = document.createElement("div");
-    meta.className = "chatMeta";
-    meta.replaceChildren(chatMetaText(message));
-    bubble.append(meta);
-
-    thread.append(bubble);
-  }
-
-  if (wasNearBottom) {
-    thread.scrollTop = thread.scrollHeight;
-  }
 }
 
 function chatMetaText(message) {
@@ -1439,23 +1235,6 @@ function chatMetaText(message) {
   return content;
 }
 
-async function returnHandoff(handoffId) {
-  const resolution = "Cliente atendido y devuelto al bot.";
-  try {
-    await requestJson(`/api/admin/handoffs/${handoffId}/return`, {
-      method: "POST",
-      headers: operationHeaders(),
-      body: JSON.stringify({ resolution }),
-    });
-    caseFeedback("Caso devuelto al bot.");
-    logEvent(`Caso ${handoffId} devuelto al bot.`);
-    await refreshAll();
-  } catch (error) {
-    caseFeedback("No se pudo devolver el caso. "+error.message);
-    logEvent(`No se pudo devolver el caso: ${error.message}`);
-  }
-}
-
 async function refreshAll() {
   await checkHealth();
   await resolveAgentIdentity();
@@ -1465,7 +1244,6 @@ async function refreshAll() {
     return;
   }
   await loadAllAdminCases();
-  await loadHandoffs(state.currentStatus);
   if (state.agent?.role === "ADMIN") {
     await Promise.all([loadCatalogCategories(), loadPaymentEvidence()]);
     if (state.currentView === "calendar") await agenda.open();
@@ -1930,13 +1708,27 @@ function createEvidenceCard(evidence, feedbackId, review) {
         const failed = evidence.review.checks?.find(check =>
           ["ACCOUNT", "REFERENCE"].includes(check.code) && check.result === "FAIL");
         note.value = failed?.code === "ACCOUNT" ? "Cuenta destino no coincide" : "Referencia ya usada";
-      } else if (Number.isInteger(evidence.review.suggested_amount_cop) && evidence.review.suggested_amount_cop > 0) {
-        actions.append(actionButton("Aceptar propuesta", () => {
-          input.value = evidence.review.suggested_amount_cop;
-          card.dataset.reviewId = evidence.review.review_id;
-          input.focus();
-          managementFeedback(feedbackId, "Monto propuesto cargado. Verifica el comprobante y pulsa Aceptar para confirmar.");
-        }));
+      }
+      const suggested = evidence.review.suggested_amount_cop;
+      const currencyMismatch = evidence.review.checks?.some(check => check.code === "CURRENCY" && check.result === "FAIL");
+      if (Number.isInteger(suggested) && suggested > 0 && suggested <= Number(input.max) && !currencyMismatch) {
+        input.defaultValue = String(suggested);
+        if (evidence.review.review_id) card.dataset.reviewId = evidence.review.review_id;
+        const hint = document.createElement("small");
+        hint.id = `${feedbackId}-amount-${evidence.id}`;
+        hint.textContent = `La pre-revisión propone ${formatCOP(suggested)}. Verifica el monto antes de aceptar.`;
+        input.setAttribute("aria-describedby", hint.id);
+        amountLabel.after(hint);
+        if (evidence.review.suggestion !== "REJECT") {
+          const restore = actionButton("Aceptar propuesta", () => {
+            input.value = input.defaultValue;
+            restore.hidden = true;
+            input.focus();
+          });
+          restore.hidden = true;
+          input.addEventListener("input", () => { restore.hidden = input.value === input.defaultValue; });
+          actions.append(restore);
+        }
       }
     }
     if (evidence.download_status === "DOWNLOADED") {
@@ -2482,15 +2274,17 @@ function bindUi() {
     });
   });
 
-  $$(".segment").forEach((button) => {
-    button.addEventListener("click", () => loadHandoffs(button.dataset.status));
-  });
   $$(".caseFilter").forEach((button) => {
     button.addEventListener("click", () => {
-      state.caseStatus = button.dataset.caseStatus;
+      const mine = button.dataset.inbox === "mine";
+      if (state.assignedToMe === mine) return;
+      if (inbox.selected()) inbox.close();
+      state.assignedToMe = mine;
+      setText("caseFeedback", "");
+      $("#caseSearch").value = "";
+      button.focus();
       persistViewState();
-      $$(".caseFilter").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
+      updateCaseFilters();
       renderAdminCases();
       loadAllAdminCases();
     });
@@ -2553,13 +2347,11 @@ function bindUi() {
     searchTimer = setTimeout(loadAllAdminCases, 225);
   });
   $("#conversationStateFilter").addEventListener("change", (event) => {
-    state.conversationState = event.target.value;
+    const value = event.target.value;
+    state.caseStatus = value.startsWith("case:") ? value.slice(5) : "ALL";
+    state.conversationState = state.caseStatus === "ALL" ? value : "";
     persistViewState();
-    loadAllAdminCases();
-  });
-  $("#assignedToMeFilter").addEventListener("change", (event) => {
-    state.assignedToMe = event.target.checked;
-    persistViewState();
+    if (inbox.selected()) inbox.close();
     loadAllAdminCases();
   });
   $("#refreshAll").addEventListener("click", refreshAll);
@@ -2589,7 +2381,15 @@ applyConfigToForm();
 bindUi();
 applyAuthState();
 refreshAll();
-setInterval(refreshVisibleHandoffMessages, state.chatPollIntervalMs);
+setInterval(inbox.load, state.chatPollIntervalMs);
+
+function refreshPersonalInbox() {
+  if (state.agent && state.currentView === "admin" && state.assignedToMe && !document.hidden && !state.caseLoading) {
+    loadAllAdminCases(false, { preservePages: true });
+  }
+}
+setInterval(refreshPersonalInbox, 15000);
+document.addEventListener("visibilitychange", refreshPersonalInbox);
 
 function resetRecipientForm() {
   const form = $("#notificationRecipientForm");

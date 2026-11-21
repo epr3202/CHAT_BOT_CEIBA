@@ -2017,8 +2017,10 @@ reclamarse según OUTBOX_SENDING_TIMEOUT_SECONDS. El historial sigue append-only
 
 Listado y detalle de comprobantes y detalle de reserva muestran la última
 pre-revisión, con iniciales del remitente, campos, checks y monto sugerido.
-«Aceptar propuesta» carga el monto y vincula review_id; «Aceptar» exige una
-acción humana adicional y ejecuta las reglas B2-1 existentes. La aceptación
+Si la última pre-revisión completada propone un monto válido en COP, el formulario
+lo carga al abrirse. El asesor puede corregirlo o recuperar el valor sugerido con
+«Aceptar propuesta» cuando la sugerencia permite esa acción. Solo el clic humano en
+«Aceptar» envía el monto del campo y su review_id y ejecuta las reglas B2-1 existentes. La aceptación
 audita «aceptado con propuesta de IA» o «aceptado manual»; una diferencia de monto
 queda registrada. REJECT prellena la nota de cuenta o referencia sin rechazar
 automáticamente. No hay mensajes nuevos ni texto libre al cliente. El bot sigue
