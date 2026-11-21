@@ -94,10 +94,11 @@ from app.reservation.availability import (
 )
 from app.reservation.booking import create_pending_reservation, deposit_amount
 from app.reservation.calendar_description import reservation_calendar_description
-from app.reservation.models import Reservation
+from app.reservation.models import Reservation, ReservationManualPayment
 from app.reservation.service import InvalidReservationTransition, transition_reservation
 from app.reservation.settlement import (
     accept_payment,
+    apply_reservation_payment,
     lock_booking_changes,
     reject_payment,
     release_reservation_calendar,
@@ -250,6 +251,25 @@ class PlanPayload(BaseModel):
 ReservationStatus = Literal["PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED", "EXPIRED", "CANCELLED"]
 
 
+class ManualPaymentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    payment_id: UUID
+    method: Literal["CASH", "CARD", "BANK_TRANSFER", "NEQUI", "DAVIPLATA", "PAYMENT_LINK"]
+    amount_cop: int = Field(gt=0, le=2147483647, strict=True)
+    expected_paid_cop: int = Field(ge=0, le=2147483647, strict=True)
+    note: str | None = Field(None, max_length=255)
+
+
+class ManualPaymentPayload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    payment_id: UUID
+    method: str
+    amount_cop: int
+    recorded_by: str
+    created_at: datetime
+    note: str | None
+
+
 class ReservationPayload(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -279,10 +299,19 @@ class ReservationPayload(BaseModel):
 
     deposit_amount_cop: int | None = None
     missing_cop: int | None = None
+    manual_payments: list[ManualPaymentPayload] = Field(default_factory=list)
     evidences: list[dict] = Field(default_factory=list)
     customer_notifications: list[dict] = Field(default_factory=list)
     calendar_synced: bool | None = None
     detail: str | None = None
+
+
+class ManualPaymentResult(BaseModel):
+    reservation: ReservationPayload
+    result: Literal["RESERVED", "PARTIAL", "BALANCE_PAID", "BALANCE_PARTIAL"]
+    replayed: bool
+    calendar_synced: bool | None
+    detail: str | None
 
 
 class CancelReservationRequest(BaseModel):
@@ -718,6 +747,12 @@ async def get_reservation(
     authorization: Annotated[str | None, Header()] = None,
 ) -> ReservationPayload:
     await authenticated_admin(session, authorization)
+    return await reservation_detail_payload(session, reservation_id)
+
+
+async def reservation_detail_payload(
+    session: AsyncSession, reservation_id: UUID
+) -> ReservationPayload:
     reservation = await session.get(Reservation, reservation_id)
     if reservation is None:
         raise HTTPException(status_code=404, detail="La reserva no existe.")
@@ -733,6 +768,17 @@ async def get_reservation(
     )
     return payload.model_copy(
         update={
+            "manual_payments": [
+                ManualPaymentPayload.model_validate(payment)
+                for payment in await session.scalars(
+                    select(ReservationManualPayment)
+                    .where(ReservationManualPayment.reservation_id == reservation_id)
+                    .order_by(
+                        ReservationManualPayment.created_at.desc(),
+                        ReservationManualPayment.payment_id.desc(),
+                    )
+                )
+            ],
             "customer_notifications": [
                 {
                     "kind": notification.kind,
@@ -908,6 +954,159 @@ async def create_manual_reservation(
                 )
             )
         return await reservation_payload(session, row)
+
+
+@router.post("/reservations/{reservation_id}/payments")
+async def record_manual_payment(
+    reservation_id: UUID,
+    body: ManualPaymentRequest,
+    request: Request,
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> ManualPaymentResult:
+    agent = await authenticated_admin(session, authorization)
+    agent_id, actor = agent.id, agent.name
+    rid = str(body.payment_id)
+    reservation = await session.get(Reservation, reservation_id)
+    if reservation is None:
+        raise HTTPException(404, "La reserva no existe.")
+    prior = await session.get(ReservationManualPayment, body.payment_id)
+    checked_slot = None
+    blockers = []
+    if prior is None and reservation.status in {"PAYMENT_PENDING", "PAYMENT_REVIEW"}:
+        validate_manual_amount(body, reservation)
+        if reservation.amount_paid_cop + body.amount_cop >= deposit_amount(reservation.price_cop):
+            plan = await session.get(Plan, reservation.plan_id)
+            start, end = reservation.starts_at, reservation.ends_at
+            checked_slot = (reservation.plan_id, start, end)
+            session.expunge(plan)
+            await session.rollback()
+            settings = get_settings()
+            try:
+                availability = await fetch_booking_context(
+                    session,
+                    plan=plan,
+                    starts_at=start,
+                    ends_at=end,
+                    calendar=get_calendar_adapter(settings),
+                    settings=settings,
+                )
+            except CalendarUnavailableError as exc:
+                raise HTTPException(
+                    503, "No se pudo verificar la fecha. Reintenta el abono."
+                ) from exc
+            blockers = [b for b in availability.blockers if b.kind == "CALENDAR_EXCLUSIVE"]
+    await session.rollback()
+    async with session.begin():
+        await lock_booking_changes(session)
+        reservation = await session.get(Reservation, reservation_id, with_for_update=True)
+        if reservation is None:
+            raise HTTPException(404, "La reserva no existe.")
+        payment = await session.get(ReservationManualPayment, body.payment_id)
+        replay = payment is not None
+        if payment is not None:
+            if (
+                payment.reservation_id,
+                payment.agent_id,
+                payment.amount_cop,
+                payment.method,
+                payment.note,
+                payment.paid_before_cop,
+            ) != (
+                reservation_id,
+                agent_id,
+                body.amount_cop,
+                body.method,
+                body.note,
+                body.expected_paid_cop,
+            ):
+                raise HTTPException(409, "La referencia del abono ya corresponde a otro registro.")
+            kind = payment.result
+        else:
+            validate_manual_amount(body, reservation)
+            if (
+                reservation.status != "RESERVED"
+                and reservation.amount_paid_cop + body.amount_cop
+                >= deposit_amount(reservation.price_cop)
+                and checked_slot
+                != (reservation.plan_id, reservation.starts_at, reservation.ends_at)
+            ):
+                raise HTTPException(
+                    409, "Cambió la fecha de la reserva. Actualiza antes de continuar."
+                )
+            before = reservation.amount_paid_cop
+            # AuditEvent.actor is limited to 64 characters; the ledger preserves full identity.
+            result = await apply_reservation_payment(
+                session,
+                reservation,
+                amount_cop=body.amount_cop,
+                actor=actor[:64],
+                note=body.note or "Abono manual verificado por el administrador",
+                request_id=rid,
+                calendar_blockers=blockers,
+            )
+            if result.kind == "CONFLICT":
+                raise HTTPException(
+                    409,
+                    {
+                        "message": "La fecha está ocupada. Reprograma antes de registrar el abono.",
+                        "blockers": [asdict(b) for b in result.blockers],
+                    },
+                )
+            kind = result.kind
+            session.add(
+                ReservationManualPayment(
+                    payment_id=body.payment_id,
+                    reservation_id=reservation_id,
+                    agent_id=agent_id,
+                    recorded_by=actor,
+                    amount_cop=body.amount_cop,
+                    paid_before_cop=before,
+                    method=body.method,
+                    note=body.note,
+                    result=kind,
+                )
+            )
+            session.add(
+                AuditEvent(
+                    actor=actor[:64],
+                    action="RESERVATION_MANUAL_PAYMENT_RECORDED",
+                    entity="reservation",
+                    old_value={"reservation_id": str(reservation_id), "amount_paid_cop": before},
+                    new_value={
+                        "reservation_id": str(reservation_id),
+                        "payment_id": rid,
+                        "agent_id": agent_id,
+                        "method": body.method,
+                        "amount_cop": body.amount_cop,
+                        "amount_paid_cop": reservation.amount_paid_cop,
+                    },
+                    reason=body.note or "Abono manual verificado por el administrador",
+                    request_id=rid,
+                )
+            )
+    synced, detail = None, None
+    if kind == "RESERVED" and not replay:
+        synced, detail = await calendar_sync_after_commit(request, reservation_id)
+    payload = await reservation_detail_payload(session, reservation_id)
+    if replay and kind == "RESERVED" and payload.status == "RESERVED":
+        synced = payload.calendar_status == "CONFIRMED"
+        if not synced:
+            detail = "La reserva está confirmada y falta sincronizar su evento en el calendario."
+    return ManualPaymentResult(
+        reservation=payload, result=kind, replayed=replay, calendar_synced=synced, detail=detail
+    )
+
+
+def validate_manual_amount(body: ManualPaymentRequest, row: Reservation) -> None:
+    if row.status not in {"PAYMENT_PENDING", "PAYMENT_REVIEW", "RESERVED"}:
+        raise HTTPException(409, "La reserva está cancelada o vencida.")
+    if row.amount_paid_cop != body.expected_paid_cop:
+        raise HTTPException(
+            409, "El total recibido cambió. Actualiza la reserva y revisa el saldo."
+        )
+    if body.amount_cop > row.price_cop - row.amount_paid_cop:
+        raise HTTPException(409, "El abono supera el saldo pendiente.")
 
 
 @router.patch("/reservations/{reservation_id}/schedule")

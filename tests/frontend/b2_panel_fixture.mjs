@@ -101,6 +101,7 @@ export async function detail(page) {
 
 export async function manual(page) {
   await reservations(page);
+  await page.getByRole("button", {name:"Nueva reserva"}).click();
   return page.locator("#manualReservationForm");
 }
 

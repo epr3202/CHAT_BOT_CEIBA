@@ -1542,6 +1542,8 @@ DAVIPLATA
 PAYMENT_LINK
 ```
 
+El administrador puede registrar desde Reservas un monto recibido directamente por cualquiera de estos medios. El registro conserva reserva, importe en COP, medio, fecha, operador y nota opcional. El importe reduce el saldo por cobrar. Al completar el anticipo se aplican las reglas de disponibilidad y confirmación de la reserva. Al completar el precio total se liquida el saldo y cesan los recordatorios pendientes.
+
 ---
 
 ## BR-PAY-002 — Datos oficiales

@@ -1140,3 +1140,79 @@ dialog::backdrop {background:rgb(15 36 25 / 48%);} dialog header {display:flex;a
   #admin.chatOpen .inboxOverview { display: none; }
   #activeChat { height: calc(100dvh - 5.75rem); min-height: 26rem; }
 }
+
+/* Reservations workspace */
+.srRes { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.resDirectory { overflow: hidden; padding: 0; }
+.resBar, .resHeading { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; }
+.resBar .actions { margin: 0; display: flex; flex-wrap: wrap; gap: .5rem; }
+.resDirectory > .resBar { padding: 1.1rem 1.25rem; }
+.resBar h2, .resHeading h2, #manualReservationPanel h2, #manualPaymentTitle { margin: 0; font: 600 clamp(1.35rem,2.1vw,1.85rem)/1.16 Baskervville,Georgia,serif; color: #143d30; }
+.resFilters { display: grid; gap: .65rem; grid-template-columns: repeat(4,minmax(0,1fr)); align-items: end; padding: 1rem 1.25rem; background: #f6f8f4; border-block: 1px solid var(--line); }
+.resFilters label, #manualPaymentForm label { min-width: 0; display: grid; gap: .3rem; color: var(--muted); font-size: .82rem; font-weight: 600; }
+.resFilters :is(input,select), #manualPaymentForm :is(input,select) { width: 100%; min-width: 0; }
+.resTable { width: 100%; border-collapse: collapse; text-align: left; overflow-wrap: anywhere; }
+.resTable th { font-size: .76rem; color: var(--muted); padding: .75rem 1rem; border-bottom: 1px solid var(--line); }
+.resTable td { padding: .85rem 1rem; border-bottom: 1px solid var(--line); vertical-align: middle; font-size: .9rem; }
+.resTable tr:last-child td { border-bottom: 0; }
+.resTable tbody tr:hover { background: #f7faf6; }
+.resTable td:first-child { width: 31%; }
+.resTable small, #manualPaymentHistory small { display: block; font-size: .78rem; color: #516559; margin-top: .15rem; }
+.resTable td:nth-child(4) strong, .resMoney dd { font-variant-numeric: tabular-nums; }
+.resOrigin { display: inline-block; color: #556457; font-size: .7rem; border: 1px solid #d7dfd2; border-radius: .3rem; padding: 0 .25rem; }
+.resTable button, .resFilters input, .resFilters select { min-height: 38px; }
+.resTable button { color: var(--accent-strong); white-space: nowrap; }
+.resBack { color: var(--accent-strong); background: transparent; border: 0; padding-inline: .15rem; justify-self: start; font-weight: 600; }
+.resBack::before { content: "‹"; font-size: 1.3rem; margin-inline-end: .35rem; }
+.resDetail { display: grid; gap: 1rem; min-width: 0; }
+.resHeading h2 { font-size: clamp(1.65rem,3vw,2.35rem); overflow-wrap: anywhere; }
+.resHeading p { margin: .3rem 0 0; color: var(--muted); }
+.resAccount, .resSection, .resOperations form { border: 1px solid var(--line); border-radius: .85rem; background: white; min-width: 0; padding: 1.1rem 1.25rem; }
+.resAccount { background: #e8f1e8; border-color: #c5d9c8; }
+.resBar h3, .resSection h3, .resOperations h3 { font-size: 1.05rem; color: #173e30; margin: 0; }
+.resMoney { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); margin: 1rem 0 0; gap: .7rem; }
+.resMoney div { border-left: 1px solid #b8cdc0; padding-left: 1rem; min-width: 0; }
+.resMoney div:first-child { border: 0; padding: 0; }
+.resMoney dt { color: #405c4b; font-size: .83rem; }
+.resMoney dd { margin: .15rem 0 0; font-size: clamp(1.1rem,2.4vw,1.75rem); color: #193a2c; font-weight: 650; overflow-wrap: anywhere; }
+.resColumns { display: grid; gap: 1rem; grid-template-columns: minmax(0,1.12fr) minmax(0,1fr); align-items: start; }
+.resSection h3 { margin-bottom: .85rem; }
+.resFacts { display: grid; grid-template-columns: minmax(5rem,.85fr) minmax(0,1.35fr); gap: .35rem .65rem; margin: 0; font-size: .88rem; }
+.resFacts dt { color: var(--muted); }
+.resFacts dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.resOperations form { margin: 0; }
+.resOperations h3 { grid-column: 1/-1; }
+#manualPaymentHistory { color: var(--muted); overflow-wrap: anywhere; font-size: .87rem; }
+#manualPaymentHistory article { display: grid; grid-template-columns: minmax(0,1fr) auto; color: var(--text); padding: .65rem 0; border-bottom: 1px solid var(--line); }
+#manualPaymentHistory article:first-child { padding-top: 0; }
+#manualPaymentHistory article:last-child { border: 0; }
+#manualPaymentHistory article :is(small,p) { grid-column: 1/-1; margin: .2rem 0 0; }
+#manualPaymentDialog { width: min(94vw, 28rem); }
+#manualPaymentDialog > p { margin: .45rem 0 1rem; color: var(--muted); overflow-wrap: anywhere; }
+#manualPaymentForm { display: grid; gap: .9rem; }
+.resProjection { background: #edf4ec; padding: .75rem; border-radius: .5rem; display: flex; justify-content: space-between; gap: .5rem; color: #204a34; }
+#manualPaymentFeedback { margin: 0; color: var(--danger); }
+@media (max-width: 1100px) {
+  .resTable :is(th,td) { padding-inline: .6rem; }
+  .resColumns { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 700px) {
+  .resDirectory > .resBar, .resFilters { padding: .85rem; }
+  .resFilters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .resTable thead { position: absolute; clip-path: inset(50%); height: 1px; width: 1px; overflow: hidden; }
+  .resTable, .resTable tbody { display: block; }
+  .resTable tr { display: grid; grid-template-columns: 1fr auto; gap: .45rem .65rem; padding: .9rem; border-bottom: 1px solid var(--line); }
+  .resTable td { width: auto !important; padding: 0; border: 0; }
+  .resTable td:first-child { grid-column: 1/-1; }
+  .resTable td:nth-child(3) { justify-self: end; }
+  .resTable td:nth-child(4)::before { content: attr(data-label); display: block; color: var(--muted); font-size: .77rem; }
+  .resTable td:last-child { align-self: end; justify-self: end; }
+  .resTable td:only-child { justify-self: start; }
+  .resTable .resBalancePending { display: none; }
+  .resMoney { grid-template-columns: minmax(0,1fr); gap: .5rem; }
+  .resMoney div, .resMoney div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem; padding: .3rem 0; border: 0; border-bottom: 1px solid #c9d9cc; }
+  .resMoney div:last-child { border: 0; }
+  .resAccount, .resSection, .resOperations form { padding: .9rem; }
+}
+
+.resFilters > div, #manualPaymentForm > div:has(select) { display: grid; gap: .3rem; min-width: 0; }

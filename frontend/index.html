@@ -367,8 +367,25 @@
       </section>
 
       <section class="view" id="reservations" hidden>
-        <section class="panel" id="manualReservationPanel">
-          <div class="panelHeader"><h2>Crear reserva manual</h2><button id="reloadManualPlans" type="button">Actualizar planes</button></div>
+        <section class="panel resDirectory" id="reservationDirectory">
+          <header class="resBar"><h2>Listado de reservas</h2><div class="actions">
+            <button id="refreshReservations" type="button">Actualizar</button>
+            <button id="newReservation" class="primary" type="button">Nueva reserva</button>
+          </div></header>
+          <div class="resFilters">
+            <div><label for="reservationStatusFilter">Estado</label><select id="reservationStatusFilter"><option value="">Todos</option></select></div>
+            <div><label for="reservationBalanceFilter">Saldo</label><select id="reservationBalanceFilter"><option value="">Todos</option><option value="pending">Saldo pendiente</option><option value="overdue">Saldo vencido</option></select></div>
+            <label>Desde<input id="reservationFromFilter" type="date" /></label>
+            <label>Hasta<input id="reservationToFilter" type="date" /></label>
+          </div>
+          <p id="reservationsFeedback" role="status" aria-live="polite" hidden></p>
+          <table class="resTable"><caption class="srRes">Reservas filtradas. Fechas en hora de Bogotá y valores en pesos colombianos.</caption>
+            <thead><tr><th>Cliente y plan</th><th>Inicio (Bogotá)</th><th>Estado</th><th>Saldo pendiente</th><th><span class="srRes">Acciones</span></th></tr></thead>
+            <tbody id="reservationRows"></tbody>
+          </table>
+        </section>
+        <section class="panel" id="manualReservationPanel" hidden>
+          <button id="backFromCreate" type="button" class="resBack">Volver a reservas</button><div class="panelHeader"><h2>Crear reserva manual</h2><button id="reloadManualPlans" type="button">Actualizar planes</button></div>
           <p>La disponibilidad es orientativa. La fecha se asegura cuando un administrador valida el anticipo.</p>
           <p id="manualReservationFeedback" role="status" aria-live="polite" hidden></p>
           <form id="manualReservationForm" class="managementForm bookingForm">
@@ -384,55 +401,58 @@
             </div>
           </form>
         </section>
-        <section class="panel">
-          <div class="panelHeader">
-            <h2>Reservas</h2>
-            <button id="refreshReservations" type="button">Actualizar</button>
-          </div>
-          <div class="managementForm">
-            <label for="reservationStatusFilter">Estado</label>
-            <select id="reservationStatusFilter"><option value="">Todos</option></select>
-            <label for="reservationBalanceFilter">Saldo</label>
-            <select id="reservationBalanceFilter"><option value="">Todos</option><option value="pending">Saldo pendiente</option><option value="overdue">Saldo vencido</option></select>
-            <label>Desde<input id="reservationFromFilter" type="date" /></label>
-            <label>Hasta<input id="reservationToFilter" type="date" /></label>
-          </div>
-          <p id="reservationsFeedback" role="status" aria-live="polite" hidden></p>
-          <div class="tableScroll">
-            <table class="agentsTable">
-              <thead><tr><th>Cliente</th><th>Plan</th><th>Inicio (Bogotá)</th><th>Estado</th><th>Pagado / faltante del anticipo</th><th>Calendario</th><th>Acciones</th></tr></thead>
-              <tbody id="reservationRows"></tbody>
-            </table>
-          </div>
-        </section>
-        <section class="panel" id="reservationDetail" hidden>
-          <div class="panelHeader">
-            <h2>Detalle de reserva</h2>
-            <button id="closeReservationDetail" type="button">Cerrar detalle</button>
-          </div>
+        <section id="reservationDetail" class="resDetail" hidden>
+          <button id="closeReservationDetail" type="button" class="resBack">Volver a reservas</button>
+          <header class="resHeading"><div><h2 id="reservationClient" tabindex="-1">Detalle de reserva</h2><p id="reservationSubtitle"></p></div><span id="reservationState" class="pill neutral"></span></header>
           <p id="reservationDetailFeedback" role="status" aria-live="polite" hidden></p>
-          <dl id="reservationDetails" class="resetCounts" aria-live="polite"></dl>
-          <h3>Recordatorios</h3>
-          <div id="reservationCustomerNotifications" class="cardList"></div>
-          <div id="reservationCalendarActions" class="actions"><button id="retryReservationCalendar" type="button" hidden>Reintentar calendario</button></div>
-          <h3>Comprobantes</h3>
-          <div id="reservationEvidences" class="cardList"></div>
+          <section class="resAccount">
+            <header class="resBar"><h3>Cuenta de la reserva</h3>
+              <button id="openManualPayment" type="button" class="primary" hidden>Registrar abono</button>
+            </header>
+            <dl class="resMoney" id="reservationMoney"></dl>
+          </section>
+          <div class="resColumns">
+            <section class="resSection"><h3>Datos de la reserva</h3><dl id="reservationDetails" class="resFacts"></dl>
+              <div id="reservationCalendarActions" class="actions"><button id="retryReservationCalendar" type="button" hidden>Reintentar calendario</button></div>
+            </section>
+            <section class="resSection"><h3>Abonos sin comprobante</h3><div id="manualPaymentHistory"></div></section>
+          </div>
+          <section class="resSection"><h3>Comprobantes</h3><div id="reservationEvidences" class="cardList"></div></section>
+          <section class="resSection"><h3>Recordatorios</h3><div id="reservationCustomerNotifications" class="cardList"></div></section>
+          <div class="resColumns resOperations">
           <form id="reservationScheduleForm" class="managementForm bookingForm" hidden>
-            <label>Nueva fecha<input id="reservationScheduleDate" type="date" required /></label>
+            <h3>Reprogramar reserva</h3><label>Nueva fecha<input id="reservationScheduleDate" type="date" required /></label>
             <label>Nueva hora<input id="reservationScheduleTime" type="time" required step="60" /></label>
             <p>Fecha y hora de Bogotá.</p>
             <div class="actions"><button id="scheduleReservation" type="submit">Reprogramar</button></div>
           </form>
           <form id="reservationCancelForm" class="managementForm" hidden>
-            <label>Motivo
+            <h3>Cancelación</h3><label>Motivo
               <textarea id="reservationCancelNote" maxlength="255" required></textarea>
             </label>
             <div class="actions">
               <button class="danger" id="cancelReservation" type="submit">Cancelar reserva</button>
             </div>
           </form>
+          </div>
         </section>
       </section>
+
+      <dialog id="manualPaymentDialog" aria-labelledby="manualPaymentTitle">
+        <header><h2 id="manualPaymentTitle">Registrar abono</h2><button id="closeManualPayment" type="button">Cerrar</button></header>
+        <p id="manualPaymentFor"></p>
+        <form id="manualPaymentForm">
+          <div><label for="manualPaymentMethod">Medio de pago</label><select id="manualPaymentMethod">
+            <option value="CASH">Efectivo</option><option value="BANK_TRANSFER">Transferencia</option><option value="CARD">Tarjeta</option><option value="NEQUI">Nequi</option><option value="DAVIPLATA">Daviplata</option><option value="PAYMENT_LINK">Enlace de pago</option>
+          </select></div>
+          <label>Monto recibido (COP)<input id="manualPaymentAmount" type="number" inputmode="numeric" min="1" step="1" required /></label>
+          <label>Nota (opcional)<input id="manualPaymentNote" maxlength="255" placeholder="Por ejemplo, caja de recepción" /></label>
+          <div class="resProjection"><span>Saldo después del abono</span><strong id="manualPaymentRemaining"></strong></div>
+          <p id="manualPaymentFeedback" role="status" hidden></p>
+          <button type="button" id="refreshManualPayment" hidden>Consultar saldo actual</button>
+          <button id="submitManualPayment" type="submit" class="primary">Confirmar abono</button>
+        </form>
+      </dialog>
 
       <section class="view" id="manualReservations" hidden></section>
 

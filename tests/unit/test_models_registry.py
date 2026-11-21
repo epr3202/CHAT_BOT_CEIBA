@@ -37,6 +37,7 @@ def test_models_registry_loads_complete_metadata_table_set() -> None:
         "plan",
         "quote_request",
         "reservation",
+        "reservation_manual_payment",
         "staff_outbox",
         "webhook_event",
     }

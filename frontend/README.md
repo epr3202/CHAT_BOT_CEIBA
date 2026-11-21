@@ -128,6 +128,8 @@ En **Calendario**, cada día muestra títulos de eventos. Al seleccionar una fec
 
 La API usa el adaptador existente. Con `CALENDAR_ADAPTER=google` se necesitan la cuenta de servicio y los permisos de lectura de eventos de los calendarios elegidos. `GOOGLE_AGENDA_CALENDAR_IDS` admite una lista separada por comas. Si está vacía se muestra el calendario principal `GOOGLE_CALENDAR_ID`. Un calendario configurado únicamente en `GOOGLE_FREEBUSY_CALENDAR_IDS` aporta ocupación y conserva la privacidad de sus títulos y descripciones. La vista consulta un máximo de 42 días por petición.
 
+En **Reservas → Ver detalle → Registrar abono**, el administrador indica el monto recibido, el medio de pago y, si lo necesita, una nota de caja. El formulario muestra el saldo que quedará al confirmar. Los pagos recibidos directamente aparecen en **Abonos sin comprobante** con fecha y operador. El importe solo se registra una vez si se reintenta tras una interrupción.
+
 En **Comprobantes** y en el detalle de una reserva, **Monto verificado (COP)** se rellena con la propuesta válida de la última pre-revisión completada. El asesor puede editarla. **Aceptar** registra el importe que queda en el campo y la referencia de la pre-revisión. Si falta el monto o la lectura indica otra moneda, el campo permite entrada manual.
 
 **Ver comprobante** abre JPEG, PNG, WebP o PDF dentro del panel usando el mismo permiso administrativo que la descarga. En PDF hay controles de página. **Descargar**, pre-revisar, aceptar y rechazar siguen siendo acciones independientes. El visor sirve PDF.js desde `frontend/vendor/pdfjs`; la imagen o el documento se procesa en el navegador.
@@ -139,7 +141,7 @@ En **Comprobantes** y en el detalle de una reserva, **Monto verificado (COP)** s
 | Agentes | Crear, consultar ficha, editar nombre y rol, asignar o cambiar credenciales, activar y desactivar. El historial se conserva. |
 | Conversaciones | Consultar Todas o Mis conversaciones, tomar, responder, reasignar como administrador y devolver al bot. |
 | Comprobantes | Consultar y revisar evidencia, visualizar o descargar el archivo disponible y registrar la decisión humana. |
-| Planes y reservas | Editar planes existentes, consultar disponibilidad, crear manualmente, filtrar, ver detalle, reprogramar, cancelar y reintentar la sincronización elegible. |
+| Planes y reservas | Editar planes existentes, consultar disponibilidad, crear manualmente, filtrar, ver el saldo total y el historial de abonos sin comprobante, registrar un pago recibido, reprogramar, cancelar y reintentar la sincronización elegible. |
 | Catálogos | Consultar categorías y archivos, cargar PDF y gestionar sus asociaciones y estado conforme al rol. |
 | Avisos a asesores | Consultar destinatarios y entregas, crear o editar destinatarios y solicitar prueba según permisos. |
 | Calendario | Leer eventos y visitas, crear/consultar/editar/retirar un bloqueo de fecha y registrar un festivo manual. |

@@ -72,3 +72,26 @@ class Reservation(Base):
         if value not in RESERVATION_STATUSES:
             raise ValueError(f"Invalid reservation status: {value}")
         return value
+
+
+class ReservationManualPayment(Base):
+    __tablename__ = "reservation_manual_payment"
+    __table_args__ = (
+        CheckConstraint("amount_cop > 0 AND paid_before_cop >= 0", name="ck_manual_payment_amount"),
+        CheckConstraint(
+            "method IN ('CASH','CARD','BANK_TRANSFER','NEQUI','DAVIPLATA','PAYMENT_LINK')",
+            name="ck_manual_payment_method",
+        ),
+        Index("ix_manual_payment_reservation", "reservation_id"),
+    )
+
+    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    reservation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("reservation.reservation_id"))
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agent.id"))
+    recorded_by: Mapped[str] = mapped_column(String(128))
+    method: Mapped[str] = mapped_column(String(16))
+    amount_cop: Mapped[int] = mapped_column(Integer)
+    paid_before_cop: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(String(255))
+    result: Mapped[str] = mapped_column(String(24))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
