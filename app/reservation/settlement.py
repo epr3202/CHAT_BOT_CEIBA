@@ -145,6 +145,28 @@ async def accept_payment(
     )
     if reservation is None:
         return SettlementResult("NO_RESERVATION", None, blockers=[])
+    return await apply_reservation_payment(
+        session,
+        reservation,
+        amount_cop=amount_cop,
+        actor=actor,
+        note=note,
+        request_id=request_id,
+        calendar_blockers=calendar_blockers,
+    )
+
+
+async def apply_reservation_payment(
+    session: AsyncSession,
+    reservation: Reservation,
+    *,
+    amount_cop: int,
+    actor: str,
+    note: str | None,
+    request_id: str,
+    calendar_blockers: list[BookingBlocker],
+) -> SettlementResult:
+    """Apply a verified amount while the caller holds the booking and reservation locks."""
     old_paid = reservation.amount_paid_cop
     reservation.amount_paid_cop += amount_cop
     if reservation.status == "RESERVED":
@@ -182,7 +204,7 @@ async def accept_payment(
             reservation,
             "PAYMENT_REVIEW",
             actor=actor,
-            reason="Liquidación humana de comprobante vinculado",
+            reason="Liquidación de pago verificado por el operador",
             request_id=request_id,
         )
     missing = max(0, deposit_amount(reservation.price_cop) - reservation.amount_paid_cop)

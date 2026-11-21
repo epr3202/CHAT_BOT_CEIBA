@@ -1,3 +1,4 @@
+import {balance, bindManualPayment, renderAccount} from "./reservation-payments.mjs";
 import { createWorkspace } from "./workspace.mjs";
 import {
   labels, label, formatDate, summaryContent, formatCOP, bogotaDateTimeToISO,
@@ -233,6 +234,8 @@ function renderAuthState() {
   const manualContainer = state.agent?.role === "AGENT" ? $("#manualReservations") : $("#reservations");
   if ($("#manualReservationPanel").parentElement !== manualContainer) {
     manualContainer.prepend($("#manualReservationPanel"));
+    $("#manualReservationPanel").hidden = state.agent?.role !== "AGENT";
+    $("#backFromCreate").hidden = state.agent?.role === "AGENT";
   }
   const selected = $$(".navItem").find((button) =>
     button.dataset.view === state.currentView && !button.hidden
@@ -267,8 +270,8 @@ function selectView(view) {
   if (view === "agents") loadAgents();
   if (view === "staffNotifications") loadStaffNotifications();
   if (view === "plans") loadPlans();
-  if (view === "reservations") { loadReservations(); loadManualPlans(); }
-  if (view === "manualReservations") loadManualPlans();
+  if (view === "reservations") { reservationScreen("list"); loadReservations(); }
+  if (view === "manualReservations") { $("#manualReservationPanel").hidden = false; loadManualPlans(); }
 }
 
 async function requestJson(path, options = {}) {
@@ -771,6 +774,10 @@ function clearSession() {
   state.planWrites = new Set();
   state.planListRequest++;
   state.reservations = [];
+  reservationScreen("list");
+  $("#manualPaymentHistory").replaceChildren();
+  $("#reservationMoney").replaceChildren();
+  $("#manualPaymentForm").reset();
   state.reservationDetail = null;
   state.reservationListRequest += 1;
   state.reservationDetailRequest += 1;
@@ -1606,38 +1613,64 @@ async function loadReservations() {
   }
 }
 
+function reservationScreen(screen) {
+  $("#reservationDirectory").hidden = screen !== "list";
+  $("#reservationDetail").hidden = screen !== "detail";
+  $("#manualReservationPanel").hidden = screen !== "create";
+  if (screen !== "detail") {
+    state.reservationDetailRequest++;
+    state.reservationDetail = null;
+  }
+}
+
 function renderReservations() {
   const body = $("#reservationRows");
   body.replaceChildren();
   if (!state.reservations.length) {
-    emptyTable(body, 7, "No hay reservas con este filtro.");
+    emptyTable(body, 5, "No hay reservas con este filtro.");
     return;
   }
   for (const reservation of state.reservations) {
     const row = document.createElement("tr");
-    for (const value of [reservation.customer_name || reservation.customer_phone || "Sin nombre", reservation.plan_name || "Sin plan",
-      formatDate(reservation.starts_at), label("reservationStatus", reservation.status),
-      `${formatCOP(reservation.amount_paid_cop)} / ${formatCOP(reservation.missing_cop)}`,
-      label("calendarStatus", reservation.calendar_status)]) {
-      const cell = document.createElement("td");
-      cell.append(value);
-      row.append(cell);
+    function cell(caption, ...values) {
+      const field = document.createElement("td");
+      field.dataset.label = caption;
+      field.append(...values);
+      row.append(field);
+      return field;
     }
+    const client = document.createElement("strong"), plan = document.createElement("small");
+    client.textContent = reservation.customer_name || reservation.customer_phone || "Sin nombre";
+    plan.textContent = reservation.plan_name || "Sin plan";
+    const identity = cell("Cliente y plan", client, plan);
     if (reservation.conversation_id === null) {
-      const badge = document.createElement("span");
-      badge.className = "pill neutral manualBadge";
-      badge.textContent = "Manual";
-      row.firstElementChild.append(badge);
+      const badge = document.createElement("span"); badge.className = "resOrigin"; badge.textContent = "Manual"; identity.append(badge);
     }
-    if (reservation.status === "RESERVED" && reservation.amount_paid_cop < reservation.price_cop) {
-      const badge = document.createElement("span");
-      badge.className = "pill neutral";
-      badge.textContent = reservation.balance_overdue_at ? "Saldo vencido" : "Saldo pendiente";
-      row.children[3].append(badge);
+    const calendar = document.createElement("small");
+    calendar.textContent = "Calendario: " + label("calendarStatus", reservation.calendar_status);
+    cell("Inicio (Bogotá)", formatDate(reservation.starts_at), calendar);
+    const status = document.createElement("span");
+    status.className = "pill " + (reservation.status === "RESERVED" ? "ok" : reservation.status.startsWith("PAYMENT") ? "warn" : "neutral");
+    status.append(label("reservationStatus", reservation.status));
+    cell("Estado", status);
+    const sum = document.createElement("strong");
+    const closed = reservation.status === "CANCELLED" || reservation.status === "EXPIRED";
+    sum.textContent = closed ? "Cobro cerrado" : formatCOP(balance(reservation));
+    const amountCell = cell("Saldo pendiente", sum);
+    if (reservation.status === "PAYMENT_PENDING" || reservation.status === "PAYMENT_REVIEW") {
+      const deposit = document.createElement("small");
+      deposit.textContent = "Para el anticipo: " + formatCOP(reservation.missing_cop);
+      amountCell.append(deposit);
     }
-    const actions = document.createElement("td");
-    actions.append(actionButton("Ver detalle", () => openReservationDetail(reservation.reservation_id)));
-    row.append(actions);
+    if (reservation.status === "RESERVED") {
+      const caption = document.createElement("small");
+      caption.textContent = balance(reservation) ? (reservation.balance_overdue_at ? "Saldo vencido" : "Saldo pendiente") : "Pago completo";
+      if (caption.textContent === "Saldo pendiente") caption.className = "resBalancePending";
+      amountCell.append(caption);
+    }
+    const open = actionButton("Ver detalle", () => openReservationDetail(reservation.reservation_id));
+    open.dataset.reservation = reservation.reservation_id;
+    cell("Acciones", open);
     body.append(row);
   }
 }
@@ -1646,7 +1679,14 @@ async function openReservationDetail(id) {
   if (state.agent?.role !== "ADMIN") return;
   const request = ++state.reservationDetailRequest;
   state.reservationDetail = null;
-  $("#reservationDetail").hidden = false;
+  reservationScreen("detail");
+  setText("reservationClient", "Detalle de reserva");
+  setText("reservationSubtitle", "");
+  $("#reservationState").replaceChildren();
+  $("#reservationMoney").replaceChildren();
+  $("#manualPaymentHistory").replaceChildren();
+  $("#openManualPayment").hidden = true;
+  $("#reservationClient").focus();
   $("#reservationDetails").replaceChildren();
   $("#reservationEvidences").replaceChildren();
   $("#reservationCustomerNotifications").replaceChildren();
@@ -1669,22 +1709,23 @@ async function openReservationDetail(id) {
 function renderReservationDetail(reservation) {
   state.reservationDetail = reservation;
   const details = $("#reservationDetails");
-  const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+  setText("reservationClient", reservation.customer_name || reservation.customer_phone || "Reserva");
+  setText("reservationSubtitle", [reservation.plan_name, formatDate(reservation.starts_at) + " · Bogotá"].filter(Boolean).join(" · "));
+  $("#reservationState").replaceChildren(label("reservationStatus", reservation.status));
+  renderAccount(reservation);
   details.replaceChildren();
   for (const [title, value] of [
-    ["Cliente", reservation.customer_name || reservation.customer_phone || "Sin nombre"], ["Plan", reservation.plan_name || "Sin plan"],
+    ...(reservation.customer_phone ? [["Teléfono", reservation.customer_phone]] : []),
     ["Origen", reservation.conversation_id === null ? "Manual" : "Conversación"],
-    ["Estado", label("reservationStatus", reservation.status)], ["Inicio", formatDate(reservation.starts_at)],
-    ["Fin", formatDate(reservation.ends_at)], ["Precio", cop.format(reservation.price_cop)],
+    ["Inicio", formatDate(reservation.starts_at)],
+    ["Fin", formatDate(reservation.ends_at)],
     ...(reservation.commercial_details ? [["Detalles de la solicitud", reservation.commercial_details]] : []),
-    ["Pagado", cop.format(reservation.amount_paid_cop)],
-    ["Saldo pendiente", formatCOP(Math.max(0, reservation.price_cop - reservation.amount_paid_cop))],
     ["Anticipo", formatCOP(reservation.deposit_amount_cop)],
     ["Faltante para el anticipo", formatCOP(reservation.missing_cop)],
     ["Calendario", label("calendarStatus", reservation.calendar_status)],
     ["Modalidad de pago", reservation.payment_kind ? label("paymentKind", reservation.payment_kind) : "Sin modalidad"],
-    ["Vencimiento del saldo", formatDate(reservation.balance_due_at)],
-    ["Saldo vencido desde", formatDate(reservation.balance_overdue_at)],
+    ...(reservation.balance_due_at ? [["Vencimiento del saldo", formatDate(reservation.balance_due_at)]] : []),
+    ...(reservation.balance_overdue_at ? [["Saldo vencido desde", formatDate(reservation.balance_overdue_at)]] : []),
   ]) {
     const term = document.createElement("dt");
     term.textContent = title;
@@ -2016,7 +2057,9 @@ async function cancelReservation(event) {
       method: "POST", body: JSON.stringify({ note }),
     });
     if (request !== state.reservationDetailRequest) return;
-    renderReservationDetail(updated);
+    await reloadReservationAfterMutation(reservation.reservation_id, updated,
+      () => request === state.reservationDetailRequest, request);
+    if (request !== state.reservationDetailRequest) return;
     managementFeedback("reservationDetailFeedback", updated.calendar_synced === false
       ? "Reserva cancelada; falta retirar el evento del calendario."
       : "Reserva cancelada.", updated.calendar_synced === false);
@@ -2477,8 +2520,28 @@ function bindUi() {
   $("#retryReservationCalendar").addEventListener("click", retryReservationCalendar);
   $("#reservationCancelForm").addEventListener("submit", cancelReservation);
   $("#closeReservationDetail").addEventListener("click", () => {
-    state.reservationDetailRequest += 1;
-    $("#reservationDetail").hidden = true;
+    const id = state.reservationDetail?.reservation_id;
+    reservationScreen("list");
+    (document.querySelector(`[data-reservation="${id}"]`) || $("#newReservation")).focus();
+  });
+  $("#newReservation").onclick = () => {
+    reservationScreen("create"); loadManualPlans(); $("#manualReservationPhone").focus();
+  };
+  $("#backFromCreate").onclick = () => { reservationScreen("list"); $("#newReservation").focus(); };
+  bindManualPayment({
+    selected: () => state.agent?.role === "ADMIN" ? state.reservationDetail : null,
+    api: managementRequest,
+    refresh: openReservationDetail,
+    onApplied: async result => {
+      renderReservationDetail(result.reservation);
+      const warning = result.calendar_synced === false;
+      managementFeedback("reservationDetailFeedback", [
+        "Abono registrado.", result.result === "RESERVED" ? "Reserva confirmada." : "",
+        "Saldo pendiente: " + formatCOP(balance(result.reservation)) + ".", result.detail,
+      ].filter(Boolean).join(" "), warning);
+      $("#reservationClient").focus();
+      await loadReservations();
+    },
   });
   $("#agentStatusFilter").addEventListener("change", renderAgents);
   $("#agentCreateForm").addEventListener("submit", createAgent);

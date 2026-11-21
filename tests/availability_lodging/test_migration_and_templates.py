@@ -44,7 +44,7 @@ async def test_R_0037_backfill_and_clean_migrate_cycle(
     assert revision is not None, "Falta la única migración 20261028_0037_plan_overnight"
     assert revision.down_revision == "20261007_0036"
     assert "plan_overnight" in Path(revision.path).stem
-    assert scripts.get_heads() == ["20261120_0040"]
+    assert scripts.get_heads() == ["20261121_0041"]
     monkeypatch.setenv("LODGING_CHECKIN_FROM", checkin)
     monkeypatch.setenv("LODGING_CHECKOUT_TIME", checkout)
     url = configure_test_database(monkeypatch)

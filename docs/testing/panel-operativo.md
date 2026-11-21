@@ -1,6 +1,6 @@
 # Cobertura del panel operativo
 
-La integración parte de `1dcf000da37692f1b57395379cb8e856622f561c`. El censo abarca las 59 operaciones HTTP explícitas de FastAPI y los 12 destinos de navegación del panel, más el acceso. Los menús dependen del rol y del entorno. La tabla identifica contratos de código. Las pruebas ejecutables del panel se encuentran en `tests/frontend`, con los nuevos recorridos en `test_operator_workspace.spec.mjs`; la persistencia y los permisos administrativos tienen pruebas en `tests/integration/test_operator_panel.py`.
+La integración parte de `1dcf000da37692f1b57395379cb8e856622f561c`. El censo abarca las 60 operaciones HTTP explícitas de FastAPI y los 12 destinos de navegación del panel, más el acceso. Los menús dependen del rol y del entorno. La tabla identifica contratos de código. Las pruebas ejecutables del panel se encuentran en `tests/frontend`, con los nuevos recorridos en `test_operator_workspace.spec.mjs`; la persistencia y los permisos administrativos tienen pruebas en `tests/integration/test_operator_panel.py`.
 
 | Destino | Trabajo del usuario |
 |---|---|
@@ -10,7 +10,7 @@ La integración parte de `1dcf000da37692f1b57395379cb8e856622f561c`. El censo ab
 | Calendario | Recorrer el mes con títulos por día y abrir el detalle desde la agenda del día. Las reservas vinculadas muestran la fecha y el horario confirmado en Bogotá, incluso cuando la descripción anterior conserva valores provisionales. Revisar citas locales, bloqueos y festivos. |
 | Catálogos | Consultar cobertura, cargar PDF, editar estado y gestionar asignaciones a tipos de evento. |
 | Planes | Consultar y editar los planes existentes, con sus condiciones de reserva y pernoctación. |
-| Reservas | Consultar, filtrar, ver detalle, preparar y crear una reserva manual, reprogramar, cancelar o reintentar la sincronización cuando corresponda. |
+| Reservas | Consultar, filtrar, ver detalle, preparar y crear una reserva manual, registrar abonos recibidos sin archivo, consultar quién los registró y el saldo total, reprogramar, cancelar o reintentar la sincronización cuando corresponda. |
 | Crear reserva | Acceso del asesor a la operación de alta manual con consulta previa de disponibilidad. |
 | Agentes | Alta, ficha, edición, activación, desactivación y credenciales. La baja lógica conserva referencias históricas. |
 | Avisos a asesores | Administrar destinatarios y consultar entregas y pruebas de aviso. |
@@ -43,6 +43,7 @@ Las rutas bajo `/admin` se sirven al navegador mediante el proxy local `/api/adm
 | POST | `/admin/reservations` | Crear solicitud manual con plan, fecha, hora y cliente | Operador con sesión | [`app/admin/routes.py`](../../app/admin/routes.py#L850) |
 | PATCH | `/admin/reservations/{reservation_id}/schedule` | Reprogramar una reserva y recalcular las condiciones aplicables | Administrador | [`app/admin/routes.py`](../../app/admin/routes.py#L909) |
 | POST | `/admin/reservations/{reservation_id}/sync-calendar` | Reintentar sincronización de reserva ya confirmada | Administrador | [`app/admin/routes.py`](../../app/admin/routes.py#L1005) |
+| POST | `/admin/reservations/{reservation_id}/payments` | Registrar un abono manual identificado por UUID y consultar la cuenta actualizada | Administrador | [Controlador de reservas](../../app/admin/routes.py) |
 | POST | `/admin/reservations/{reservation_id}/cancel` | Cancelar una reserva con motivo y confirmación | Administrador | [`app/admin/routes.py`](../../app/admin/routes.py#L1026) |
 | GET | `/admin/payment-evidence` | Listar evidencias pendientes de revisión | Administrador | [`app/admin/routes.py`](../../app/admin/routes.py#L1071) |
 | GET | `/admin/payment-evidence/{evidence_id}` | Leer una evidencia individual por ID | Administrador | [`app/admin/routes.py`](../../app/admin/routes.py#L1103) |

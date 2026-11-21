@@ -162,7 +162,7 @@ async function serveStatic(request, response) {
     let content = await readFile(filePath);
     if (extname(filePath) === ".html") {
       // A cached pre-login bundle is incompatible with the dedicated login markup.
-      const assets = await Promise.all(["app.js", "labels.mjs", "inbox.mjs", "workspace.mjs", "phone.mjs", "agenda.mjs", "proof.mjs", "styles.css"].map(name => readFile(join(frontendRoot, name))));
+      const assets = await Promise.all(["app.js", "labels.mjs", "inbox.mjs", "workspace.mjs", "phone.mjs", "agenda.mjs", "proof.mjs", "reservation-payments.mjs", "styles.css"].map(name => readFile(join(frontendRoot, name))));
       const version = createHash("sha256").update(Buffer.concat(assets)).digest("hex").slice(0, 16);
       content = content.toString("utf8")
         .replace('src="/app.js"', `src="/app.js?v=${version}"`)
